@@ -738,7 +738,8 @@ export async function importRevolutCsv(filePath: string): Promise<{
         institution: "Revolut",
         currency: "EUR",
         provider: "manual",
-        balanceCurrent: "0",
+        startingBalance: "0",
+        functionalBalance: "0",
       }).returning();
       account = newAccount;
     }
@@ -824,7 +825,7 @@ export async function importRevolutCsv(filePath: string): Promise<{
 
     await db.update(accounts)
       .set({
-        balanceCurrent: lastBalance,
+        functionalBalance: lastBalance,
         lastSyncedAt: new Date(),
         updatedAt: new Date(),
       })

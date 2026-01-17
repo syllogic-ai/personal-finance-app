@@ -41,7 +41,8 @@ const accounts = pgTable("accounts", {
   institution: varchar("institution", { length: 255 }),
   currency: char("currency", { length: 3 }).default("EUR"),
   provider: varchar("provider", { length: 50 }),
-  balanceCurrent: decimal("balance_current", { precision: 15, scale: 2 }).default("0"),
+  startingBalance: decimal("starting_balance", { precision: 15, scale: 2 }).default("0"),
+  functionalBalance: decimal("functional_balance", { precision: 15, scale: 2 }),
   lastSyncedAt: timestamp("last_synced_at"),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -169,7 +170,8 @@ async function main() {
           institution: "Revolut",
           currency: "EUR",
           provider: "manual",
-          balanceCurrent: "0",
+          startingBalance: "0",
+          functionalBalance: "0",
         })
         .returning();
       account = newAccount;
@@ -272,7 +274,7 @@ async function main() {
     await db
       .update(accounts)
       .set({
-        balanceCurrent: lastBalance,
+        functionalBalance: lastBalance,
         lastSyncedAt: new Date(),
         updatedAt: new Date(),
       })

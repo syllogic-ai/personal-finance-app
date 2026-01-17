@@ -90,7 +90,7 @@ export function AddAccountDialog({ onAccountAdded }: AddAccountDialogProps) {
         accountType,
         institution: institution.trim() || undefined,
         currency,
-        balanceCurrent: balance,
+        startingBalance: balance,
       });
 
       if (result.success) {

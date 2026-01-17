@@ -33,7 +33,7 @@ export async function getTotalBalance() {
   const [result, currency] = await Promise.all([
     db
       .select({
-        total: sql<string>`COALESCE(SUM(${accounts.balanceCurrent}), 0)`,
+        total: sql<string>`COALESCE(SUM(${accounts.functionalBalance}), 0)`,
       })
       .from(accounts)
       .where(
@@ -83,7 +83,7 @@ export async function getBalanceHistory(days: number = 7) {
   // Get current balance to work backwards
   const balanceResult = await db
     .select({
-      total: sql<string>`COALESCE(SUM(${accounts.balanceCurrent}), 0)`,
+      total: sql<string>`COALESCE(SUM(${accounts.functionalBalance}), 0)`,
     })
     .from(accounts)
     .where(
@@ -512,7 +512,7 @@ export async function getAssetsOverview(): Promise<AssetsOverviewData> {
         name: accounts.name,
         accountType: accounts.accountType,
         institution: accounts.institution,
-        balanceCurrent: accounts.balanceCurrent,
+        functionalBalance: accounts.functionalBalance,
         currency: accounts.currency,
       })
       .from(accounts)
@@ -551,7 +551,7 @@ export async function getAssetsOverview(): Promise<AssetsOverviewData> {
   // Process bank accounts
   for (const account of userAccounts) {
     const category = getAssetCategory(account.accountType);
-    const value = parseFloat(account.balanceCurrent || "0");
+    const value = parseFloat(account.functionalBalance || "0");
 
     // Only include positive balances in assets
     if (value > 0) {

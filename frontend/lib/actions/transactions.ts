@@ -72,12 +72,12 @@ export async function createTransaction(
 
     // Update account balance
     const balanceChange = input.transactionType === "credit" ? input.amount : -input.amount;
-    const newBalance = parseFloat(account.balanceCurrent || "0") + balanceChange;
+    const newBalance = parseFloat(account.functionalBalance || "0") + balanceChange;
 
     await db
       .update(accounts)
       .set({
-        balanceCurrent: newBalance.toString(),
+        functionalBalance: newBalance.toString(),
         updatedAt: new Date(),
       })
       .where(eq(accounts.id, input.accountId));

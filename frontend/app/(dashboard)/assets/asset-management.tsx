@@ -149,7 +149,7 @@ export function AssetManagement({
     setEditAccountType(account.accountType);
     setEditAccountInstitution(account.institution || "");
     setEditAccountCurrency(account.currency || "EUR");
-    setEditAccountBalance(account.balanceCurrent || "0");
+    setEditAccountBalance(account.functionalBalance || "0");
   };
 
   const handleEditAccount = async (e: React.FormEvent) => {
@@ -164,7 +164,7 @@ export function AssetManagement({
         accountType: editAccountType,
         institution: editAccountInstitution.trim() || undefined,
         currency: editAccountCurrency,
-        balanceCurrent: isNaN(balance) ? 0 : balance,
+        startingBalance: isNaN(balance) ? 0 : balance,
       });
 
       if (result.success) {
@@ -363,7 +363,7 @@ export function AssetManagement({
                   </div>
                   <div className="flex items-center gap-4">
                     <div className="text-right">
-                      <p className="font-medium">{formatCurrency(account.balanceCurrent, account.currency)}</p>
+                      <p className="font-medium">{formatCurrency(account.functionalBalance, account.currency)}</p>
                       <p className="text-xs text-muted-foreground">{account.currency}</p>
                     </div>
                     <DropdownMenu>

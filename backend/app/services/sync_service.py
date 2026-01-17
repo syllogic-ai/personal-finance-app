@@ -9,14 +9,16 @@ from sqlalchemy import and_
 from app.models import Account, Transaction
 from app.integrations.base import BankAdapter, AccountData, TransactionData
 from app.services.category_matcher import CategoryMatcher
+from app.db_helpers import get_user_id
 
 
 class SyncService:
     """Service for syncing bank data."""
     
-    def __init__(self, db: Session, use_llm_categorization: bool = True):
+    def __init__(self, db: Session, user_id: Optional[str] = None, use_llm_categorization: bool = True):
         self.db = db
-        self.category_matcher = CategoryMatcher(db)
+        self.user_id = get_user_id(user_id)
+        self.category_matcher = CategoryMatcher(db, user_id=self.user_id)
         self.use_llm_categorization = use_llm_categorization
     
     def sync_accounts(self, adapter: BankAdapter, provider: str) -> List[Account]:
@@ -36,10 +38,9 @@ class SyncService:
         for account_data in account_data_list:
             # Check if account already exists
             existing_account = self.db.query(Account).filter(
-                and_(
-                    Account.provider == provider,
-                    Account.external_id == account_data.external_id
-                )
+                Account.user_id == self.user_id,
+                Account.provider == provider,
+                Account.external_id == account_data.external_id
             ).first()
             
             if existing_account:
@@ -49,8 +50,7 @@ class SyncService:
                 existing_account.institution = account_data.institution
                 existing_account.currency = account_data.currency
                 # Only update balance if provided from CSV (not None), otherwise keep existing or calculate later
-                if account_data.balance_current is not None:
-                    existing_account.balance_current = account_data.balance_current
+                # balance_current removed - use functional_balance instead
                 existing_account.balance_available = account_data.balance_available
                 existing_account.is_active = True
                 synced_accounts.append(existing_account)
@@ -58,13 +58,13 @@ class SyncService:
                 # Create new account
                 # Don't set balance here - it will be calculated from transactions after sync
                 new_account = Account(
+                    user_id=self.user_id,
                     name=account_data.name,
                     account_type=account_data.account_type,
                     institution=account_data.institution,
                     currency=account_data.currency,
                     provider=provider,
                     external_id=account_data.external_id,
-                    balance_current=0,  # Will be recalculated from transactions
                     balance_available=account_data.balance_available,
                 )
                 self.db.add(new_account)
@@ -118,10 +118,9 @@ class SyncService:
             
             # Check if transaction already exists
             existing_transaction = self.db.query(Transaction).filter(
-                and_(
-                    Transaction.account_id == account.id,
-                    Transaction.external_id == transaction_data.external_id
-                )
+                Transaction.user_id == self.user_id,
+                Transaction.account_id == account.id,
+                Transaction.external_id == transaction_data.external_id
             ).first()
             
             if existing_transaction:
@@ -133,13 +132,14 @@ class SyncService:
                 existing_transaction.booked_at = transaction_data.booked_at
                 existing_transaction.transaction_type = transaction_data.transaction_type
                 existing_transaction.pending = transaction_data.pending
-                # Only update category if it wasn't already set (preserve user's manual categorization)
+                # Only update category_system_id if user hasn't overridden (preserve user's manual categorization)
                 if not existing_transaction.category_id and category:
-                    existing_transaction.category_id = category.id
+                    existing_transaction.category_system_id = category.id
                 updated_count += 1
             else:
                 # Create new transaction
                 new_transaction = Transaction(
+                    user_id=self.user_id,
                     account_id=account.id,
                     external_id=transaction_data.external_id,
                     transaction_type=transaction_data.transaction_type,
@@ -149,7 +149,7 @@ class SyncService:
                     merchant=transaction_data.merchant,
                     booked_at=transaction_data.booked_at,
                     pending=transaction_data.pending,
-                    category_id=category.id if category else None,
+                    category_system_id=category.id if category else None,  # Use category_system_id for AI-assigned
                 )
                 self.db.add(new_transaction)
                 created_count += 1
@@ -178,14 +178,16 @@ class SyncService:
         if provider == 'revolut':
             from app.models import Transaction
             old_default_accounts = self.db.query(Account).filter(
-                and_(
-                    Account.provider == 'revolut',
-                    Account.external_id == 'revolut_default'
-                )
+                Account.user_id == self.user_id,
+                Account.provider == 'revolut',
+                Account.external_id == 'revolut_default'
             ).all()
             for old_account in old_default_accounts:
                 # Delete associated transactions first
-                self.db.query(Transaction).filter(Transaction.account_id == old_account.id).delete()
+                self.db.query(Transaction).filter(
+                    Transaction.user_id == self.user_id,
+                    Transaction.account_id == old_account.id
+                ).delete()
                 # Then delete the account
                 self.db.delete(old_account)
             if old_default_accounts:
@@ -205,15 +207,25 @@ class SyncService:
             total_created += created
             total_updated += updated
         
-        # After syncing transactions, update account balance from sum of all transactions
+        # After syncing transactions, update functional_balance from sum of all transactions
         # This ensures the balance is always accurate based on the transactions in the database
         from sqlalchemy import func
+        from decimal import Decimal
         for account in accounts:
             # Calculate balance from sum of all transactions for this account
-            balance_sum = self.db.query(func.sum(Transaction.amount)).filter(
+            transaction_sum_result = self.db.query(func.sum(Transaction.amount)).filter(
+                Transaction.user_id == self.user_id,
                 Transaction.account_id == account.id
-            ).scalar() or 0
-            account.balance_current = balance_sum
+            ).scalar()
+            
+            if transaction_sum_result is None:
+                transaction_sum = Decimal("0")
+            else:
+                transaction_sum = Decimal(str(transaction_sum_result))
+            
+            # Calculate functional_balance = sum(transactions) + starting_balance
+            starting_balance = account.starting_balance or Decimal("0")
+            account.functional_balance = transaction_sum + starting_balance
             self.db.commit()
         
         return {

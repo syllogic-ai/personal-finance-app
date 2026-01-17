@@ -17,7 +17,7 @@ export async function getTotalBalance() {
 
   const result = await db
     .select({
-      total: sql<string>`COALESCE(SUM(${accounts.balanceCurrent}), 0)`,
+      total: sql<string>`COALESCE(SUM(${accounts.functionalBalance}), 0)`,
     })
     .from(accounts)
     .where(and(eq(accounts.userId, session.user.id), eq(accounts.isActive, true)));

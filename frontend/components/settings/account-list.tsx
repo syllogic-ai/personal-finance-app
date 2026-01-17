@@ -90,7 +90,7 @@ export function AccountList({ accounts, onAccountUpdated }: AccountListProps) {
     setEditAccountType(account.accountType);
     setEditInstitution(account.institution || "");
     setEditCurrency(account.currency || "EUR");
-    setEditBalance(account.balanceCurrent || "0");
+    setEditBalance(account.functionalBalance || "0");
   };
 
   const handleEdit = async (e: React.FormEvent) => {
@@ -111,7 +111,7 @@ export function AccountList({ accounts, onAccountUpdated }: AccountListProps) {
         accountType: editAccountType,
         institution: editInstitution.trim() || undefined,
         currency: editCurrency,
-        balanceCurrent: isNaN(balance) ? 0 : balance,
+        startingBalance: isNaN(balance) ? 0 : balance,
       });
 
       if (result.success) {
@@ -202,7 +202,7 @@ export function AccountList({ accounts, onAccountUpdated }: AccountListProps) {
                       {new Intl.NumberFormat("en-US", {
                         style: "currency",
                         currency: account.currency || "EUR",
-                      }).format(parseFloat(account.balanceCurrent || "0"))}
+                      }).format(parseFloat(account.functionalBalance || "0"))}
                     </p>
                     <p className="text-xs text-muted-foreground">{account.currency}</p>
                   </div>

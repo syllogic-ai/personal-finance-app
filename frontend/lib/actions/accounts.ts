@@ -12,7 +12,7 @@ export interface CreateAccountInput {
   accountType: string;
   institution?: string;
   currency: string;
-  balanceCurrent?: number;
+  startingBalance?: number;
 }
 
 export async function createAccount(
@@ -27,13 +27,15 @@ export async function createAccount(
   }
 
   try {
+    const balanceValue = input.startingBalance?.toString() || "0";
     const newAccount: NewAccount = {
       userId: session.user.id,
       name: input.name,
       accountType: input.accountType,
       institution: input.institution || null,
       currency: input.currency,
-      balanceCurrent: input.balanceCurrent?.toString() || "0",
+      startingBalance: balanceValue,
+      functionalBalance: balanceValue, // For manual accounts, functional = starting
       provider: "manual",
       isActive: true,
     };
@@ -77,7 +79,8 @@ export async function updateAccount(
         accountType: input.accountType,
         institution: input.institution,
         currency: input.currency,
-        balanceCurrent: input.balanceCurrent?.toString(),
+        startingBalance: input.startingBalance?.toString(),
+        functionalBalance: input.startingBalance?.toString(), // For manual accounts, update both
         updatedAt: new Date(),
       })
       .where(eq(accounts.id, accountId));

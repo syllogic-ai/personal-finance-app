@@ -114,7 +114,7 @@ export function AddAssetDialog({ onAssetAdded }: AddAssetDialogProps) {
         accountType,
         institution: institution.trim() || undefined,
         currency: accountCurrency,
-        balanceCurrent: balance,
+        startingBalance: balance,
       });
 
       if (result.success) {
