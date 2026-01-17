@@ -24,6 +24,7 @@ export const users = pgTable("users", {
   email: text("email").unique().notNull(),
   emailVerified: boolean("email_verified").default(false),
   image: text("image"),
+  functionalCurrency: char("functional_currency", { length: 3 }).default("EUR"), // User's functional currency for reporting
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -85,8 +86,9 @@ export const accounts = pgTable(
     currency: char("currency", { length: 3 }).default("EUR"),
     provider: varchar("provider", { length: 50 }), // gocardless, manual
     externalId: varchar("external_id", { length: 255 }), // Provider's account ID
-    balanceCurrent: decimal("balance_current", { precision: 15, scale: 2 }).default("0"),
     balanceAvailable: decimal("balance_available", { precision: 15, scale: 2 }),
+    startingBalance: decimal("starting_balance", { precision: 15, scale: 2 }).default("0"), // Starting balance for calculation
+    functionalBalance: decimal("functional_balance", { precision: 15, scale: 2 }), // Calculated balance (sum of transactions + starting_balance)
     isActive: boolean("is_active").default(true),
     lastSyncedAt: timestamp("last_synced_at"),
     createdAt: timestamp("created_at").defaultNow(),
@@ -137,6 +139,7 @@ export const transactions = pgTable(
     transactionType: varchar("transaction_type", { length: 20 }), // debit, credit
     amount: decimal("amount", { precision: 15, scale: 2 }).notNull(),
     currency: char("currency", { length: 3 }).default("EUR"),
+    functionalAmount: decimal("functional_amount", { precision: 15, scale: 2 }), // Amount converted to user's functional currency
     description: text("description"),
     merchant: varchar("merchant", { length: 255 }),
     categoryId: uuid("category_id").references(() => categories.id), // User-overridden category
@@ -185,6 +188,29 @@ export const bankConnections = pgTable("bank_connections", {
   createdAt: timestamp("created_at").defaultNow(),
   expiresAt: timestamp("expires_at"),
 });
+
+export const exchangeRates = pgTable(
+  "exchange_rates",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    date: timestamp("date").notNull(), // Date of the exchange rate
+    baseCurrency: char("base_currency", { length: 3 }).notNull(), // Source currency (transaction currency)
+    targetCurrency: char("target_currency", { length: 3 }).notNull(), // Target currency (EUR or USD)
+    rate: decimal("rate", { precision: 18, scale: 8 }).notNull(), // Exchange rate (how many target currency = 1 base currency)
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => [
+    index("idx_exchange_rates_date").on(table.date),
+    index("idx_exchange_rates_base").on(table.baseCurrency),
+    index("idx_exchange_rates_target").on(table.targetCurrency),
+    unique("exchange_rates_date_base_target").on(
+      table.date,
+      table.baseCurrency,
+      table.targetCurrency
+    ),
+  ]
+);
 
 // ============================================================================
 // Relations
@@ -276,6 +302,8 @@ export const bankConnectionsRelations = relations(bankConnections, ({ one }) => 
   }),
 }));
 
+export const exchangeRatesRelations = relations(exchangeRates, () => ({}));
+
 // ============================================================================
 // Type Exports
 // ============================================================================
@@ -300,3 +328,6 @@ export type NewCategorizationRule = typeof categorizationRules.$inferInsert;
 
 export type BankConnection = typeof bankConnections.$inferSelect;
 export type NewBankConnection = typeof bankConnections.$inferInsert;
+
+export type ExchangeRate = typeof exchangeRates.$inferSelect;
+export type NewExchangeRate = typeof exchangeRates.$inferInsert;
