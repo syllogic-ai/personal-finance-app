@@ -14,6 +14,7 @@ from difflib import SequenceMatcher
 from dataclasses import dataclass
 
 from app.models import Category, Transaction
+from app.db_helpers import get_user_id
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -96,6 +97,7 @@ class CategoryMatcher:
     def __init__(
         self, 
         db: Session,
+        user_id: Optional[str] = None,
         user_overrides: Optional[List[Dict]] = None,
         additional_instructions: Optional[List[str]] = None
     ):
@@ -104,11 +106,13 @@ class CategoryMatcher:
 
         Args:
             db: SQLAlchemy database session for querying categories
+            user_id: User ID for filtering categories. If None, uses system user.
             user_overrides: List of transaction overrides with format:
                 [{"description": "...", "merchant": "...", "amount": ..., "category_name": "..."}, ...]
             additional_instructions: List of strings with user guidance for categorization
         """
         self.db = db
+        self.user_id = get_user_id(user_id)
         self._category_cache: Optional[Dict[str, Category]] = None
         self._keyword_rules: Optional[Dict[str, List[str]]] = None
         self._openai_client = None
@@ -117,19 +121,46 @@ class CategoryMatcher:
     
     def _load_categories(self) -> Dict[str, Category]:
         """
-        Load all categories from database into a cache.
+        Load all categories from database into a cache, filtered by user_id.
 
         Returns:
             Dictionary mapping category name (lowercase) to Category object
         """
         if self._category_cache is None:
-            categories = self.db.query(Category).all()
+            categories = self.db.query(Category).filter(Category.user_id == self.user_id).all()
             if not categories:
                 # Return empty dict if no categories exist
                 self._category_cache = {}
             else:
                 self._category_cache = {cat.name.lower(): cat for cat in categories}
         return self._category_cache
+    
+    def get_overridden_transactions(self, account_id: Optional[str] = None) -> List[Transaction]:
+        """
+        Get transactions that have been overridden by the user.
+        
+        A transaction is considered overridden if:
+        - category_system_id != category_id (user changed the AI-assigned category), OR
+        - categorization_instructions != NULL (user provided custom instructions)
+        
+        Args:
+            account_id: Optional account ID to filter by
+            
+        Returns:
+            List of Transaction objects that have been overridden
+        """
+        query = self.db.query(Transaction).filter(
+            Transaction.user_id == self.user_id,
+            (
+                (Transaction.category_system_id != Transaction.category_id) |
+                (Transaction.categorization_instructions.isnot(None))
+            )
+        )
+        
+        if account_id:
+            query = query.filter(Transaction.account_id == account_id)
+        
+        return query.all()
     
     def _get_keyword_rules(self) -> Dict[str, List[str]]:
         """

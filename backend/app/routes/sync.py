@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from app.database import get_db
 from app.models import Account
+from app.db_helpers import get_user_id
 from app.integrations.revolut_csv import RevolutCSVAdapter
 from app.services.sync_service import SyncService
 import os
@@ -28,6 +29,7 @@ async def sync_revolut_csv(
     file: UploadFile = File(...),
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
+    user_id: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
     """
@@ -36,6 +38,7 @@ async def sync_revolut_csv(
     Upload a CSV file exported from Revolut app or web interface.
     The file will be parsed and transactions will be imported into the database.
     """
+    user_id = get_user_id(user_id)
     if not file.filename.endswith('.csv'):
         raise HTTPException(status_code=400, detail="File must be a CSV file")
     
@@ -47,7 +50,7 @@ async def sync_revolut_csv(
     adapter = RevolutCSVAdapter(csv_content)
     
     # Create sync service
-    sync_service = SyncService(db)
+    sync_service = SyncService(db, user_id=user_id)
     
     # Perform sync
     try:
@@ -91,6 +94,7 @@ def sync_plaid(
     access_token: str,
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
+    user_id: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
     """
@@ -101,6 +105,7 @@ def sync_plaid(
     - PLAID_SECRET environment variable
     - access_token: Plaid access token (obtained via Plaid Link OAuth flow)
     """
+    user_id = get_user_id(user_id)
     try:
         from app.integrations.plaid_adapter import PlaidAdapter
         
@@ -123,7 +128,7 @@ def sync_plaid(
         )
         
         # Create sync service
-        sync_service = SyncService(db)
+        sync_service = SyncService(db, user_id=user_id)
         
         # Perform sync
         result = sync_service.sync_all(
@@ -161,14 +166,25 @@ def sync_plaid(
 
 
 @router.get("/accounts/{account_id}")
-def get_sync_status(account_id: str, db: Session = Depends(get_db)):
+def get_sync_status(
+    account_id: str,
+    user_id: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
     """Get sync status for an account."""
-    account = db.query(Account).filter(Account.id == account_id).first()
+    user_id = get_user_id(user_id)
+    account = db.query(Account).filter(
+        Account.id == account_id,
+        Account.user_id == user_id
+    ).first()
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
     
     from app.models import Transaction
-    transaction_count = db.query(Transaction).filter(Transaction.account_id == account.id).count()
+    transaction_count = db.query(Transaction).filter(
+        Transaction.user_id == user_id,
+        Transaction.account_id == account.id
+    ).count()
     
     return {
         "account_id": str(account.id),

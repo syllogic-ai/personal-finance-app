@@ -10,6 +10,8 @@ from decimal import Decimal
 
 from app.database import get_db
 from app.models import Category, Transaction
+from app.db_helpers import get_user_id
+from app.db_helpers import get_user_id
 from app.schemas import (
     CategoryCreate,
     CategoryResponse,
@@ -30,22 +32,44 @@ router = APIRouter()
 
 
 @router.get("/", response_model=List[CategoryResponse])
-def list_categories(db: Session = Depends(get_db)):
-    categories = db.query(Category).order_by(Category.name).all()
+def list_categories(
+    user_id: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """List all categories for the current user."""
+    user_id = get_user_id(user_id)
+    categories = db.query(Category).filter(Category.user_id == user_id).order_by(Category.name).all()
     return categories
 
 
 @router.get("/{category_id}", response_model=CategoryResponse)
-def get_category(category_id: UUID, db: Session = Depends(get_db)):
-    category = db.query(Category).filter(Category.id == category_id).first()
+def get_category(
+    category_id: UUID,
+    user_id: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """Get a specific category by ID."""
+    user_id = get_user_id(user_id)
+    category = db.query(Category).filter(
+        Category.id == category_id,
+        Category.user_id == user_id
+    ).first()
     if not category:
         raise HTTPException(status_code=404, detail="Category not found")
     return category
 
 
 @router.post("/", response_model=CategoryResponse, status_code=201)
-def create_category(category: CategoryCreate, db: Session = Depends(get_db)):
-    db_category = Category(**category.model_dump())
+def create_category(
+    category: CategoryCreate,
+    user_id: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """Create a new category."""
+    user_id = get_user_id(user_id)
+    category_data = category.model_dump()
+    category_data["user_id"] = user_id
+    db_category = Category(**category_data)
     db.add(db_category)
     db.commit()
     db.refresh(db_category)
@@ -54,9 +78,17 @@ def create_category(category: CategoryCreate, db: Session = Depends(get_db)):
 
 @router.patch("/{category_id}", response_model=CategoryResponse)
 def update_category(
-    category_id: UUID, updates: CategoryUpdate, db: Session = Depends(get_db)
+    category_id: UUID,
+    updates: CategoryUpdate,
+    user_id: Optional[str] = None,
+    db: Session = Depends(get_db)
 ):
-    category = db.query(Category).filter(Category.id == category_id).first()
+    """Update a category."""
+    user_id = get_user_id(user_id)
+    category = db.query(Category).filter(
+        Category.id == category_id,
+        Category.user_id == user_id
+    ).first()
     if not category:
         raise HTTPException(status_code=404, detail="Category not found")
 
@@ -70,15 +102,34 @@ def update_category(
 
 
 @router.delete("/{category_id}", status_code=204)
-def delete_category(category_id: UUID, db: Session = Depends(get_db)):
-    category = db.query(Category).filter(Category.id == category_id).first()
+def delete_category(
+    category_id: UUID,
+    user_id: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """Delete a category."""
+    user_id = get_user_id(user_id)
+    category = db.query(Category).filter(
+        Category.id == category_id,
+        Category.user_id == user_id
+    ).first()
     if not category:
         raise HTTPException(status_code=404, detail="Category not found")
 
-    # Set transactions with this category to uncategorized
-    db.query(Transaction).filter(Transaction.category_id == category_id).update(
-        {"category_id": None}
-    )
+    # Set category_id and category_system_id to NULL for transactions using this category
+    # Update transactions where category_id matches
+    db.query(Transaction).filter(
+        Transaction.user_id == user_id,
+        Transaction.category_id == category_id
+    ).update({"category_id": None}, synchronize_session=False)
+    
+    # Update transactions where category_system_id matches
+    db.query(Transaction).filter(
+        Transaction.user_id == user_id,
+        Transaction.category_system_id == category_id
+    ).update({"category_system_id": None}, synchronize_session=False)
+    
+    db.commit()
 
     db.delete(category)
     db.commit()
@@ -86,17 +137,33 @@ def delete_category(category_id: UUID, db: Session = Depends(get_db)):
 
 
 @router.get("/{category_id}/stats")
-def get_category_stats(category_id: UUID, db: Session = Depends(get_db)):
-    category = db.query(Category).filter(Category.id == category_id).first()
+def get_category_stats(
+    category_id: UUID,
+    user_id: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """Get statistics for a category."""
+    user_id = get_user_id(user_id)
+    category = db.query(Category).filter(
+        Category.id == category_id,
+        Category.user_id == user_id
+    ).first()
     if not category:
         raise HTTPException(status_code=404, detail="Category not found")
 
+    # Count transactions where this category is used (either as user override or system assigned)
     stats = (
         db.query(
             func.count(Transaction.id).label("count"),
             func.sum(Transaction.amount).label("total"),
         )
-        .filter(Transaction.category_id == category_id)
+        .filter(
+            Transaction.user_id == user_id,
+            (
+                (Transaction.category_id == category_id) |
+                (Transaction.category_system_id == category_id)
+            )
+        )
         .first()
     )
 
@@ -144,8 +211,10 @@ def categorize_transaction(
         if request.user_overrides:
             user_overrides_dict = [override.model_dump() for override in request.user_overrides]
         
+        user_id = get_user_id()
         matcher = CategoryMatcher(
             db,
+            user_id=user_id,
             user_overrides=user_overrides_dict,
             additional_instructions=request.additional_instructions
         )
@@ -203,8 +272,10 @@ def categorize_transactions_batch(
         if request.user_overrides:
             user_overrides_dict = [override.model_dump() for override in request.user_overrides]
         
+        user_id = get_user_id()
         matcher = CategoryMatcher(
             db,
+            user_id=user_id,
             user_overrides=user_overrides_dict,
             additional_instructions=request.additional_instructions
         )
