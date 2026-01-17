@@ -9,15 +9,17 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from app.database import engine, SessionLocal, Base
-from app.models import Account, Category, Transaction
+from app.models import Account, Category, Transaction, User
+from app.db_helpers import get_or_create_system_user
 
 # Create tables
 Base.metadata.create_all(bind=engine)
 
 
-def create_accounts(db: Session) -> list[Account]:
+def create_accounts(db: Session, user_id: str) -> list[Account]:
     accounts = [
         Account(
+            user_id=user_id,
             name="Main Checking",
             account_type="checking",
             institution="Revolut",
@@ -25,6 +27,7 @@ def create_accounts(db: Session) -> list[Account]:
             balance_current=Decimal("3245.67"),
         ),
         Account(
+            user_id=user_id,
             name="Savings",
             account_type="savings",
             institution="Revolut",
@@ -32,6 +35,7 @@ def create_accounts(db: Session) -> list[Account]:
             balance_current=Decimal("15000.00"),
         ),
         Account(
+            user_id=user_id,
             name="Credit Card",
             account_type="credit",
             institution="Visa",
@@ -50,7 +54,7 @@ def create_accounts(db: Session) -> list[Account]:
     return accounts
 
 
-def create_categories(db: Session) -> list[Category]:
+def create_categories(db: Session, user_id: str) -> list[Category]:
     categories_data = [
         # Expenses
         {"name": "Groceries", "category_type": "expense", "color": "#10B981", "icon": "shopping-cart", "is_system": True},
@@ -73,6 +77,7 @@ def create_categories(db: Session) -> list[Category]:
 
     categories = []
     for cat_data in categories_data:
+        cat_data["user_id"] = user_id
         category = Category(**cat_data)
         db.add(category)
         categories.append(category)
@@ -85,7 +90,7 @@ def create_categories(db: Session) -> list[Category]:
     return categories
 
 
-def create_transactions(db: Session, accounts: list[Account], categories: list[Category]) -> None:
+def create_transactions(db: Session, accounts: list[Account], categories: list[Category], user_id: str) -> None:
     # Get category references
     expense_categories = [c for c in categories if c.category_type == "expense"]
     income_categories = [c for c in categories if c.category_type == "income"]
@@ -149,14 +154,17 @@ def create_transactions(db: Session, accounts: list[Account], categories: list[C
             # 70% from checking, 30% from credit
             account = checking if random.random() > 0.3 else credit
 
+            category_id_value = category.id if category else None
             transaction = Transaction(
+                user_id=user_id,
                 account_id=account.id,
                 transaction_type="debit",
                 amount=Decimal(str(amount)),
                 currency="EUR",
                 description=template["description"],
                 merchant=template["merchant"],
-                category_id=category.id if category else None,
+                category_id=category_id_value,  # Set category_id equal to category_system_id
+                category_system_id=category_id_value,  # Use category_system_id for AI-assigned
                 booked_at=date.replace(
                     hour=random.randint(8, 22),
                     minute=random.randint(0, 59),
@@ -169,15 +177,18 @@ def create_transactions(db: Session, accounts: list[Account], categories: list[C
         salary_date = (now - timedelta(days=30 * month_offset)).replace(day=25)
         if salary_date <= now:
             salary_cat = next((c for c in income_categories if c.name == "Salary"), None)
+            salary_category_id = salary_cat.id if salary_cat else None
             transactions.append(
                 Transaction(
+                    user_id=user_id,
                     account_id=checking.id,
                     transaction_type="credit",
                     amount=Decimal(str(round(random.uniform(3500, 4500), 2))),
                     currency="EUR",
                     description="SALARY PAYMENT - EMPLOYER BV",
                     merchant="Employer BV",
-                    category_id=salary_cat.id if salary_cat else None,
+                    category_id=salary_category_id,  # Set category_id equal to category_system_id
+                    category_system_id=salary_category_id,
                     booked_at=salary_date.replace(hour=9, minute=0),
                 )
             )
@@ -187,15 +198,18 @@ def create_transactions(db: Session, accounts: list[Account], categories: list[C
         days_ago = random.randint(0, 90)
         date = now - timedelta(days=days_ago)
         freelance_cat = next((c for c in income_categories if c.name == "Freelance"), None)
+        freelance_category_id = freelance_cat.id if freelance_cat else None
         transactions.append(
             Transaction(
+                user_id=user_id,
                 account_id=checking.id,
                 transaction_type="credit",
                 amount=Decimal(str(round(random.uniform(500, 2000), 2))),
                 currency="EUR",
                 description="FREELANCE PROJECT PAYMENT",
                 merchant="Various Client",
-                category_id=freelance_cat.id if freelance_cat else None,
+                category_id=freelance_category_id,  # Set category_id equal to category_system_id
+                category_system_id=freelance_category_id,
                 booked_at=date.replace(
                     hour=random.randint(9, 17),
                     minute=random.randint(0, 59),
@@ -211,34 +225,40 @@ def create_transactions(db: Session, accounts: list[Account], categories: list[C
     print(f"Created {len(transactions)} transactions")
 
 
-def clear_data(db: Session) -> None:
-    db.query(Transaction).delete()
-    db.query(Category).delete()
-    db.query(Account).delete()
+def clear_data(db: Session, user_id: str) -> None:
+    db.query(Transaction).filter(Transaction.user_id == user_id).delete()
+    db.query(Category).filter(Category.user_id == user_id).delete()
+    db.query(Account).filter(Account.user_id == user_id).delete()
     db.commit()
 
 
 def seed():
     db = SessionLocal()
     try:
+        # Get or create system user
+        print("Setting up system user...")
+        user = get_or_create_system_user(db)
+        user_id = user.id
+        print(f"Using user_id: {user_id}")
+
         print("Clearing existing data...")
-        clear_data(db)
+        clear_data(db, user_id)
 
         print("Creating accounts...")
-        accounts = create_accounts(db)
+        accounts = create_accounts(db, user_id)
         print(f"Created {len(accounts)} accounts")
 
         print("Creating categories...")
-        categories = create_categories(db)
+        categories = create_categories(db, user_id)
         print(f"Created {len(categories)} categories")
 
         print("Creating transactions...")
-        create_transactions(db, accounts, categories)
+        create_transactions(db, accounts, categories, user_id)
 
         print("\nSeeding complete!")
-        print(f"Total accounts: {db.query(Account).count()}")
-        print(f"Total categories: {db.query(Category).count()}")
-        print(f"Total transactions: {db.query(Transaction).count()}")
+        print(f"Total accounts: {db.query(Account).filter(Account.user_id == user_id).count()}")
+        print(f"Total categories: {db.query(Category).filter(Category.user_id == user_id).count()}")
+        print(f"Total transactions: {db.query(Transaction).filter(Transaction.user_id == user_id).count()}")
 
     finally:
         db.close()

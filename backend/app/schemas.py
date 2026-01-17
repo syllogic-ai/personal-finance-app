@@ -77,14 +77,17 @@ class TransactionBase(BaseModel):
 
 class TransactionCreate(TransactionBase):
     category_id: Optional[UUID] = None
-    notes: Optional[str] = None
+    category_system_id: Optional[UUID] = None
+    categorization_instructions: Optional[str] = None
 
 
 class TransactionUpdate(BaseModel):
     description: Optional[str] = None
     merchant: Optional[str] = None
     category_id: Optional[UUID] = None
-    notes: Optional[str] = None
+    category_system_id: Optional[UUID] = None
+    categorization_instructions: Optional[str] = None
+    enrichment_data: Optional[dict] = None
 
 
 class CategoryAssign(BaseModel):
@@ -95,8 +98,10 @@ class TransactionResponse(TransactionBase):
     id: UUID
     external_id: Optional[str] = None
     category_id: Optional[UUID] = None
+    category_system_id: Optional[UUID] = None
     pending: bool
-    notes: Optional[str] = None
+    categorization_instructions: Optional[str] = None
+    enrichment_data: Optional[dict] = None
     created_at: datetime
     updated_at: datetime
 
