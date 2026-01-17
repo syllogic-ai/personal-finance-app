@@ -5,6 +5,8 @@ export { TransactionFilters } from "./transaction-filters";
 export { TransactionPagination } from "./transaction-pagination";
 export { AddTransactionButton } from "./add-transaction-button";
 export { AddTransactionDialog } from "./add-transaction-dialog";
+export { BulkActionsDock } from "./bulk-actions-dock";
+export { ExportButton } from "./export-button";
 export { CsvUploadDropzone } from "./csv-upload-dropzone";
 export { CsvMappingTable } from "./csv-mapping-table";
 export { CsvSamplePreview } from "./csv-sample-preview";

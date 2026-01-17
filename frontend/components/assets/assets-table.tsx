@@ -2,21 +2,13 @@
 
 import { useState } from "react";
 import { RiArrowDownSLine, RiArrowRightSLine } from "@remixicon/react";
+import { formatCurrency } from "@/lib/utils";
 import { WeightBarVisualizer } from "./weight-bar-visualizer";
 import type { AssetCategory, AssetAccount } from "./types";
 
 interface AssetsTableProps {
   categories: AssetCategory[];
   currency: string;
-}
-
-function formatCurrency(value: number, currency: string): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency,
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(value);
 }
 
 function AccountRow({

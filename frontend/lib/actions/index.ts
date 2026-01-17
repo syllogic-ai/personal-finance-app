@@ -8,3 +8,5 @@ export {
 export * from "./csv-import";
 export * from "./settings";
 export * from "./accounts";
+export * from "./properties";
+export * from "./vehicles";

@@ -18,6 +18,7 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart";
+import { formatCurrency } from "@/lib/utils";
 
 interface IncomeExpenseDataPoint {
   month: string;
@@ -37,15 +38,6 @@ function formatCompactNumber(value: number): string {
     return `${(value / 1000).toFixed(0)}k`;
   }
   return value.toString();
-}
-
-function formatCurrency(value: number, currency: string): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: currency,
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(value);
 }
 
 const chartConfig = {

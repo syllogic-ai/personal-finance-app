@@ -38,9 +38,8 @@ export default async function DashboardLayout({
       case "step_1":
         redirect("/step-2");
       case "step_2":
-        redirect("/step-3");
-      case "step_3":
-        redirect("/step-3");
+        // step_2 should complete onboarding, but handle edge case
+        redirect("/step-2");
       default:
         redirect("/step-1");
     }

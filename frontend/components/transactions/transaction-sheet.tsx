@@ -19,42 +19,17 @@ import {
   SelectItem,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { cn } from "@/lib/utils";
+import { cn, formatDate, formatAmount } from "@/lib/utils";
 import type { TransactionWithRelations } from "@/lib/actions/transactions";
 import { updateTransactionCategory } from "@/lib/actions/transactions";
-
-interface Category {
-  id: string;
-  name: string;
-  color: string | null;
-  icon: string | null;
-}
+import type { CategoryDisplay } from "@/types";
 
 interface TransactionSheetProps {
   transaction: TransactionWithRelations | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onUpdateTransaction?: (id: string, updates: Partial<TransactionWithRelations>) => void;
-  categories?: Category[];
-}
-
-function formatDate(date: Date): string {
-  return new Intl.DateTimeFormat("en-GB", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(date);
-}
-
-function formatAmount(amount: number, currency: string): string {
-  const formatted = new Intl.NumberFormat("nl-NL", {
-    style: "currency",
-    currency: currency,
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(Math.abs(amount));
-
-  return amount < 0 ? `-${formatted}` : formatted;
+  categories?: CategoryDisplay[];
 }
 
 export function TransactionSheet({

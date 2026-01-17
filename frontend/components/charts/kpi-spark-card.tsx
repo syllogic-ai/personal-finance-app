@@ -4,7 +4,7 @@ import * as React from "react";
 import { Area, AreaChart, ResponsiveContainer } from "recharts";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { cn } from "@/lib/utils";
+import { cn, formatCurrency } from "@/lib/utils";
 
 interface SparkDataPoint {
   date: string;
@@ -23,15 +23,6 @@ interface KpiSparkCardProps {
   };
   icon?: React.ReactNode;
   isLoading?: boolean;
-}
-
-function formatCurrency(value: number, currency: string): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: currency,
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(value);
 }
 
 function KpiSparkCardSkeleton() {

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { RiArrowLeftLine, RiArrowRightLine, RiRefreshLine } from "@remixicon/react";
+import { RiArrowLeftLine, RiCheckLine, RiRefreshLine } from "@remixicon/react";
 import { toast } from "sonner";
 import {
   Card,
@@ -89,8 +89,8 @@ export default function Step2Page() {
       const result = await saveOnboardingCategories(validCategories);
 
       if (result.success) {
-        toast.success("Categories saved");
-        router.push("/step-3");
+        toast.success("Setup complete! Welcome to your dashboard.");
+        router.push("/");
       } else {
         toast.error(result.error || "Failed to save categories");
       }
@@ -153,8 +153,8 @@ export default function Step2Page() {
               Back
             </Button>
             <Button type="submit" disabled={isLoading}>
-              {isLoading ? "Saving..." : "Continue"}
-              <RiArrowRightLine className="ml-2 h-4 w-4" />
+              {isLoading ? "Saving..." : "Complete Setup"}
+              <RiCheckLine className="ml-2 h-4 w-4" />
             </Button>
           </CardFooter>
         </form>

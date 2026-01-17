@@ -1,15 +1,25 @@
 import { Header } from "@/components/layout/header";
 import { getAccounts } from "@/lib/actions/accounts";
-import { AccountManagement } from "./account-management";
+import { getProperties } from "@/lib/actions/properties";
+import { getVehicles } from "@/lib/actions/vehicles";
+import { AssetManagement } from "./asset-management";
 
 export default async function AssetsPage() {
-  const accounts = await getAccounts();
+  const [accounts, properties, vehicles] = await Promise.all([
+    getAccounts(),
+    getProperties(),
+    getVehicles(),
+  ]);
 
   return (
     <>
       <Header title="Assets" />
       <div className="flex flex-1 flex-col gap-6 p-4 pt-0">
-        <AccountManagement initialAccounts={accounts} />
+        <AssetManagement
+          initialAccounts={accounts}
+          initialProperties={properties}
+          initialVehicles={vehicles}
+        />
       </div>
     </>
   );

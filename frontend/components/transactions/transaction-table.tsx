@@ -1,27 +1,30 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { DataTable } from "@/components/ui/data-table";
 import type { TransactionWithRelations } from "@/lib/actions/transactions";
+import type { CategoryDisplay, AccountForFilter } from "@/types";
 import { TransactionSheet } from "./transaction-sheet";
 import { transactionColumns } from "./columns";
 import { TransactionFilters } from "./transaction-filters";
 import { TransactionPagination } from "./transaction-pagination";
-
-interface Category {
-  id: string;
-  name: string;
-  color: string | null;
-  icon: string | null;
-}
+import { BulkActionsDock } from "./bulk-actions-dock";
 
 interface TransactionTableProps {
   transactions: TransactionWithRelations[];
-  categories?: Category[];
+  categories?: CategoryDisplay[];
+  accounts?: AccountForFilter[];
   onUpdateTransaction?: (id: string, updates: Partial<TransactionWithRelations>) => void;
+  onBulkUpdate?: (transactionIds: string[], categoryId: string | null) => void;
 }
 
-export function TransactionTable({ transactions, categories = [], onUpdateTransaction }: TransactionTableProps) {
+export function TransactionTable({ 
+  transactions, 
+  categories = [], 
+  accounts = [], 
+  onUpdateTransaction,
+  onBulkUpdate,
+}: TransactionTableProps) {
   const [selectedTransaction, setSelectedTransaction] = useState<TransactionWithRelations | null>(null);
 
   const handleRowClick = (transaction: TransactionWithRelations) => {
@@ -45,8 +48,29 @@ export function TransactionTable({ transactions, categories = [], onUpdateTransa
         enableRowSelection={true}
         enablePagination={true}
         pageSize={20}
-        toolbar={(table) => <TransactionFilters table={table} />}
+        toolbar={(table) => (
+          <TransactionFilters table={table} categories={categories} accounts={accounts} />
+        )}
         pagination={(table) => <TransactionPagination table={table} />}
+        bulkActions={(table) => {
+          const selectedRows = table.getSelectedRowModel().rows;
+          const selectedIds = selectedRows.map((row) => row.original.id);
+          const selectedTransactions = selectedRows.map((row) => row.original);
+          const selectedCount = selectedRows.length;
+
+          return (
+            <BulkActionsDock
+              selectedCount={selectedCount}
+              selectedIds={selectedIds}
+              selectedTransactions={selectedTransactions}
+              categories={categories}
+              onClearSelection={() => table.resetRowSelection()}
+              onBulkUpdate={(categoryId) => {
+                onBulkUpdate?.(selectedIds, categoryId);
+              }}
+            />
+          );
+        }}
         wrapperClassName="flex flex-col min-h-0 flex-1"
         tableContainerClassName="flex-1 min-h-0 overflow-y-auto"
       />

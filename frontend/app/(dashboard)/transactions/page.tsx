@@ -1,11 +1,12 @@
 import { Header } from "@/components/layout/header";
 import { TransactionsClient } from "./transactions-client";
-import { getTransactions, getUserCategories } from "@/lib/actions/transactions";
+import { getTransactions, getUserCategories, getUserAccounts } from "@/lib/actions/transactions";
 
 export default async function TransactionsPage() {
-  const [transactions, categories] = await Promise.all([
+  const [transactions, categories, accounts] = await Promise.all([
     getTransactions(),
     getUserCategories(),
+    getUserAccounts(),
   ]);
 
   return (
@@ -15,6 +16,7 @@ export default async function TransactionsPage() {
         <TransactionsClient
           initialTransactions={transactions}
           categories={categories}
+          accounts={accounts}
         />
       </div>
     </>

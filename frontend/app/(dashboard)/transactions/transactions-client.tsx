@@ -5,22 +5,18 @@ import { TransactionTable } from "@/components/transactions/transaction-table";
 import { AddTransactionButton } from "@/components/transactions/add-transaction-button";
 import { AddTransactionDialog } from "@/components/transactions/add-transaction-dialog";
 import type { TransactionWithRelations } from "@/lib/actions/transactions";
-
-interface Category {
-  id: string;
-  name: string;
-  color: string | null;
-  icon: string | null;
-}
+import type { CategoryDisplay, AccountForFilter } from "@/types";
 
 interface TransactionsClientProps {
   initialTransactions: TransactionWithRelations[];
-  categories: Category[];
+  categories: CategoryDisplay[];
+  accounts: AccountForFilter[];
 }
 
 export function TransactionsClient({
   initialTransactions,
   categories,
+  accounts,
 }: TransactionsClientProps) {
   const [transactions, setTransactions] = useState(initialTransactions);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
@@ -34,20 +30,36 @@ export function TransactionsClient({
     );
   };
 
+  const handleBulkUpdate = (transactionIds: string[], categoryId: string | null) => {
+    const category = categoryId 
+      ? categories.find((c) => c.id === categoryId) ?? null
+      : null;
+    
+    setTransactions((prev) =>
+      prev.map((tx) =>
+        transactionIds.includes(tx.id)
+          ? { ...tx, categoryId, category }
+          : tx
+      )
+    );
+  };
+
   const handleAddManual = () => {
     setIsAddDialogOpen(true);
   };
 
   return (
     <>
-      <div className="flex items-center justify-between shrink-0">
+      <div className="flex items-center shrink-0">
         <AddTransactionButton onAddManual={handleAddManual} />
       </div>
       <div className="min-h-0 flex-1 flex flex-col">
         <TransactionTable
           transactions={transactions}
           categories={categories}
+          accounts={accounts}
           onUpdateTransaction={handleUpdateTransaction}
+          onBulkUpdate={handleBulkUpdate}
         />
       </div>
       <AddTransactionDialog

@@ -38,6 +38,7 @@ interface DataTableProps<TData, TValue> {
   pageSize?: number;
   toolbar?: (table: TanStackTable<TData>) => React.ReactNode;
   pagination?: (table: TanStackTable<TData>) => React.ReactNode;
+  bulkActions?: (table: TanStackTable<TData>) => React.ReactNode;
   wrapperClassName?: string;
   tableContainerClassName?: string;
 }
@@ -52,6 +53,7 @@ export function DataTable<TData, TValue>({
   pageSize = 20,
   toolbar,
   pagination,
+  bulkActions,
   wrapperClassName,
   tableContainerClassName,
 }: DataTableProps<TData, TValue>) {
@@ -92,11 +94,11 @@ export function DataTable<TData, TValue>({
   return (
     <div className={cn("w-full", wrapperClassName)}>
       {toolbar && <div className="shrink-0 mb-4">{toolbar(table)}</div>}
-      <div className={cn("overflow-hidden rounded-md border", tableContainerClassName)}>
+      <div className={cn("overflow-auto rounded-md border", tableContainerClassName)}>
         <Table className="w-full table-fixed">
-          <TableHeader>
+          <TableHeader className="bg-muted sticky top-0 z-10">
             {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow key={headerGroup.id}>
+              <TableRow key={headerGroup.id} className="border-b hover:bg-transparent">
                 {headerGroup.headers.map((header, index) => {
                   const isLastColumn = index === headerGroup.headers.length - 1;
                   return (
@@ -108,6 +110,7 @@ export function DataTable<TData, TValue>({
                         position: "relative",
                       }}
                       className={cn(
+                        "font-medium",
                         enableColumnResizing && "select-none"
                       )}
                     >
@@ -177,6 +180,7 @@ export function DataTable<TData, TValue>({
         </Table>
       </div>
       {pagination && <div className="shrink-0 mt-4">{pagination(table)}</div>}
+      {bulkActions && bulkActions(table)}
     </div>
   );
 }

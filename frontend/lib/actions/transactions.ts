@@ -2,7 +2,7 @@
 
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { transactions, accounts, categories, type NewTransaction } from "@/lib/db/schema";
 import { auth } from "@/lib/auth";
@@ -265,4 +265,57 @@ export async function getTransactions(): Promise<TransactionWithRelations[]> {
     pending: tx.pending,
     transactionType: tx.transactionType,
   }));
+}
+
+export async function bulkUpdateTransactionCategory(
+  transactionIds: string[],
+  categoryId: string | null
+): Promise<{ success: boolean; error?: string; updatedCount?: number }> {
+  const session = await auth.api.getSession({
+    headers: await headers(),
+  });
+
+  if (!session?.user?.id) {
+    return { success: false, error: "Not authenticated" };
+  }
+
+  if (transactionIds.length === 0) {
+    return { success: false, error: "No transactions selected" };
+  }
+
+  try {
+    // Verify the category belongs to the user (if provided)
+    if (categoryId) {
+      const category = await db.query.categories.findFirst({
+        where: and(
+          eq(categories.id, categoryId),
+          eq(categories.userId, session.user.id)
+        ),
+      });
+
+      if (!category) {
+        return { success: false, error: "Category not found" };
+      }
+    }
+
+    // Update all transactions that belong to the user
+    const result = await db
+      .update(transactions)
+      .set({
+        categoryId,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          inArray(transactions.id, transactionIds),
+          eq(transactions.userId, session.user.id)
+        )
+      );
+
+    revalidatePath("/transactions");
+    return { success: true, updatedCount: transactionIds.length };
+  } catch (error) {
+    console.error("Failed to bulk update transaction categories:", error);
+    return { success: false, error: "Failed to update transactions" };
+  }
 }

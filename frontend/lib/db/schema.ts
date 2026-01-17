@@ -219,6 +219,46 @@ export const csvImports = pgTable(
   ]
 );
 
+export const properties = pgTable(
+  "properties",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: text("user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    name: varchar("name", { length: 255 }).notNull(),
+    propertyType: varchar("property_type", { length: 50 }).notNull(), // residential, commercial, land, other
+    address: text("address"),
+    currentValue: decimal("current_value", { precision: 15, scale: 2 }).default("0"),
+    currency: char("currency", { length: 3 }).default("EUR"),
+    isActive: boolean("is_active").default(true),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => [index("idx_properties_user").on(table.userId)]
+);
+
+export const vehicles = pgTable(
+  "vehicles",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: text("user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    name: varchar("name", { length: 255 }).notNull(),
+    vehicleType: varchar("vehicle_type", { length: 50 }).notNull(), // car, motorcycle, boat, rv, other
+    make: varchar("make", { length: 100 }),
+    model: varchar("model", { length: 100 }),
+    year: integer("year"),
+    currentValue: decimal("current_value", { precision: 15, scale: 2 }).default("0"),
+    currency: char("currency", { length: 3 }).default("EUR"),
+    isActive: boolean("is_active").default(true),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => [index("idx_vehicles_user").on(table.userId)]
+);
+
 // ============================================================================
 // Relations
 // ============================================================================
@@ -232,6 +272,8 @@ export const usersRelations = relations(users, ({ many }) => ({
   categorizationRules: many(categorizationRules),
   bankConnections: many(bankConnections),
   csvImports: many(csvImports),
+  properties: many(properties),
+  vehicles: many(vehicles),
 }));
 
 export const sessionsRelations = relations(sessions, ({ one }) => ({
@@ -322,6 +364,20 @@ export const csvImportsRelations = relations(csvImports, ({ one }) => ({
   }),
 }));
 
+export const propertiesRelations = relations(properties, ({ one }) => ({
+  user: one(users, {
+    fields: [properties.userId],
+    references: [users.id],
+  }),
+}));
+
+export const vehiclesRelations = relations(vehicles, ({ one }) => ({
+  user: one(users, {
+    fields: [vehicles.userId],
+    references: [users.id],
+  }),
+}));
+
 // ============================================================================
 // Type Exports
 // ============================================================================
@@ -349,3 +405,9 @@ export type NewBankConnection = typeof bankConnections.$inferInsert;
 
 export type CsvImport = typeof csvImports.$inferSelect;
 export type NewCsvImport = typeof csvImports.$inferInsert;
+
+export type Property = typeof properties.$inferSelect;
+export type NewProperty = typeof properties.$inferInsert;
+
+export type Vehicle = typeof vehicles.$inferSelect;
+export type NewVehicle = typeof vehicles.$inferInsert;

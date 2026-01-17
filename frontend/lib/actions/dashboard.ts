@@ -2,7 +2,7 @@
 
 import { headers } from "next/headers";
 import { db } from "@/lib/db";
-import { accounts, transactions, categories, users } from "@/lib/db/schema";
+import { accounts, transactions, categories, users, properties, vehicles } from "@/lib/db/schema";
 import { auth } from "@/lib/auth";
 import { eq, sql, gte, and, desc, lte, lt } from "drizzle-orm";
 
@@ -505,7 +505,7 @@ export async function getAssetsOverview(): Promise<AssetsOverviewData> {
     };
   }
 
-  const [userAccounts, currency] = await Promise.all([
+  const [userAccounts, userProperties, userVehicles, currency] = await Promise.all([
     db
       .select({
         id: accounts.id,
@@ -517,6 +517,30 @@ export async function getAssetsOverview(): Promise<AssetsOverviewData> {
       })
       .from(accounts)
       .where(and(eq(accounts.userId, session.user.id), eq(accounts.isActive, true))),
+    db
+      .select({
+        id: properties.id,
+        name: properties.name,
+        propertyType: properties.propertyType,
+        address: properties.address,
+        currentValue: properties.currentValue,
+        currency: properties.currency,
+      })
+      .from(properties)
+      .where(and(eq(properties.userId, session.user.id), eq(properties.isActive, true))),
+    db
+      .select({
+        id: vehicles.id,
+        name: vehicles.name,
+        vehicleType: vehicles.vehicleType,
+        make: vehicles.make,
+        model: vehicles.model,
+        year: vehicles.year,
+        currentValue: vehicles.currentValue,
+        currency: vehicles.currency,
+      })
+      .from(vehicles)
+      .where(and(eq(vehicles.userId, session.user.id), eq(vehicles.isActive, true))),
     getUserCurrency(session.user.id),
   ]);
 
@@ -524,6 +548,7 @@ export async function getAssetsOverview(): Promise<AssetsOverviewData> {
   const categoryMap = new Map<AssetCategoryKey, AssetAccount[]>();
   let total = 0;
 
+  // Process bank accounts
   for (const account of userAccounts) {
     const category = getAssetCategory(account.accountType);
     const value = parseFloat(account.balanceCurrent || "0");
@@ -544,6 +569,59 @@ export async function getAssetsOverview(): Promise<AssetsOverviewData> {
         percentage: 0, // Will calculate after totals
         currency: account.currency || currency,
         initial: account.name.charAt(0).toUpperCase(),
+      });
+    }
+  }
+
+  // Process properties
+  for (const property of userProperties) {
+    const value = parseFloat(property.currentValue || "0");
+
+    if (value > 0) {
+      total += value;
+
+      if (!categoryMap.has("property")) {
+        categoryMap.set("property", []);
+      }
+
+      // Extract city/state from address for display
+      const addressParts = property.address?.split(",").map(p => p.trim()) || [];
+      const location = addressParts.length > 1 ? addressParts.slice(-2).join(", ") : property.address;
+
+      categoryMap.get("property")!.push({
+        id: property.id,
+        name: property.name,
+        institution: location || null, // Use location as "institution" for display
+        value,
+        percentage: 0,
+        currency: property.currency || currency,
+        initial: property.name.charAt(0).toUpperCase(),
+      });
+    }
+  }
+
+  // Process vehicles
+  for (const vehicle of userVehicles) {
+    const value = parseFloat(vehicle.currentValue || "0");
+
+    if (value > 0) {
+      total += value;
+
+      if (!categoryMap.has("vehicle")) {
+        categoryMap.set("vehicle", []);
+      }
+
+      // Build make/model string for display
+      const makeModel = [vehicle.make, vehicle.model].filter(Boolean).join(" ") || null;
+
+      categoryMap.get("vehicle")!.push({
+        id: vehicle.id,
+        name: vehicle.name,
+        institution: makeModel, // Use make/model as "institution" for display
+        value,
+        percentage: 0,
+        currency: vehicle.currency || currency,
+        initial: vehicle.name.charAt(0).toUpperCase(),
       });
     }
   }

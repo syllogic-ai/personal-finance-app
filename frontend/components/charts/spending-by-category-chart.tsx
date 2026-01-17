@@ -3,7 +3,7 @@
 import * as React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { cn } from "@/lib/utils";
+import { formatCurrency } from "@/lib/utils";
 
 interface CategoryData {
   id: string | null;
@@ -19,15 +19,6 @@ interface SpendingByCategoryChartProps {
   currency: string;
   limit?: number;
   isLoading?: boolean;
-}
-
-function formatCurrency(value: number, currency: string): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: currency,
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(value);
 }
 
 // Graduated opacity levels for grayscale bars (highest first)

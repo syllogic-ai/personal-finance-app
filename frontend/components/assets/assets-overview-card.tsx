@@ -1,29 +1,32 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { formatCurrency } from "@/lib/utils";
 import { AssetsStackedBar } from "./assets-stacked-bar";
 import { AssetsTable } from "./assets-table";
+import { AddAssetDialog } from "./add-asset-dialog";
 import type { AssetsOverviewData } from "./types";
 
 interface AssetsOverviewCardProps {
   data: AssetsOverviewData;
 }
 
-function formatCurrency(value: number, currency: string): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency,
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(value);
-}
-
 export function AssetsOverviewCard({ data }: AssetsOverviewCardProps) {
+  const router = useRouter();
+
+  const handleAssetAdded = () => {
+    router.refresh();
+  };
+
   return (
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between">
-          <CardTitle>Assets Overview</CardTitle>
+          <div className="flex items-center gap-4">
+            <CardTitle>Assets Overview</CardTitle>
+            <AddAssetDialog onAssetAdded={handleAssetAdded} />
+          </div>
           <span className="text-2xl font-bold">
             {formatCurrency(data.total, data.currency)}
           </span>

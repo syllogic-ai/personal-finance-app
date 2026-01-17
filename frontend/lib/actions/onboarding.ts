@@ -9,7 +9,7 @@ import { auth } from "@/lib/auth";
 import { DEFAULT_CATEGORIES, type DefaultCategory } from "@/lib/constants";
 import { storage } from "@/lib/storage";
 
-export type OnboardingStatus = "pending" | "step_1" | "step_2" | "step_3" | "completed";
+export type OnboardingStatus = "pending" | "step_1" | "step_2" | "completed";
 
 export async function getOnboardingStatus(): Promise<OnboardingStatus | null> {
   const session = await auth.api.getSession({
@@ -142,11 +142,12 @@ export async function saveOnboardingCategories(
       await db.insert(categories).values(categoriesToInsert);
     }
 
-    // Update onboarding status
+    // Update onboarding status to completed
     await db
       .update(users)
       .set({
-        onboardingStatus: "step_2",
+        onboardingStatus: "completed",
+        onboardingCompletedAt: new Date(),
         updatedAt: new Date(),
       })
       .where(eq(users.id, session.user.id));
@@ -156,60 +157,6 @@ export async function saveOnboardingCategories(
   } catch (error) {
     console.error("Failed to save categories:", error);
     return { success: false, error: "Failed to save categories" };
-  }
-}
-
-export async function skipBankConnection(): Promise<{ success: boolean; error?: string }> {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
-
-  if (!session?.user?.id) {
-    return { success: false, error: "Not authenticated" };
-  }
-
-  try {
-    await db
-      .update(users)
-      .set({
-        onboardingStatus: "completed",
-        onboardingCompletedAt: new Date(),
-        updatedAt: new Date(),
-      })
-      .where(eq(users.id, session.user.id));
-
-    revalidatePath("/");
-    return { success: true };
-  } catch (error) {
-    console.error("Failed to skip bank connection:", error);
-    return { success: false, error: "Failed to complete onboarding" };
-  }
-}
-
-export async function completeOnboarding(): Promise<{ success: boolean; error?: string }> {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
-
-  if (!session?.user?.id) {
-    return { success: false, error: "Not authenticated" };
-  }
-
-  try {
-    await db
-      .update(users)
-      .set({
-        onboardingStatus: "completed",
-        onboardingCompletedAt: new Date(),
-        updatedAt: new Date(),
-      })
-      .where(eq(users.id, session.user.id));
-
-    revalidatePath("/");
-    return { success: true };
-  } catch (error) {
-    console.error("Failed to complete onboarding:", error);
-    return { success: false, error: "Failed to complete onboarding" };
   }
 }
 

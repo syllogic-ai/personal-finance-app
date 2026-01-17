@@ -40,12 +40,13 @@ import {
   RiCloseLine,
 } from "@remixicon/react";
 import type { TransactionWithRelations } from "@/lib/actions/transactions";
-import { mockCategories } from "@/lib/mock-data/categories";
-import { mockAccounts } from "@/lib/mock-data/transactions";
+import type { CategoryForFilter, AccountForFilter } from "@/types";
 import { cn } from "@/lib/utils";
 
 interface TransactionFiltersProps {
   table: Table<TransactionWithRelations>;
+  categories: CategoryForFilter[];
+  accounts: AccountForFilter[];
 }
 
 interface FilterOption {
@@ -328,7 +329,7 @@ function FilterTag({ label, onRemove }: FilterTagProps) {
   );
 }
 
-export function TransactionFilters({ table }: TransactionFiltersProps) {
+export function TransactionFilters({ table, categories, accounts }: TransactionFiltersProps) {
   const descriptionColumn = table.getColumn("description");
   const categoryColumn = table.getColumn("category");
   const accountColumn = table.getColumn("account");
@@ -367,16 +368,14 @@ export function TransactionFilters({ table }: TransactionFiltersProps) {
     amountColumn?.setFilterValue(undefined);
   };
 
-  // Prepare options
-  const categoryOptions: FilterOption[] = mockCategories
-    .filter((cat) => cat.id !== "cat-12")
-    .map((cat) => ({
-      id: cat.id,
-      label: cat.name,
-      color: cat.color,
-    }));
+  // Prepare options from props
+  const categoryOptions: FilterOption[] = categories.map((cat) => ({
+    id: cat.id,
+    label: cat.name,
+    color: cat.color ?? undefined,
+  }));
 
-  const accountOptions: FilterOption[] = mockAccounts.map((acc) => ({
+  const accountOptions: FilterOption[] = accounts.map((acc) => ({
     id: acc.id,
     label: acc.name,
   }));
@@ -397,7 +396,7 @@ export function TransactionFilters({ table }: TransactionFiltersProps) {
         onRemove: () => categoryColumn?.setFilterValue(categoryValues.filter((v) => v !== id)),
       });
     } else {
-      const cat = mockCategories.find((c) => c.id === id);
+      const cat = categories.find((c) => c.id === id);
       if (cat) {
         filterTags.push({
           label: cat.name,
@@ -409,7 +408,7 @@ export function TransactionFilters({ table }: TransactionFiltersProps) {
 
   // Account tags
   accountValues.forEach((id) => {
-    const acc = mockAccounts.find((a) => a.id === id);
+    const acc = accounts.find((a) => a.id === id);
     if (acc) {
       filterTags.push({
         label: acc.name,

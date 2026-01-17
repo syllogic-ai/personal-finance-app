@@ -1,5 +1,7 @@
 export type AssetCategoryKey = "cash" | "investment" | "crypto" | "property" | "vehicle" | "other";
 
+export type AssetType = "account" | "property" | "vehicle";
+
 export interface AssetAccount {
   id: string;
   name: string;
@@ -25,6 +27,24 @@ export interface AssetsOverviewData {
   currency: string;
   categories: AssetCategory[];
 }
+
+export const PROPERTY_TYPES = [
+  { value: "residential", label: "Residential" },
+  { value: "commercial", label: "Commercial" },
+  { value: "land", label: "Land" },
+  { value: "other", label: "Other" },
+] as const;
+
+export const VEHICLE_TYPES = [
+  { value: "car", label: "Car" },
+  { value: "motorcycle", label: "Motorcycle" },
+  { value: "boat", label: "Boat" },
+  { value: "rv", label: "RV" },
+  { value: "other", label: "Other" },
+] as const;
+
+export type PropertyType = typeof PROPERTY_TYPES[number]["value"];
+export type VehicleType = typeof VEHICLE_TYPES[number]["value"];
 
 export const ASSET_CATEGORY_COLORS: Record<AssetCategoryKey, string> = {
   cash: "#3B82F6",       // blue
