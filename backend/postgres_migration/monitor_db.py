@@ -19,7 +19,7 @@ from sqlalchemy import text
 from app.database import SessionLocal, engine
 from app.models import (
     User, Account, Category, Transaction,
-    CategorizationRule, BankConnection, ExchangeRate
+    CategorizationRule, BankConnection, ExchangeRate, AuthAccount
 )
 from datetime import datetime, timedelta
 
@@ -74,7 +74,7 @@ def get_table_stats():
     stats = {}
     try:
         with engine.connect() as conn:
-            tables = ['users', 'accounts', 'categories', 'transactions', 
+            tables = ['users', 'auth_accounts', 'accounts', 'categories', 'transactions', 
                      'categorization_rules', 'bank_connections', 'exchange_rates']
             
             for table in tables:
@@ -122,8 +122,9 @@ st.title("📊 Database Monitor")
 st.markdown("Monitor and explore your database tables")
 
 # Create tabs
-tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
     "👥 Users",
+    "🔐 Auth Accounts",
     "💳 Accounts",
     "📁 Categories",
     "💰 Transactions",
@@ -163,7 +164,12 @@ with tab1:
             
             if selected_user:
                 user_data = df_users[df_users['id'] == selected_user].iloc[0]
-                col1, col2, col3, col4 = st.columns(4)
+                
+                # Get auth accounts count for this user
+                user_auth_accounts = get_table_data(AuthAccount, {'user_id': selected_user})
+                auth_accounts_count = len(user_auth_accounts) if not user_auth_accounts.empty else 0
+                
+                col1, col2, col3, col4, col5 = st.columns(5)
                 with col1:
                     st.metric("Email", user_data.get('email', 'N/A'))
                 with col2:
@@ -172,11 +178,185 @@ with tab1:
                     st.metric("Email Verified", "✓" if user_data.get('email_verified') else "✗")
                 with col4:
                     st.metric("Functional Currency", user_data.get('functional_currency', 'EUR'))
+                with col5:
+                    st.metric("Auth Accounts", auth_accounts_count)
+                
+                # Show additional user fields if available
+                if 'onboarding_status' in user_data:
+                    st.markdown(f"**Onboarding Status:** {user_data.get('onboarding_status', 'N/A')}")
+                if 'onboarding_completed_at' in user_data:
+                    completed_at_val = user_data.get('onboarding_completed_at')
+                    if completed_at_val is not None and str(completed_at_val) != 'None' and str(completed_at_val).strip() != '':
+                        try:
+                            completed_at = pd.to_datetime(completed_at_val, errors='coerce')
+                            if pd.notna(completed_at):
+                                st.markdown(f"**Onboarding Completed:** {completed_at.strftime('%Y-%m-%d %H:%M:%S')}")
+                        except (ValueError, TypeError):
+                            pass
+                if 'profile_photo_path' in user_data:
+                    profile_path = user_data.get('profile_photo_path')
+                    if profile_path is not None and str(profile_path) != 'None' and str(profile_path).strip() != '':
+                        st.markdown(f"**Profile Photo:** {profile_path}")
     else:
         st.info("No users found in the database.")
 
-# Tab 2: Accounts
+# Tab 2: Auth Accounts
 with tab2:
+    st.header("Auth Accounts Table")
+    
+    col1, col2, col3 = st.columns([2, 2, 1])
+    with col1:
+        st.markdown(f"**Total Auth Accounts:** {stats.get('auth_accounts', 0)}")
+    with col2:
+        user_filter = st.selectbox(
+            "Filter by User:",
+            ["All"] + (df_users['id'].tolist() if not df_users.empty else []),
+            key="auth_account_user_filter"
+        )
+    with col3:
+        if st.button("🔄 Refresh", key="refresh_auth_accounts"):
+            st.rerun()
+    
+    filters = {}
+    if user_filter != "All":
+        filters['user_id'] = user_filter
+    
+    df_auth_accounts = get_table_data(AuthAccount, filters)
+    
+    if not df_auth_accounts.empty:
+        # Summary metrics
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            if 'provider_id' in df_auth_accounts.columns:
+                providers = df_auth_accounts['provider_id'].nunique()
+                st.metric("Unique Providers", providers)
+            else:
+                st.metric("Unique Providers", "N/A")
+        with col2:
+            if 'provider_id' in df_auth_accounts.columns:
+                provider_counts = df_auth_accounts['provider_id'].value_counts()
+                most_common = provider_counts.index[0] if len(provider_counts) > 0 else "N/A"
+                st.metric("Most Common Provider", most_common)
+            else:
+                st.metric("Most Common Provider", "N/A")
+        with col3:
+            if 'access_token' in df_auth_accounts.columns:
+                has_tokens = df_auth_accounts['access_token'].notna().sum()
+                st.metric("With Access Tokens", has_tokens)
+            else:
+                st.metric("With Access Tokens", "N/A")
+        with col4:
+            if 'refresh_token' in df_auth_accounts.columns:
+                has_refresh = df_auth_accounts['refresh_token'].notna().sum()
+                st.metric("With Refresh Tokens", has_refresh)
+            else:
+                st.metric("With Refresh Tokens", "N/A")
+        
+        # Provider breakdown
+        if 'provider_id' in df_auth_accounts.columns:
+            st.markdown("### Provider Breakdown")
+            provider_counts = df_auth_accounts['provider_id'].value_counts()
+            provider_cols = st.columns(len(provider_counts))
+            for idx, (provider, count) in enumerate(provider_counts.items()):
+                with provider_cols[idx]:
+                    st.metric(f"{provider.title()}", count)
+        
+        # Show token expiration warnings
+        if 'access_token_expires_at' in df_auth_accounts.columns:
+            df_auth_accounts['access_token_expires_at'] = pd.to_datetime(df_auth_accounts['access_token_expires_at'], errors='coerce')
+            expired_tokens = df_auth_accounts[
+                (df_auth_accounts['access_token_expires_at'].notna()) &
+                (df_auth_accounts['access_token_expires_at'] < datetime.now())
+            ]
+            if len(expired_tokens) > 0:
+                st.warning(f"⚠️ {len(expired_tokens)} access token(s) have expired.")
+        
+        if 'refresh_token_expires_at' in df_auth_accounts.columns:
+            df_auth_accounts['refresh_token_expires_at'] = pd.to_datetime(df_auth_accounts['refresh_token_expires_at'], errors='coerce')
+            expired_refresh = df_auth_accounts[
+                (df_auth_accounts['refresh_token_expires_at'].notna()) &
+                (df_auth_accounts['refresh_token_expires_at'] < datetime.now())
+            ]
+            if len(expired_refresh) > 0:
+                st.warning(f"⚠️ {len(expired_refresh)} refresh token(s) have expired.")
+        
+        # Display table (hide sensitive fields by default or mask them)
+        display_df = df_auth_accounts.copy()
+        
+        # Mask sensitive token fields for display
+        if 'access_token' in display_df.columns:
+            display_df['access_token'] = display_df['access_token'].apply(
+                lambda x: f"{str(x)[:10]}..." if pd.notna(x) and len(str(x)) > 10 else x
+            )
+        if 'refresh_token' in display_df.columns:
+            display_df['refresh_token'] = display_df['refresh_token'].apply(
+                lambda x: f"{str(x)[:10]}..." if pd.notna(x) and len(str(x)) > 10 else x
+            )
+        if 'id_token' in display_df.columns:
+            display_df['id_token'] = display_df['id_token'].apply(
+                lambda x: f"{str(x)[:10]}..." if pd.notna(x) and len(str(x)) > 10 else x
+            )
+        if 'password' in display_df.columns:
+            display_df['password'] = display_df['password'].apply(
+                lambda x: "***" if pd.notna(x) else x
+            )
+        
+        st.dataframe(
+            display_df,
+            width='stretch',
+            hide_index=True
+        )
+        
+        # Auth account details
+        if len(df_auth_accounts) > 0:
+            st.markdown("### Auth Account Details")
+            selected_auth_account = st.selectbox(
+                "Select an auth account to view details:",
+                df_auth_accounts['id'].tolist(),
+                key="auth_account_select"
+            )
+            
+            if selected_auth_account:
+                auth_account_data = df_auth_accounts[df_auth_accounts['id'] == selected_auth_account].iloc[0]
+                col1, col2, col3, col4 = st.columns(4)
+                with col1:
+                    st.metric("Provider", auth_account_data.get('provider_id', 'N/A'))
+                with col2:
+                    st.metric("Account ID", auth_account_data.get('account_id', 'N/A')[:20] + "..." if len(str(auth_account_data.get('account_id', ''))) > 20 else auth_account_data.get('account_id', 'N/A'))
+                with col3:
+                    has_access_token = "✓" if pd.notna(auth_account_data.get('access_token')) else "✗"
+                    st.metric("Has Access Token", has_access_token)
+                with col4:
+                    has_refresh_token = "✓" if pd.notna(auth_account_data.get('refresh_token')) else "✗"
+                    st.metric("Has Refresh Token", has_refresh_token)
+                
+                # Show expiration dates if available
+                if 'access_token_expires_at' in auth_account_data:
+                    expires_at_val = auth_account_data.get('access_token_expires_at')
+                    if expires_at_val is not None and str(expires_at_val) != 'None' and str(expires_at_val).strip() != '':
+                        try:
+                            expires_at = pd.to_datetime(expires_at_val, errors='coerce')
+                            if pd.notna(expires_at):
+                                is_expired = expires_at < datetime.now()
+                                st.info(f"Access Token {'Expired' if is_expired else 'Expires'}: {expires_at.strftime('%Y-%m-%d %H:%M:%S')}")
+                        except (ValueError, TypeError):
+                            pass
+                
+                if 'refresh_token_expires_at' in auth_account_data:
+                    refresh_expires_at_val = auth_account_data.get('refresh_token_expires_at')
+                    if refresh_expires_at_val is not None and str(refresh_expires_at_val) != 'None' and str(refresh_expires_at_val).strip() != '':
+                        try:
+                            refresh_expires_at = pd.to_datetime(refresh_expires_at_val, errors='coerce')
+                            if pd.notna(refresh_expires_at):
+                                is_expired = refresh_expires_at < datetime.now()
+                                st.info(f"Refresh Token {'Expired' if is_expired else 'Expires'}: {refresh_expires_at.strftime('%Y-%m-%d %H:%M:%S')}")
+                        except (ValueError, TypeError):
+                            pass
+    else:
+        st.info("No auth accounts found in the database.")
+
+# Tab 3: Accounts
+with tab3:
     st.header("Accounts Table")
     
     col1, col2, col3 = st.columns([2, 2, 1])
@@ -248,8 +428,8 @@ with tab2:
     else:
         st.info("No accounts found in the database.")
 
-# Tab 3: Categories
-with tab3:
+# Tab 4: Categories
+with tab4:
     st.header("Categories Table")
     
     col1, col2, col3 = st.columns([2, 2, 1])
@@ -288,8 +468,8 @@ with tab3:
     else:
         st.info("No categories found in the database.")
 
-# Tab 4: Transactions
-with tab4:
+# Tab 5: Transactions
+with tab5:
     st.header("Transactions Table")
     
     col1, col2, col3, col4, col5 = st.columns([2, 2, 2, 2, 1])
@@ -423,8 +603,8 @@ with tab4:
     else:
         st.info("No transactions found in the database.")
 
-# Tab 5: Categorization Rules
-with tab5:
+# Tab 6: Categorization Rules
+with tab6:
     st.header("Categorization Rules Table")
     
     col1, col2, col3 = st.columns([2, 2, 1])
@@ -458,8 +638,8 @@ with tab5:
     else:
         st.info("No categorization rules found in the database.")
 
-# Tab 6: Bank Connections
-with tab6:
+# Tab 7: Bank Connections
+with tab7:
     st.header("Bank Connections Table")
     
     col1, col2, col3 = st.columns([2, 2, 1])
@@ -498,8 +678,8 @@ with tab6:
     else:
         st.info("No bank connections found in the database.")
 
-# Tab 7: Exchange Rates
-with tab7:
+# Tab 8: Exchange Rates
+with tab8:
     st.header("Exchange Rates Table")
     
     col1, col2, col3, col4 = st.columns([2, 2, 2, 1])

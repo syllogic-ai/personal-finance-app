@@ -11,6 +11,7 @@ from sqlalchemy import (
     DateTime,
     Numeric,
     Text,
+    Integer,
     ForeignKey,
     Index,
     UniqueConstraint,
@@ -49,6 +50,7 @@ class Account(Base):
     # Relationships
     user = relationship("User", back_populates="accounts")
     transactions = relationship("Transaction", back_populates="account")
+    csv_imports = relationship("CsvImport", back_populates="account")
 
     # Indexes and constraints
     __table_args__ = (
@@ -71,6 +73,8 @@ class Category(Base):
     category_type = Column(String(20), default="expense")  # expense, income, transfer
     color = Column(String(7))  # Hex color
     icon = Column(String(50))  # Remix icon name
+    description = Column(Text, nullable=True)  # Category description
+    categorization_instructions = Column(Text, nullable=True)  # User instructions for AI categorization
     is_system = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -172,6 +176,38 @@ class BankConnection(Base):
     user = relationship("User", back_populates="bank_connections")
 
 
+class CsvImport(Base):
+    """
+    CSV Import model matching Drizzle schema.
+    Stores CSV import job information.
+    """
+    __tablename__ = "csv_imports"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    account_id = Column(UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False, index=True)
+    file_name = Column(String(255), nullable=False)
+    file_path = Column(Text, nullable=True)
+    status = Column(String(20), default="pending")  # pending, mapping, previewing, importing, completed, failed
+    column_mapping = Column(JSONB, nullable=True)
+    total_rows = Column(Integer, nullable=True)
+    imported_rows = Column(Integer, nullable=True)
+    duplicates_found = Column(Integer, nullable=True)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    completed_at = Column(DateTime, nullable=True)
+
+    # Relationships
+    user = relationship("User", back_populates="csv_imports")
+    account = relationship("Account", back_populates="csv_imports")
+
+    # Indexes and constraints
+    __table_args__ = (
+        Index("idx_csv_imports_user", "user_id"),
+        Index("idx_csv_imports_account", "account_id"),
+    )
+
+
 class ExchangeRate(Base):
     """
     Exchange rate model for currency conversion.
@@ -196,9 +232,128 @@ class ExchangeRate(Base):
     )
 
 
+class Property(Base):
+    """
+    Property model matching Drizzle schema.
+    Stores real estate properties owned by users.
+    """
+    __tablename__ = "properties"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String(255), nullable=False)
+    property_type = Column(String(50), nullable=False)  # residential, commercial, land, other
+    address = Column(Text, nullable=True)
+    current_value = Column(Numeric(15, 2), default=Decimal("0"))
+    currency = Column(String(3), default="EUR")
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    user = relationship("User", back_populates="properties")
+
+    # Indexes and constraints
+    __table_args__ = (
+        Index("idx_properties_user", "user_id"),
+    )
+
+
+class Vehicle(Base):
+    """
+    Vehicle model matching Drizzle schema.
+    Stores vehicles owned by users.
+    """
+    __tablename__ = "vehicles"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String(255), nullable=False)
+    vehicle_type = Column(String(50), nullable=False)  # car, motorcycle, boat, rv, other
+    make = Column(String(100), nullable=True)
+    model = Column(String(100), nullable=True)
+    year = Column(Integer, nullable=True)
+    current_value = Column(Numeric(15, 2), default=Decimal("0"))
+    currency = Column(String(3), default="EUR")
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    user = relationship("User", back_populates="vehicles")
+
+    # Indexes and constraints
+    __table_args__ = (
+        Index("idx_vehicles_user", "user_id"),
+    )
+
+
 # ============================================================================
 # BetterAuth Tables (minimal models for foreign key relationships)
 # ============================================================================
+
+class VerificationToken(Base):
+    """
+    VerificationToken model for BetterAuth integration.
+    Stores email verification tokens.
+    Minimal model matching Drizzle schema for foreign key relationships.
+    """
+    __tablename__ = "verification_tokens"
+
+    id = Column(String, primary_key=True)
+    identifier = Column(String, nullable=False)
+    token = Column(String, unique=True, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class Session(Base):
+    """
+    Session model for BetterAuth integration.
+    Stores user session information.
+    Minimal model matching Drizzle schema for foreign key relationships.
+    """
+    __tablename__ = "sessions"
+
+    id = Column(String, primary_key=True)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    token = Column(String, unique=True, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    ip_address = Column(Text, nullable=True)
+    user_agent = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    user = relationship("User", back_populates="sessions")
+
+
+class AuthAccount(Base):
+    """
+    AuthAccount model for BetterAuth integration.
+    Stores authentication account information (OAuth providers, credentials, etc.).
+    Minimal model matching Drizzle schema for foreign key relationships.
+    """
+    __tablename__ = "auth_accounts"
+
+    id = Column(String, primary_key=True)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    account_id = Column(String, nullable=False)
+    provider_id = Column(String, nullable=False)
+    access_token = Column(Text, nullable=True)
+    refresh_token = Column(Text, nullable=True)
+    access_token_expires_at = Column(DateTime, nullable=True)
+    refresh_token_expires_at = Column(DateTime, nullable=True)
+    scope = Column(Text, nullable=True)
+    id_token = Column(Text, nullable=True)
+    password = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    user = relationship("User", back_populates="auth_accounts")
+
 
 class User(Base):
     """
@@ -213,13 +368,21 @@ class User(Base):
     email = Column(Text, unique=True, nullable=False)
     email_verified = Column(Boolean, default=False)
     image = Column(Text, nullable=True)
+    onboarding_status = Column(String(20), default="pending")  # pending, step_1, step_2, step_3, completed
+    onboarding_completed_at = Column(DateTime, nullable=True)
     functional_currency = Column(String(3), default="EUR")  # User's functional currency for reporting
+    profile_photo_path = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
+    sessions = relationship("Session", back_populates="user", cascade="all, delete-orphan")
+    auth_accounts = relationship("AuthAccount", back_populates="user", cascade="all, delete-orphan")
     accounts = relationship("Account", back_populates="user", cascade="all, delete-orphan")
     categories = relationship("Category", back_populates="user", cascade="all, delete-orphan")
     transactions = relationship("Transaction", back_populates="user", cascade="all, delete-orphan")
     categorization_rules = relationship("CategorizationRule", back_populates="user", cascade="all, delete-orphan")
     bank_connections = relationship("BankConnection", back_populates="user", cascade="all, delete-orphan")
+    csv_imports = relationship("CsvImport", back_populates="user", cascade="all, delete-orphan")
+    properties = relationship("Property", back_populates="user", cascade="all, delete-orphan")
+    vehicles = relationship("Vehicle", back_populates="user", cascade="all, delete-orphan")
