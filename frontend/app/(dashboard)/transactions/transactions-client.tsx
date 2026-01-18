@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { TransactionTable } from "@/components/transactions/transaction-table";
 import { AddTransactionButton } from "@/components/transactions/add-transaction-button";
 import { AddTransactionDialog } from "@/components/transactions/add-transaction-dialog";
+import { useRegisterCommandPaletteCallbacks } from "@/components/command-palette-context";
+import { exportTransactionsToCSV } from "@/lib/utils/csv-export";
 import type { TransactionWithRelations } from "@/lib/actions/transactions";
 import type { CategoryDisplay, AccountForFilter } from "@/types";
 
@@ -31,10 +33,10 @@ export function TransactionsClient({
   };
 
   const handleBulkUpdate = (transactionIds: string[], categoryId: string | null) => {
-    const category = categoryId 
+    const category = categoryId
       ? categories.find((c) => c.id === categoryId) ?? null
       : null;
-    
+
     setTransactions((prev) =>
       prev.map((tx) =>
         transactionIds.includes(tx.id)
@@ -44,15 +46,25 @@ export function TransactionsClient({
     );
   };
 
-  const handleAddManual = () => {
+  const handleAddManual = useCallback(() => {
     setIsAddDialogOpen(true);
-  };
+  }, []);
+
+  const handleExportCSV = useCallback(() => {
+    exportTransactionsToCSV(transactions);
+  }, [transactions]);
+
+  // Register command palette callbacks
+  useRegisterCommandPaletteCallbacks(
+    {
+      onAddTransaction: handleAddManual,
+      onExportCSV: handleExportCSV,
+    },
+    [handleAddManual, handleExportCSV]
+  );
 
   return (
     <>
-      <div className="flex items-center shrink-0">
-        <AddTransactionButton onAddManual={handleAddManual} />
-      </div>
       <div className="min-h-0 flex-1 flex flex-col">
         <TransactionTable
           transactions={transactions}
@@ -60,6 +72,7 @@ export function TransactionsClient({
           accounts={accounts}
           onUpdateTransaction={handleUpdateTransaction}
           onBulkUpdate={handleBulkUpdate}
+          action={<AddTransactionButton onAddManual={handleAddManual} />}
         />
       </div>
       <AddTransactionDialog
