@@ -1,28 +1,29 @@
-import type { Metadata } from 'next';
-import './globals.css';
-import { Sidebar } from '@/components/layout/Sidebar';
-import { Providers } from '@/lib/providers';
+import type { Metadata } from "next";
+import { JetBrains_Mono } from "next/font/google";
+import { Providers } from "@/lib/providers";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import "./globals.css";
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  variable: "--font-sans",
+});
 
 export const metadata: Metadata = {
-  title: 'Personal Finance',
-  description: 'Personal finance management app',
+  title: "Personal Finance App",
+  description: "Track your personal finances with ease",
 };
 
 export default function RootLayout({
   children,
-}: {
+}: Readonly<{
   children: React.ReactNode;
-}) {
+}>) {
   return (
-    <html lang="en">
-      <body className="bg-gray-50 dark:bg-gray-950">
+    <html lang="en" className={jetbrainsMono.variable} suppressHydrationWarning>
+      <body className="font-sans antialiased">
         <Providers>
-          <div className="flex min-h-screen">
-            <Sidebar />
-            <main className="flex-1 ml-64 p-8">
-              {children}
-            </main>
-          </div>
+          <TooltipProvider>{children}</TooltipProvider>
         </Providers>
       </body>
     </html>

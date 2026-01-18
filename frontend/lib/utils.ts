@@ -1,31 +1,79 @@
-import { clsx, type ClassValue } from 'clsx';
-import { twMerge } from 'tailwind-merge';
+import { clsx, type ClassValue } from "clsx"
+import { twMerge } from "tailwind-merge"
 
 export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
+  return twMerge(clsx(inputs))
 }
 
-export function formatCurrency(amount: number, currency: string = 'EUR'): string {
-  return new Intl.NumberFormat('en-EU', {
-    style: 'currency',
+/**
+ * Format a number as currency
+ * @param value - The numeric value to format
+ * @param currency - ISO 4217 currency code (e.g., "EUR", "USD")
+ * @param options - Optional formatting options
+ */
+export function formatCurrency(
+  value: number,
+  currency: string,
+  options?: {
+    minimumFractionDigits?: number;
+    maximumFractionDigits?: number;
+    locale?: string;
+    showSign?: boolean;
+  }
+): string {
+  const {
+    minimumFractionDigits = 0,
+    maximumFractionDigits = 0,
+    locale = "en-US",
+    showSign = false,
+  } = options ?? {};
+
+  const formatted = new Intl.NumberFormat(locale, {
+    style: "currency",
     currency,
-  }).format(amount);
+    minimumFractionDigits,
+    maximumFractionDigits,
+  }).format(Math.abs(value));
+
+  if (showSign) {
+    return value < 0 ? `-${formatted}` : formatted;
+  }
+
+  return formatted;
 }
 
-export function formatDate(dateString: string): string {
-  return new Date(dateString).toLocaleDateString('en-EU', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
+/**
+ * Format an amount with sign (for transactions)
+ * @param amount - The transaction amount (negative for expenses)
+ * @param currency - ISO 4217 currency code
+ */
+export function formatAmount(amount: number, currency: string): string {
+  const formatted = new Intl.NumberFormat("nl-NL", {
+    style: "currency",
+    currency,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Math.abs(amount));
+
+  return amount < 0 ? `-${formatted}` : formatted;
 }
 
-export function formatDateTime(dateString: string): string {
-  return new Date(dateString).toLocaleString('en-EU', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+/**
+ * Format a date with various presets
+ * @param date - The date to format
+ * @param options - Intl.DateTimeFormat options or preset name
+ */
+export function formatDate(
+  date: Date,
+  options?: Intl.DateTimeFormatOptions | "short" | "medium" | "long"
+): string {
+  const presets: Record<string, Intl.DateTimeFormatOptions> = {
+    short: { month: "short", day: "numeric" },
+    medium: { month: "short", day: "numeric", year: "numeric" },
+    long: { month: "long", day: "numeric", year: "numeric" },
+  };
+
+  const formatOptions = typeof options === "string" ? presets[options] : options ?? presets.medium;
+
+  return new Intl.DateTimeFormat("en-GB", formatOptions).format(date);
 }
