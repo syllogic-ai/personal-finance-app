@@ -17,6 +17,7 @@ interface TransactionTableProps {
   categories?: CategoryDisplay[];
   accounts?: AccountForFilter[];
   onUpdateTransaction?: (id: string, updates: Partial<TransactionWithRelations>) => void;
+  onDeleteTransaction?: (id: string) => void;
   onBulkUpdate?: (transactionIds: string[], categoryId: string | null) => void;
   action?: React.ReactNode;
 }
@@ -26,6 +27,7 @@ export function TransactionTable({
   categories = [],
   accounts = [],
   onUpdateTransaction,
+  onDeleteTransaction,
   onBulkUpdate,
   action,
 }: TransactionTableProps) {
@@ -101,6 +103,7 @@ export function TransactionTable({
           if (!open) setSelectedTransaction(null);
         }}
         onUpdateTransaction={handleUpdateTransaction}
+        onDeleteTransaction={onDeleteTransaction}
         categories={categories}
       />
     </>

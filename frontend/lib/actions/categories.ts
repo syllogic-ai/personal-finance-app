@@ -202,3 +202,20 @@ export async function getCategoriesByType(
     orderBy: (categories, { asc }) => [asc(categories.name)],
   });
 }
+
+export async function getCategoryByName(name: string): Promise<Category | null> {
+  const userId = await requireAuth();
+
+  if (!userId) {
+    return null;
+  }
+
+  const category = await db.query.categories.findFirst({
+    where: and(
+      eq(categories.userId, userId),
+      eq(categories.name, name)
+    ),
+  });
+
+  return category || null;
+}

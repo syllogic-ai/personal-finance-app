@@ -1,9 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { eq, and } from "drizzle-orm";
+import { eq, and, lte, desc, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { accounts, type NewAccount } from "@/lib/db/schema";
+import { accounts, accountBalances, transactions, type NewAccount } from "@/lib/db/schema";
 import { requireAuth } from "@/lib/auth-helpers";
 
 export interface CreateAccountInput {
@@ -134,4 +134,67 @@ export async function getAccounts() {
     where: and(eq(accounts.userId, userId), eq(accounts.isActive, true)),
     orderBy: (accounts, { asc }) => [asc(accounts.name)],
   });
+}
+
+export async function getAccountBalanceOnDate(
+  accountId: string,
+  date: Date
+): Promise<{ balance: number; found: boolean }> {
+  const userId = await requireAuth();
+
+  if (!userId) {
+    return { balance: 0, found: false };
+  }
+
+  // Verify the account belongs to the user
+  const account = await db.query.accounts.findFirst({
+    where: and(eq(accounts.id, accountId), eq(accounts.userId, userId)),
+  });
+
+  if (!account) {
+    return { balance: 0, found: false };
+  }
+
+  // First try to get balance from account_balances table
+  const balanceRecord = await db.query.accountBalances.findFirst({
+    where: and(
+      eq(accountBalances.accountId, accountId),
+      lte(accountBalances.date, date)
+    ),
+    orderBy: [desc(accountBalances.date)],
+  });
+
+  if (balanceRecord) {
+    return {
+      balance: parseFloat(balanceRecord.balanceInAccountCurrency),
+      found: true,
+    };
+  }
+
+  // No pre-computed balance found, calculate from transactions
+  // Sum all transactions up to and including the selected date
+  const startingBalance = parseFloat(account.startingBalance || "0");
+
+  // Set end of day for the date comparison to include all transactions on that day
+  const endOfDay = new Date(date);
+  endOfDay.setHours(23, 59, 59, 999);
+
+  const result = await db
+    .select({
+      total: sql<string>`COALESCE(SUM(${transactions.amount}), 0)`,
+    })
+    .from(transactions)
+    .where(
+      and(
+        eq(transactions.accountId, accountId),
+        lte(transactions.bookedAt, endOfDay)
+      )
+    );
+
+  const transactionSum = parseFloat(result[0]?.total || "0");
+
+  return {
+    balance: startingBalance + transactionSum,
+    found: true,
+  };
 }

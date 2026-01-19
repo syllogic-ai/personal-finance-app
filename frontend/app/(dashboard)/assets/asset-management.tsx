@@ -11,6 +11,7 @@ import {
   RiHome4Line,
   RiCarLine,
   RiMoreLine,
+  RiScalesLine,
 } from "@remixicon/react";
 import {
   Card,
@@ -58,6 +59,7 @@ import { updateAccount, deleteAccount } from "@/lib/actions/accounts";
 import { updateProperty, deleteProperty } from "@/lib/actions/properties";
 import { updateVehicle, deleteVehicle } from "@/lib/actions/vehicles";
 import { AddAssetDialog } from "@/components/assets/add-asset-dialog";
+import { UpdateBalanceDialog } from "@/components/accounts/update-balance-dialog";
 import { PROPERTY_TYPES, VEHICLE_TYPES } from "@/components/assets/types";
 import type { Account, Property, Vehicle } from "@/lib/db/schema";
 
@@ -123,6 +125,7 @@ export function AssetManagement({
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
   const [editingProperty, setEditingProperty] = useState<Property | null>(null);
   const [editingVehicle, setEditingVehicle] = useState<Vehicle | null>(null);
+  const [updateBalanceAccount, setUpdateBalanceAccount] = useState<Account | null>(null);
 
   // Delete states
   const [deletingAccount, setDeletingAccount] = useState<Account | null>(null);
@@ -555,11 +558,26 @@ export function AssetManagement({
               </div>
               <div className="space-y-2">
                 <Label htmlFor="edit-account-balance">Current Balance</Label>
-                <Input id="edit-account-balance" type="number" step="0.01" value={editAccountBalance} onChange={(e) => setEditAccountBalance(e.target.value)} />
+                <div className="flex gap-2">
+                  <Input id="edit-account-balance" type="number" step="0.01" value={editAccountBalance} disabled className="flex-1" />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      if (editingAccount) {
+                        setUpdateBalanceAccount(editingAccount);
+                      }
+                    }}
+                  >
+                    <RiScalesLine className="mr-2 h-4 w-4" />
+                    Adjust
+                  </Button>
+                </div>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="edit-account-currency">Currency</Label>
-                <Select value={editAccountCurrency} onValueChange={(v) => v && setEditAccountCurrency(v)}>
+                <Select value={editAccountCurrency} onValueChange={(v) => v && setEditAccountCurrency(v)} disabled>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {CURRENCIES.map((curr) => (
@@ -744,6 +762,25 @@ export function AssetManagement({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Update Balance Dialog */}
+      {updateBalanceAccount && (
+        <UpdateBalanceDialog
+          account={{
+            id: updateBalanceAccount.id,
+            name: updateBalanceAccount.name,
+            currency: updateBalanceAccount.currency,
+            functionalBalance: updateBalanceAccount.functionalBalance,
+          }}
+          open={!!updateBalanceAccount}
+          onOpenChange={(open) => !open && setUpdateBalanceAccount(null)}
+          onSuccess={() => {
+            setUpdateBalanceAccount(null);
+            setEditingAccount(null);
+            handleRefresh();
+          }}
+        />
+      )}
     </div>
   );
 }

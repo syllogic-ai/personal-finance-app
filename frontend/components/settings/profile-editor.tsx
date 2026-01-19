@@ -15,7 +15,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ProfilePhotoUpload } from "@/components/onboarding/profile-photo-upload";
-import { CurrencySelector } from "@/components/onboarding/currency-selector";
 import { updateUserProfile } from "@/lib/actions/settings";
 import type { User } from "@/lib/db/schema";
 
@@ -27,7 +26,6 @@ export function ProfileEditor({ user }: ProfileEditorProps) {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [name, setName] = useState(user.name || "");
-  const [functionalCurrency, setFunctionalCurrency] = useState(user.functionalCurrency || "EUR");
   const [profilePhoto, setProfilePhoto] = useState<File | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -43,7 +41,6 @@ export function ProfileEditor({ user }: ProfileEditorProps) {
     try {
       const formData = new FormData();
       formData.append("name", name.trim());
-      formData.append("functionalCurrency", functionalCurrency);
       if (profilePhoto) {
         formData.append("profilePhoto", profilePhoto);
       }
@@ -73,15 +70,13 @@ export function ProfileEditor({ user }: ProfileEditorProps) {
         </CardDescription>
       </CardHeader>
       <form onSubmit={handleSubmit}>
-        <CardContent className="space-y-6">
-          <div className="flex justify-center">
-            <ProfilePhotoUpload
-              value={profilePhoto}
-              onChange={setProfilePhoto}
-              defaultImage={user.profilePhotoPath || user.image}
-              name={name}
-            />
-          </div>
+        <CardContent className="space-y-6 pb-6">
+          <ProfilePhotoUpload
+            value={profilePhoto}
+            onChange={setProfilePhoto}
+            defaultImage={user.profilePhotoPath || user.image}
+            name={name}
+          />
 
           <div className="space-y-2">
             <Label htmlFor="name">Name</Label>
@@ -90,6 +85,7 @@ export function ProfileEditor({ user }: ProfileEditorProps) {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Your name"
+              className="w-fit min-w-[200px]"
             />
           </div>
 
@@ -99,17 +95,25 @@ export function ProfileEditor({ user }: ProfileEditorProps) {
               id="email"
               value={user.email}
               disabled
-              className="bg-muted"
+              className="w-fit min-w-[200px] bg-muted"
             />
             <p className="text-xs text-muted-foreground">
               Email cannot be changed.
             </p>
           </div>
 
-          <CurrencySelector
-            value={functionalCurrency}
-            onChange={setFunctionalCurrency}
-          />
+          <div className="space-y-2">
+            <Label htmlFor="currency">Functional Currency</Label>
+            <Input
+              id="currency"
+              value={user.functionalCurrency || "EUR"}
+              disabled
+              className="w-fit min-w-[80px] bg-muted"
+            />
+            <p className="text-xs text-muted-foreground">
+              Functional currency is set during onboarding and cannot be changed.
+            </p>
+          </div>
         </CardContent>
         <CardFooter>
           <Button type="submit" disabled={isLoading}>

@@ -12,7 +12,7 @@ from sqlalchemy import func, desc
 import logging
 import traceback
 
-from app.models import Account, Transaction, User, ExchangeRate, AccountTimeseries
+from app.models import Account, Transaction, User, ExchangeRate, AccountBalance
 
 logger = logging.getLogger(__name__)
 
@@ -255,9 +255,9 @@ class AccountBalanceService:
                         
                         # Check if timeseries record already exists for this account and date
                         rate_datetime = datetime.combine(current_date, datetime.min.time())
-                        existing_timeseries = self.db.query(AccountTimeseries).filter(
-                            AccountTimeseries.account_id == account.id,
-                            AccountTimeseries.date == rate_datetime
+                        existing_timeseries = self.db.query(AccountBalance).filter(
+                            AccountBalance.account_id == account.id,
+                            AccountBalance.date == rate_datetime
                         ).first()
                         
                         if existing_timeseries:
@@ -267,7 +267,7 @@ class AccountBalanceService:
                             existing_timeseries.updated_at = datetime.utcnow()
                         else:
                             # Create new record
-                            timeseries_record = AccountTimeseries(
+                            timeseries_record = AccountBalance(
                                 account_id=account.id,
                                 date=rate_datetime,
                                 balance_in_account_currency=balance_in_account_currency,

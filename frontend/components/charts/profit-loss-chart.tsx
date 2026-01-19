@@ -16,9 +16,8 @@ import {
   ChartContainer,
   ChartConfig,
   ChartTooltip,
-  ChartTooltipContent,
 } from "@/components/ui/chart";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, cn } from "@/lib/utils";
 
 interface IncomeExpenseDataPoint {
   month: string;
@@ -70,6 +69,73 @@ function ProfitLossChartSkeleton() {
   );
 }
 
+interface CustomTooltipProps {
+  active?: boolean;
+  payload?: Array<{
+    name: string;
+    value: number;
+    dataKey: string;
+    payload: IncomeExpenseDataPoint;
+    color?: string;
+  }>;
+  label?: string;
+  currency: string;
+}
+
+function CustomTooltip({ active, payload, label, currency }: CustomTooltipProps) {
+  if (!active || !payload?.length) {
+    return null;
+  }
+
+  const income = payload.find((p) => p.dataKey === "income")?.value ?? 0;
+  const expenses = payload.find((p) => p.dataKey === "expenses")?.value ?? 0;
+  const net = income - expenses;
+
+  return (
+    <div className="border-border/50 bg-background min-w-[180px] border px-3 py-2.5 text-xs shadow-xl">
+      <div className="mb-2 font-medium">{label}</div>
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between gap-8">
+          <div className="flex items-center gap-2">
+            <div
+              className="h-3 w-1 shrink-0"
+              style={{ backgroundColor: "var(--color-income)" }}
+            />
+            <span className="text-muted-foreground">Income</span>
+          </div>
+          <span className="font-mono font-medium tabular-nums">
+            {formatCurrency(income, currency)}
+          </span>
+        </div>
+        <div className="flex items-center justify-between gap-8">
+          <div className="flex items-center gap-2">
+            <div
+              className="h-3 w-1 shrink-0"
+              style={{ backgroundColor: "var(--color-expenses)" }}
+            />
+            <span className="text-muted-foreground">Expenses</span>
+          </div>
+          <span className="font-mono font-medium tabular-nums">
+            {formatCurrency(expenses, currency)}
+          </span>
+        </div>
+        <div className="mt-2 flex items-center justify-between gap-8 border-t border-border/50 pt-2">
+          <span className="text-muted-foreground">Net</span>
+          <span
+            className={cn(
+              "font-mono font-medium tabular-nums",
+              net >= 0 ? "text-emerald-500" : "text-red-500"
+            )}
+          >
+            {net >= 0 ? "+" : ""}
+            {formatCurrency(net, currency)}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ProfitLossChart({
   data,
   currency,
@@ -113,15 +179,8 @@ export function ProfitLossChart({
               width={50}
             />
             <ChartTooltip
-              content={
-                <ChartTooltipContent
-                  formatter={(value, name) => (
-                    <span className="font-mono">
-                      {formatCurrency(value as number, currency)}
-                    </span>
-                  )}
-                />
-              }
+              content={<CustomTooltip currency={currency} />}
+              cursor={{ fill: "var(--muted)", opacity: 0.3 }}
             />
             <Legend
               verticalAlign="top"

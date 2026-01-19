@@ -19,7 +19,7 @@ import logging
 
 from app.database import get_db
 from app.db_helpers import get_user_id
-from app.models import Transaction, Account, User, ExchangeRate, AccountTimeseries
+from app.models import Transaction, Account, User, ExchangeRate
 from pydantic import BaseModel
 from app.schemas import (
     TransactionCreate,

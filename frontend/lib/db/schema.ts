@@ -284,8 +284,8 @@ export const exchangeRates = pgTable(
   ]
 );
 
-export const accountTimeseries = pgTable(
-  "account_timeseries",
+export const accountBalances = pgTable(
+  "account_balances",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     accountId: uuid("account_id")
@@ -298,9 +298,9 @@ export const accountTimeseries = pgTable(
     updatedAt: timestamp("updated_at").defaultNow(),
   },
   (table) => [
-    index("idx_account_timeseries_account").on(table.accountId),
-    index("idx_account_timeseries_date").on(table.date),
-    unique("account_timeseries_account_date").on(table.accountId, table.date),
+    index("idx_account_balances_account").on(table.accountId),
+    index("idx_account_balances_date").on(table.date),
+    unique("account_balances_account_date").on(table.accountId, table.date),
   ]
 );
 
@@ -342,12 +342,12 @@ export const accountsRelations = relations(accounts, ({ one, many }) => ({
   }),
   transactions: many(transactions),
   csvImports: many(csvImports),
-  timeseries: many(accountTimeseries),
+  balances: many(accountBalances),
 }));
 
-export const accountTimeseriesRelations = relations(accountTimeseries, ({ one }) => ({
+export const accountBalancesRelations = relations(accountBalances, ({ one }) => ({
   account: one(accounts, {
-    fields: [accountTimeseries.accountId],
+    fields: [accountBalances.accountId],
     references: [accounts.id],
   }),
 }));
@@ -469,3 +469,6 @@ export type NewVehicle = typeof vehicles.$inferInsert;
 
 export type ExchangeRate = typeof exchangeRates.$inferSelect;
 export type NewExchangeRate = typeof exchangeRates.$inferInsert;
+
+export type AccountBalance = typeof accountBalances.$inferSelect;
+export type NewAccountBalance = typeof accountBalances.$inferInsert;

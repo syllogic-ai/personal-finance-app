@@ -87,7 +87,7 @@ export function ProfilePhotoUpload({
   const displayImage = preview || defaultImage;
 
   return (
-    <div className="flex flex-col items-center gap-4">
+    <div className="flex flex-col items-start gap-4">
       <div
         className={cn(
           "relative cursor-pointer transition-all",
@@ -130,9 +130,6 @@ export function ProfilePhotoUpload({
         className="hidden"
         onChange={handleInputChange}
       />
-      <p className="text-xs text-muted-foreground">
-        Click or drag to upload a profile photo
-      </p>
     </div>
   );
 }

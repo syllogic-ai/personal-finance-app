@@ -32,6 +32,10 @@ export function TransactionsClient({
     );
   };
 
+  const handleDeleteTransaction = (id: string) => {
+    setTransactions((prev) => prev.filter((tx) => tx.id !== id));
+  };
+
   const handleBulkUpdate = (transactionIds: string[], categoryId: string | null) => {
     const category = categoryId
       ? categories.find((c) => c.id === categoryId) ?? null
@@ -71,6 +75,7 @@ export function TransactionsClient({
           categories={categories}
           accounts={accounts}
           onUpdateTransaction={handleUpdateTransaction}
+          onDeleteTransaction={handleDeleteTransaction}
           onBulkUpdate={handleBulkUpdate}
           action={<AddTransactionButton onAddManual={handleAddManual} />}
         />

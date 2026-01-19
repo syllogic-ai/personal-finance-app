@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { users, categories, type User } from "@/lib/db/schema";
+import { users, categories, transactions, accounts, type User } from "@/lib/db/schema";
 import { getAuthenticatedSession, requireAuth } from "@/lib/auth-helpers";
 import { storage } from "@/lib/storage";
 
@@ -46,8 +46,8 @@ export async function updateUserProfile(
 
   try {
     const name = formData.get("name") as string;
-    const functionalCurrency = formData.get("functionalCurrency") as string;
-    const profilePhoto = formData.get("profilePhoto") as File | null;
+    const profilePhotoEntry = formData.get("profilePhoto");
+    const profilePhoto = profilePhotoEntry instanceof File ? profilePhotoEntry : null;
 
     if (!name?.trim()) {
       return { success: false, error: "Name is required" };
@@ -57,7 +57,7 @@ export async function updateUserProfile(
 
     // Handle profile photo upload
     if (profilePhoto && profilePhoto.size > 0) {
-      const fileExtension = profilePhoto.name.split(".").pop() || "jpg";
+      const fileExtension = profilePhoto.name.split(".").pop()?.toLowerCase() || "jpg";
       const fileName = `profile/${session.user.id}.${fileExtension}`;
       const buffer = Buffer.from(await profilePhoto.arrayBuffer());
 
@@ -65,14 +65,14 @@ export async function updateUserProfile(
         contentType: profilePhoto.type,
       });
 
-      profilePhotoPath = uploadedFile.url;
+      // Add cache-busting timestamp to prevent browser caching
+      profilePhotoPath = `${uploadedFile.url}?v=${Date.now()}`;
     }
 
     await db
       .update(users)
       .set({
         name: name.trim(),
-        functionalCurrency,
         ...(profilePhotoPath && { profilePhotoPath }),
         updatedAt: new Date(),
       })
@@ -117,5 +117,59 @@ export async function resetOnboarding(): Promise<{ success: boolean; error?: str
   } catch (error) {
     console.error("Failed to reset onboarding:", error);
     return { success: false, error: "Failed to reset onboarding" };
+  }
+}
+
+/**
+ * Delete all transactions and reset account balances to starting balance.
+ * This is a destructive operation that cannot be undone.
+ */
+export async function deleteAllTransactionsAndResetBalances(): Promise<{
+  success: boolean;
+  error?: string;
+  deletedCount?: number;
+  accountsReset?: number;
+}> {
+  const userId = await requireAuth();
+
+  if (!userId) {
+    return { success: false, error: "Not authenticated" };
+  }
+
+  try {
+    // Delete all transactions for the user
+    const deleted = await db
+      .delete(transactions)
+      .where(eq(transactions.userId, userId))
+      .returning({ id: transactions.id });
+
+    // Reset all account balances to their starting balance
+    const userAccounts = await db.query.accounts.findMany({
+      where: eq(accounts.userId, userId),
+    });
+
+    for (const account of userAccounts) {
+      await db
+        .update(accounts)
+        .set({
+          functionalBalance: account.startingBalance || "0",
+          balanceAvailable: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(accounts.id, account.id));
+    }
+
+    revalidatePath("/");
+    revalidatePath("/transactions");
+    revalidatePath("/settings");
+
+    return {
+      success: true,
+      deletedCount: deleted.length,
+      accountsReset: userAccounts.length,
+    };
+  } catch (error) {
+    console.error("Failed to delete transactions and reset balances:", error);
+    return { success: false, error: "Failed to delete transactions and reset balances" };
   }
 }

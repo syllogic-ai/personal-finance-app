@@ -123,7 +123,7 @@ export async function getTotalBalance(accountId?: string) {
         inArray(accountBalances.accountId, accountIds),
         eq(accountBalances.date, sql`(
           SELECT MAX(date) FROM account_balances
-          WHERE account_id = ANY(${accountIds})
+          WHERE account_id IN (${sql.join(accountIds.map(id => sql`${id}`), sql`, `)})
         )`)
       )),
     getUserCurrency(session.user.id),

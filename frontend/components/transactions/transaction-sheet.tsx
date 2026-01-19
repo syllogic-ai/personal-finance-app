@@ -8,6 +8,17 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
@@ -21,14 +32,17 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { cn, formatDate, formatAmount } from "@/lib/utils";
 import type { TransactionWithRelations } from "@/lib/actions/transactions";
-import { updateTransactionCategory } from "@/lib/actions/transactions";
+import { updateTransactionCategory, deleteBalancingTransaction } from "@/lib/actions/transactions";
 import type { CategoryDisplay } from "@/types";
+import { RiDeleteBinLine } from "@remixicon/react";
+import { toast } from "sonner";
 
 interface TransactionSheetProps {
   transaction: TransactionWithRelations | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onUpdateTransaction?: (id: string, updates: Partial<TransactionWithRelations>) => void;
+  onDeleteTransaction?: (id: string) => void;
   categories?: CategoryDisplay[];
 }
 
@@ -37,12 +51,37 @@ export function TransactionSheet({
   open,
   onOpenChange,
   onUpdateTransaction,
+  onDeleteTransaction,
   categories = [],
 }: TransactionSheetProps) {
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [instructions, setInstructions] = useState<string>("");
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isReverting, setIsReverting] = useState(false);
+
+  const isBalancingTransfer = transaction?.category?.name === "Balancing Transfer";
+
+  const handleRevertBalancingTransfer = async () => {
+    if (!transaction) return;
+
+    setIsReverting(true);
+    try {
+      const result = await deleteBalancingTransaction(transaction.id);
+
+      if (result.success) {
+        toast.success("Balancing transfer reverted successfully");
+        onDeleteTransaction?.(transaction.id);
+        onOpenChange(false);
+      } else {
+        toast.error(result.error || "Failed to revert balancing transfer");
+      }
+    } catch (error) {
+      toast.error("Failed to revert balancing transfer");
+    } finally {
+      setIsReverting(false);
+    }
+  };
 
   // Reset state when transaction changes
   useEffect(() => {
@@ -222,8 +261,8 @@ export function TransactionSheet({
           </div>
         </div>
 
-        {/* Footer with Save Button */}
-        <div className="mt-6 pt-4 border-t">
+        {/* Footer with Save Button and Revert Option */}
+        <div className="mt-6 pt-4 border-t space-y-3">
           <Button
             onClick={handleSave}
             disabled={!hasChanges || isSaving}
@@ -231,6 +270,43 @@ export function TransactionSheet({
           >
             {isSaving ? "Saving..." : "Save Changes"}
           </Button>
+
+          {/* Revert button for balancing transfers */}
+          {isBalancingTransfer && (
+            <AlertDialog>
+              <AlertDialogTrigger
+                disabled={isReverting}
+                render={
+                  <Button
+                    variant="destructive"
+                    className="w-full"
+                    disabled={isReverting}
+                  >
+                    <RiDeleteBinLine className="h-4 w-4 mr-2" />
+                    {isReverting ? "Reverting..." : "Revert Balancing Transfer"}
+                  </Button>
+                }
+              />
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Revert Balancing Transfer?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will delete the balancing transfer and recalculate the account balance
+                    as if this adjustment never existed. This action cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={handleRevertBalancingTransfer}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  >
+                    Revert
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
         </div>
       </SheetContent>
     </Sheet>

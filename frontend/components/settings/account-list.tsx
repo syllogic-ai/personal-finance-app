@@ -7,6 +7,7 @@ import {
   RiEditLine,
   RiBankLine,
   RiMoreLine,
+  RiScalesLine,
 } from "@remixicon/react";
 import {
   Card,
@@ -51,6 +52,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { CURRENCIES } from "@/lib/constants/currencies";
 import { updateAccount, deleteAccount } from "@/lib/actions/accounts";
+import { UpdateBalanceDialog } from "@/components/accounts/update-balance-dialog";
 import type { Account } from "@/lib/db/schema";
 
 const ACCOUNT_TYPES = [
@@ -75,6 +77,7 @@ interface AccountListProps {
 export function AccountList({ accounts, onAccountUpdated }: AccountListProps) {
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
   const [deletingAccount, setDeletingAccount] = useState<Account | null>(null);
+  const [updateBalanceAccount, setUpdateBalanceAccount] = useState<Account | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   // Edit form state
@@ -280,7 +283,7 @@ export function AccountList({ accounts, onAccountUpdated }: AccountListProps) {
 
               <div className="space-y-2">
                 <Label htmlFor="edit-currency">Currency</Label>
-                <Select value={editCurrency} onValueChange={(v) => v && setEditCurrency(v)}>
+                <Select value={editCurrency} onValueChange={(v) => v && setEditCurrency(v)} disabled>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
@@ -296,13 +299,29 @@ export function AccountList({ accounts, onAccountUpdated }: AccountListProps) {
 
               <div className="space-y-2">
                 <Label htmlFor="edit-balance">Current Balance</Label>
-                <Input
-                  id="edit-balance"
-                  type="number"
-                  step="0.01"
-                  value={editBalance}
-                  onChange={(e) => setEditBalance(e.target.value)}
-                />
+                <div className="flex gap-2">
+                  <Input
+                    id="edit-balance"
+                    type="number"
+                    step="0.01"
+                    value={editBalance}
+                    disabled
+                    className="flex-1"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      if (editingAccount) {
+                        setUpdateBalanceAccount(editingAccount);
+                      }
+                    }}
+                  >
+                    <RiScalesLine className="mr-2 h-4 w-4" />
+                    Adjust
+                  </Button>
+                </div>
               </div>
             </div>
             <DialogFooter>
@@ -344,6 +363,25 @@ export function AccountList({ accounts, onAccountUpdated }: AccountListProps) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Update Balance Dialog */}
+      {updateBalanceAccount && (
+        <UpdateBalanceDialog
+          account={{
+            id: updateBalanceAccount.id,
+            name: updateBalanceAccount.name,
+            currency: updateBalanceAccount.currency,
+            functionalBalance: updateBalanceAccount.functionalBalance,
+          }}
+          open={!!updateBalanceAccount}
+          onOpenChange={(open) => !open && setUpdateBalanceAccount(null)}
+          onSuccess={() => {
+            setUpdateBalanceAccount(null);
+            setEditingAccount(null);
+            onAccountUpdated?.();
+          }}
+        />
+      )}
     </>
   );
 }

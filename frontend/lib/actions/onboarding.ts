@@ -54,7 +54,8 @@ export async function updatePersonalDetails(formData: FormData): Promise<{ succe
   try {
     const name = formData.get("name") as string;
     const functionalCurrency = formData.get("functionalCurrency") as string;
-    const profilePhoto = formData.get("profilePhoto") as File | null;
+    const profilePhotoEntry = formData.get("profilePhoto");
+    const profilePhoto = profilePhotoEntry instanceof File ? profilePhotoEntry : null;
 
     if (!name?.trim()) {
       return { success: false, error: "Name is required" };
@@ -64,7 +65,7 @@ export async function updatePersonalDetails(formData: FormData): Promise<{ succe
 
     // Handle profile photo upload
     if (profilePhoto && profilePhoto.size > 0) {
-      const fileExtension = profilePhoto.name.split(".").pop() || "jpg";
+      const fileExtension = profilePhoto.name.split(".").pop()?.toLowerCase() || "jpg";
       const fileName = `profile/${session.user.id}.${fileExtension}`;
       const buffer = Buffer.from(await profilePhoto.arrayBuffer());
 
@@ -72,7 +73,8 @@ export async function updatePersonalDetails(formData: FormData): Promise<{ succe
         contentType: profilePhoto.type,
       });
 
-      profilePhotoPath = uploadedFile.url;
+      // Add cache-busting timestamp to prevent browser caching
+      profilePhotoPath = `${uploadedFile.url}?v=${Date.now()}`;
     }
 
     await db

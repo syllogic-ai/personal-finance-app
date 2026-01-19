@@ -117,6 +117,7 @@ export function BulkActionsDock({
           }}
         >
           <PopoverTrigger
+            nativeButton={false}
             render={<DockIcon className="bg-muted hover:bg-muted/80" />}
           >
             <RiPriceTag3Line className="size-5" />
