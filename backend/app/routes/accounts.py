@@ -216,29 +216,72 @@ def recalculate_account_balance(
     from app.models import Transaction
     from sqlalchemy import func
     user_id = get_user_id(user_id)
-    
+
     account = db.query(Account).filter(
         Account.id == account_id,
         Account.user_id == user_id
     ).first()
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
-    
+
     # Calculate balance from sum of all transactions
     balance_sum = db.query(func.sum(Transaction.amount)).filter(
         Transaction.user_id == user_id,
         Transaction.account_id == account.id
     ).scalar() or 0
-    
+
     account.balance_current = balance_sum
     db.commit()
     db.refresh(account)
-    
+
     return {
         "message": f"Recalculated balance for '{account.name}'",
         "account_id": str(account.id),
         "account_name": account.name,
         "new_balance": float(account.balance_current),
+        "currency": account.currency
+    }
+
+
+@router.post("/{account_id}/recalculate-timeseries", status_code=200)
+def recalculate_account_timeseries(
+    account_id: UUID,
+    user_id: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Recalculate daily balance timeseries for a specific account.
+
+    This endpoint:
+    - Calculates balance for each day from the first transaction to today
+    - Stores daily snapshots in the account_balances table
+    - Converts to functional currency using date-specific exchange rates
+    - Updates existing records or creates new ones
+    """
+    from app.services.account_balance_service import AccountBalanceService
+    user_id = get_user_id(user_id)
+
+    # Verify account exists and belongs to user
+    account = db.query(Account).filter(
+        Account.id == account_id,
+        Account.user_id == user_id
+    ).first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    # Calculate timeseries for this specific account
+    balance_service = AccountBalanceService(db)
+    result = balance_service.calculate_account_timeseries(user_id, account_ids=[account_id])
+
+    if "error" in result:
+        raise HTTPException(status_code=500, detail=result["error"])
+
+    return {
+        "message": f"Recalculated timeseries for '{account.name}'",
+        "account_id": str(account.id),
+        "account_name": account.name,
+        "days_processed": result.get("total_days_processed", 0),
+        "records_stored": result.get("total_records_stored", 0),
         "currency": account.currency
     }
 
