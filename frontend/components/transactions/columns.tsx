@@ -97,21 +97,35 @@ export const transactionColumns: ColumnDef<TransactionWithRelations>[] = [
   {
     accessorKey: "description",
     header: "Description",
-    cell: ({ row }) => (
-      <span className="max-w-xs truncate" title={row.getValue("description") || ""}>
-        {row.getValue("description")}
-      </span>
-    ),
+    cell: ({ row, column }) => {
+      const columnSize = column.getSize();
+      return (
+        <div 
+          className="truncate" 
+          style={{ maxWidth: `${columnSize}px` }}
+          title={row.getValue("description") || ""}
+        >
+          {row.getValue("description")}
+        </div>
+      );
+    },
     size: 280,
     filterFn: "includesString",
   },
   {
     accessorKey: "merchant",
     header: "Merchant",
-    cell: ({ row }) => {
+    cell: ({ row, column }) => {
       const merchant = row.original.merchant;
+      const columnSize = column.getSize();
       return merchant ? (
-        <span>{merchant}</span>
+        <div 
+          className="truncate" 
+          style={{ maxWidth: `${columnSize}px` }}
+          title={merchant}
+        >
+          {merchant}
+        </div>
       ) : (
         <span className="text-muted-foreground">-</span>
       );
@@ -121,12 +135,17 @@ export const transactionColumns: ColumnDef<TransactionWithRelations>[] = [
   {
     accessorKey: "category",
     header: "Category",
-    cell: ({ row }) => {
+    cell: ({ row, column }) => {
       const category = row.original.category;
+      const columnSize = column.getSize();
       return category ? (
         <span
           className="inline-flex items-center px-2 py-0.5 text-xs text-white truncate"
-          style={{ backgroundColor: category.color ?? "#6B7280" }}
+          style={{ 
+            backgroundColor: category.color ?? "#6B7280",
+            maxWidth: `${columnSize}px`
+          }}
+          title={category.name}
         >
           {category.name}
         </span>
@@ -197,15 +216,57 @@ export const transactionColumns: ColumnDef<TransactionWithRelations>[] = [
   {
     accessorKey: "account",
     header: "Account",
-    cell: ({ row }) => (
-      <span className="text-muted-foreground">
-        {row.original.account.name}
-      </span>
-    ),
+    cell: ({ row, column }) => {
+      const columnSize = column.getSize();
+      return (
+        <div 
+          className="truncate text-muted-foreground" 
+          style={{ maxWidth: `${columnSize}px` }}
+          title={row.original.account.name}
+        >
+          {row.original.account.name}
+        </div>
+      );
+    },
     size: 140,
     filterFn: (row, id, filterValue) => {
       if (!filterValue || !Array.isArray(filterValue) || filterValue.length === 0) return true;
       return filterValue.includes(row.original.account.id);
+    },
+  },
+  {
+    accessorKey: "recurringTransaction",
+    header: "Recurring",
+    cell: ({ row, column }) => {
+      const recurring = row.original.recurringTransaction;
+      const columnSize = column.getSize();
+      if (!recurring) {
+        return <span className="text-muted-foreground">-</span>;
+      }
+      return (
+        <div 
+          className="flex flex-col gap-0.5 truncate" 
+          style={{ maxWidth: `${columnSize}px` }}
+          title={`${recurring.name}${recurring.merchant ? ` - ${recurring.merchant}` : ''} (${recurring.frequency})`}
+        >
+          <span className="text-sm font-medium truncate">{recurring.name}</span>
+          {recurring.merchant && (
+            <span className="text-xs text-muted-foreground truncate">{recurring.merchant}</span>
+          )}
+          <Badge variant="outline" className="w-fit text-xs">
+            {recurring.frequency}
+          </Badge>
+        </div>
+      );
+    },
+    size: 180,
+    filterFn: (row, id, filterValue) => {
+      if (!filterValue || !Array.isArray(filterValue) || filterValue.length === 0) return true;
+      if (filterValue.includes("no_recurring") && !row.original.recurringTransaction) return true;
+      if (row.original.recurringTransaction) {
+        return filterValue.includes(row.original.recurringTransaction.id);
+      }
+      return false;
     },
   },
   {

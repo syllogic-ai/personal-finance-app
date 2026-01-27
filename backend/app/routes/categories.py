@@ -245,7 +245,9 @@ def categorize_transaction(
 
 @router.post("/categorize/batch", response_model=BatchCategorizeResponse)
 def categorize_transactions_batch(
-    request: BatchCategorizeRequest, db: Session = Depends(get_db)
+    request: BatchCategorizeRequest, 
+    db: Session = Depends(get_db),
+    user_id: Optional[str] = None
 ):
     """
     Categorize multiple transactions in batch.
@@ -272,10 +274,12 @@ def categorize_transactions_batch(
         if request.user_overrides:
             user_overrides_dict = [override.model_dump() for override in request.user_overrides]
         
-        user_id = get_user_id()
+        # Use provided user_id or get from request context (defaults to system user if neither available)
+        actual_user_id = get_user_id(user_id)
+        logger.debug(f"[CATEGORIZE] Using user_id: {actual_user_id} (provided: {user_id})")
         matcher = CategoryMatcher(
             db,
-            user_id=user_id,
+            user_id=actual_user_id,
             user_overrides=user_overrides_dict,
             additional_instructions=request.additional_instructions
         )

@@ -233,7 +233,7 @@ def import_transactions(
 
             # Call the categorize/batch endpoint logic directly
             from app.routes.categories import categorize_transactions_batch
-            categorization_result: BatchCategorizeResponse = categorize_transactions_batch(categorize_request, db)
+            categorization_result: BatchCategorizeResponse = categorize_transactions_batch(categorize_request, db, user_id=user_id)
 
             logger.info(
                 f"[IMPORT] Categorization complete: "

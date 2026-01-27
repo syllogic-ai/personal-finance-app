@@ -38,6 +38,7 @@ import {
   RiMoneyDollarCircleLine,
   RiArrowDownSLine,
   RiCloseLine,
+  RiRepeatLine,
 } from "@remixicon/react";
 import type { TransactionWithRelations } from "@/lib/actions/transactions";
 import type { CategoryForFilter, AccountForFilter } from "@/types";
@@ -337,6 +338,7 @@ export function TransactionFilters({ table, categories, accounts, action }: Tran
   const pendingColumn = table.getColumn("pending");
   const bookedAtColumn = table.getColumn("bookedAt");
   const amountColumn = table.getColumn("amount");
+  const recurringTransactionColumn = table.getColumn("recurringTransaction");
 
   const descriptionValue = (descriptionColumn?.getFilterValue() as string) ?? "";
 
@@ -344,6 +346,7 @@ export function TransactionFilters({ table, categories, accounts, action }: Tran
   const categoryValues = (categoryColumn?.getFilterValue() as string[]) ?? [];
   const accountValues = (accountColumn?.getFilterValue() as string[]) ?? [];
   const statusValues = (pendingColumn?.getFilterValue() as string[]) ?? [];
+  const recurringTransactionValues = (recurringTransactionColumn?.getFilterValue() as string[]) ?? [];
 
   // Date range filter
   const dateRange = (bookedAtColumn?.getFilterValue() as DateRange | undefined);
@@ -358,6 +361,7 @@ export function TransactionFilters({ table, categories, accounts, action }: Tran
     categoryValues.length +
     accountValues.length +
     statusValues.length +
+    recurringTransactionValues.length +
     (dateRange?.from ? 1 : 0) +
     (minAmount || maxAmount ? 1 : 0);
 
@@ -365,6 +369,7 @@ export function TransactionFilters({ table, categories, accounts, action }: Tran
     categoryColumn?.setFilterValue([]);
     accountColumn?.setFilterValue([]);
     pendingColumn?.setFilterValue([]);
+    recurringTransactionColumn?.setFilterValue([]);
     bookedAtColumn?.setFilterValue(undefined);
     amountColumn?.setFilterValue(undefined);
   };
@@ -385,6 +390,24 @@ export function TransactionFilters({ table, categories, accounts, action }: Tran
     { id: "completed", label: "Completed" },
     { id: "pending", label: "Pending" },
   ];
+
+  // Extract unique recurring transactions from table data
+  const recurringTransactionMap = new Map<string, { id: string; name: string; merchant?: string; frequency: string }>();
+  table.getPreFilteredRowModel().rows.forEach((row) => {
+    const recurring = row.original.recurringTransaction;
+    if (recurring && !recurringTransactionMap.has(recurring.id)) {
+      recurringTransactionMap.set(recurring.id, {
+        id: recurring.id,
+        name: recurring.name,
+        merchant: recurring.merchant ?? undefined,
+        frequency: recurring.frequency,
+      });
+    }
+  });
+  const recurringTransactionOptions: FilterOption[] = Array.from(recurringTransactionMap.values()).map((rt) => ({
+    id: rt.id,
+    label: rt.merchant ? `${rt.name} (${rt.merchant})` : rt.name,
+  }));
 
   // Build active filter tags
   const filterTags: { label: string; onRemove: () => void }[] = [];
@@ -424,6 +447,24 @@ export function TransactionFilters({ table, categories, accounts, action }: Tran
       label: id === "pending" ? "Pending" : "Completed",
       onRemove: () => pendingColumn?.setFilterValue(statusValues.filter((v) => v !== id)),
     });
+  });
+
+  // Recurring transaction tags
+  recurringTransactionValues.forEach((id) => {
+    if (id === "no_recurring") {
+      filterTags.push({
+        label: "No Recurring",
+        onRemove: () => recurringTransactionColumn?.setFilterValue(recurringTransactionValues.filter((v) => v !== id)),
+      });
+    } else {
+      const rt = recurringTransactionMap.get(id);
+      if (rt) {
+        filterTags.push({
+          label: rt.merchant ? `${rt.name} (${rt.merchant})` : rt.name,
+          onRemove: () => recurringTransactionColumn?.setFilterValue(recurringTransactionValues.filter((v) => v !== id)),
+        });
+      }
+    }
   });
 
   // Date range tag
@@ -530,6 +571,18 @@ export function TransactionFilters({ table, categories, accounts, action }: Tran
                 options={statusOptions}
                 selectedIds={statusValues}
                 onSelectionChange={(ids) => pendingColumn?.setFilterValue(ids)}
+              />
+
+              <MultiSelectFilter
+                label="Recurring Transaction"
+                icon={<RiRepeatLine className="h-4 w-4" />}
+                options={[
+                  { id: "no_recurring", label: "No Recurring" },
+                  ...recurringTransactionOptions,
+                ]}
+                selectedIds={recurringTransactionValues}
+                onSelectionChange={(ids) => recurringTransactionColumn?.setFilterValue(ids)}
+                searchable
               />
 
               <AmountRangeFilter

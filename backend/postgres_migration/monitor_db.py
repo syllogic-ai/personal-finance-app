@@ -19,7 +19,8 @@ from sqlalchemy import text
 from app.database import SessionLocal, engine
 from app.models import (
     User, Account, Category, Transaction,
-    CategorizationRule, BankConnection, ExchangeRate, AuthAccount, AccountBalance
+    CategorizationRule, BankConnection, ExchangeRate, AuthAccount, AccountBalance,
+    RecurringTransaction
 )
 from datetime import datetime, timedelta
 
@@ -75,7 +76,8 @@ def get_table_stats():
     try:
         with engine.connect() as conn:
             tables = ['users', 'auth_accounts', 'accounts', 'categories', 'transactions',
-                     'categorization_rules', 'bank_connections', 'exchange_rates', 'account_balances']
+                     'categorization_rules', 'bank_connections', 'exchange_rates', 'account_balances',
+                     'recurring_transactions']
             
             for table in tables:
                 try:
@@ -122,7 +124,7 @@ st.title("📊 Database Monitor")
 st.markdown("Monitor and explore your database tables")
 
 # Create tabs
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10 = st.tabs([
     "👥 Users",
     "🔐 Auth Accounts",
     "💳 Accounts",
@@ -131,7 +133,8 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
     "🎯 Categorization Rules",
     "🏦 Bank Connections",
     "💱 Exchange Rates",
-    "📈 Account Balances"
+    "📈 Account Balances",
+    "🔄 Recurring Transactions"
 ])
 
 # Tab 1: Users
@@ -959,6 +962,161 @@ with tab9:
         **Note:** Account balances are calculated automatically when you import transactions
         via the `/api/transactions/import` endpoint with `calculate_balances=true`.
         """)
+
+# Tab 10: Recurring Transactions
+with tab10:
+    st.header("Recurring Transactions Table")
+    
+    col1, col2, col3, col4 = st.columns([2, 2, 2, 1])
+    with col1:
+        st.markdown(f"**Total Recurring Transactions:** {stats.get('recurring_transactions', 0)}")
+    with col2:
+        user_filter = st.selectbox(
+            "Filter by User:",
+            ["All"] + (df_users['id'].tolist() if not df_users.empty else []),
+            key="recurring_user_filter"
+        )
+    with col3:
+        status_filter = st.selectbox(
+            "Filter by Status:",
+            ["All", "Active", "Inactive"],
+            key="recurring_status_filter"
+        )
+    with col4:
+        if st.button("🔄 Refresh", key="refresh_recurring"):
+            st.rerun()
+    
+    filters = {}
+    if user_filter != "All":
+        filters['user_id'] = user_filter
+    if status_filter == "Active":
+        filters['is_active'] = True
+    elif status_filter == "Inactive":
+        filters['is_active'] = False
+    
+    df_recurring = get_table_data(RecurringTransaction, filters)
+    
+    if not df_recurring.empty:
+        # Summary metrics
+        col1, col2, col3, col4, col5 = st.columns(5)
+        with col1:
+            active_count = len(df_recurring[df_recurring.get('is_active', True) == True])
+            st.metric("Active", active_count)
+        with col2:
+            inactive_count = len(df_recurring[df_recurring.get('is_active', True) == False])
+            st.metric("Inactive", inactive_count)
+        with col3:
+            if 'amount' in df_recurring.columns:
+                amounts = pd.to_numeric(df_recurring['amount'], errors='coerce')
+                total_amount = float(amounts.sum()) if not amounts.isna().all() else 0.0
+            else:
+                total_amount = 0.0
+            st.metric("Total Amount", f"€{total_amount:,.2f}")
+        with col4:
+            if 'frequency' in df_recurring.columns:
+                frequency_counts = df_recurring['frequency'].value_counts()
+                most_common_freq = frequency_counts.index[0] if len(frequency_counts) > 0 else "N/A"
+                st.metric("Most Common Frequency", most_common_freq.title())
+            else:
+                st.metric("Most Common Frequency", "N/A")
+        with col5:
+            if 'importance' in df_recurring.columns:
+                importance_values = pd.to_numeric(df_recurring['importance'], errors='coerce')
+                importance_avg = float(importance_values.mean()) if not importance_values.isna().all() else 0.0
+                st.metric("Avg Importance", f"{importance_avg:.1f}/5")
+            else:
+                st.metric("Avg Importance", "N/A")
+        
+        # Frequency breakdown
+        if 'frequency' in df_recurring.columns:
+            st.markdown("### Frequency Breakdown")
+            frequency_counts = df_recurring['frequency'].value_counts()
+            freq_cols = st.columns(len(frequency_counts))
+            for idx, (freq, count) in enumerate(frequency_counts.items()):
+                with freq_cols[idx]:
+                    st.metric(f"{freq.title()}", count)
+        
+        # Importance distribution
+        if 'importance' in df_recurring.columns:
+            st.markdown("### Importance Distribution")
+            # Convert to numeric for proper sorting
+            df_recurring['importance_numeric'] = pd.to_numeric(df_recurring['importance'], errors='coerce')
+            importance_counts = df_recurring['importance_numeric'].value_counts().sort_index()
+            importance_cols = st.columns(len(importance_counts))
+            for idx, (importance, count) in enumerate(importance_counts.items()):
+                with importance_cols[idx]:
+                    st.metric(f"Level {int(importance)}", count)
+        
+        # Get categories for display
+        df_categories_for_recurring = get_table_data(Category)
+        if not df_categories_for_recurring.empty and 'category_id' in df_recurring.columns:
+            category_id_to_name = {cat_id: cat_name for cat_id, cat_name in
+                                 zip(df_categories_for_recurring['id'], df_categories_for_recurring['name'])}
+            df_recurring['category_name'] = df_recurring['category_id'].map(category_id_to_name)
+            # Reorder columns to show category_name near category_id
+            cols = [col for col in df_recurring.columns if col != 'category_name']
+            category_id_idx = cols.index('category_id') if 'category_id' in cols else len(cols)
+            cols.insert(category_id_idx + 1, 'category_name')
+            df_recurring = df_recurring[cols]
+        
+        st.dataframe(
+            df_recurring,
+            width='stretch',
+            hide_index=True,
+            height=400
+        )
+        
+        # Recurring transaction details
+        if len(df_recurring) > 0:
+            st.markdown("### Recurring Transaction Details")
+            selected_recurring = st.selectbox(
+                "Select a recurring transaction to view details:",
+                df_recurring['id'].tolist(),
+                key="recurring_select",
+                format_func=lambda x: df_recurring[df_recurring['id'] == x]['name'].iloc[0] if len(df_recurring[df_recurring['id'] == x]) > 0 else str(x)
+            )
+            
+            if selected_recurring:
+                recurring_data = df_recurring[df_recurring['id'] == selected_recurring].iloc[0]
+                
+                col1, col2, col3, col4, col5 = st.columns(5)
+                with col1:
+                    st.metric("Name", recurring_data.get('name', 'N/A'))
+                with col2:
+                    if 'amount' in recurring_data:
+                        amount_val = pd.to_numeric(recurring_data.get('amount'), errors='coerce')
+                        currency = recurring_data.get('currency', 'EUR')
+                        st.metric("Amount", f"{currency} {amount_val:,.2f}" if pd.notna(amount_val) else "N/A")
+                    else:
+                        st.metric("Amount", "N/A")
+                with col3:
+                    st.metric("Frequency", recurring_data.get('frequency', 'N/A').title())
+                with col4:
+                    importance_val = recurring_data.get('importance', 'N/A')
+                    if importance_val != 'N/A':
+                        importance_num = pd.to_numeric(importance_val, errors='coerce')
+                        importance_display = f"{int(importance_num)}/5" if pd.notna(importance_num) else "N/A"
+                    else:
+                        importance_display = "N/A"
+                    st.metric("Importance", importance_display)
+                with col5:
+                    is_active = recurring_data.get('is_active', False)
+                    st.metric("Status", "✓ Active" if is_active else "✗ Inactive")
+                
+                if 'merchant' in recurring_data and pd.notna(recurring_data.get('merchant')):
+                    st.markdown(f"**Merchant:** {recurring_data.get('merchant')}")
+                if 'description' in recurring_data and pd.notna(recurring_data.get('description')):
+                    st.markdown(f"**Description:** {recurring_data.get('description')}")
+                if 'category_name' in recurring_data and pd.notna(recurring_data.get('category_name')):
+                    st.markdown(f"**Category:** {recurring_data.get('category_name')}")
+                
+                # Show linked transactions count
+                if 'id' in recurring_data:
+                    linked_transactions = get_table_data(Transaction, {'recurring_transaction_id': selected_recurring})
+                    linked_count = len(linked_transactions) if not linked_transactions.empty else 0
+                    st.metric("Linked Transactions", linked_count)
+    else:
+        st.info("No recurring transactions found in the database.")
 
 # Footer
 st.markdown("---")

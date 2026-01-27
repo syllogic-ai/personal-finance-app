@@ -116,6 +116,7 @@ class Transaction(Base):
     pending = Column(Boolean, default=False)
     categorization_instructions = Column(Text)  # User instructions for AI categorization
     enrichment_data = Column(JSONB)  # Enriched merchant info, logos, etc.
+    recurring_transaction_id = Column(UUID(as_uuid=True), ForeignKey("recurring_transactions.id", ondelete="SET NULL"), nullable=True, index=True)  # Link to recurring transaction label
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -124,6 +125,7 @@ class Transaction(Base):
     account = relationship("Account", back_populates="transactions")
     category = relationship("Category", foreign_keys=[category_id], back_populates="transactions")
     category_system = relationship("Category", foreign_keys=[category_system_id], back_populates="system_transactions")
+    recurring_transaction = relationship("RecurringTransaction", back_populates="linked_transactions")
 
     # Indexes and constraints
     __table_args__ = (
@@ -132,7 +134,42 @@ class Transaction(Base):
         Index("idx_transactions_booked_at", "booked_at"),
         Index("idx_transactions_category", "category_id"),
         Index("idx_transactions_category_system", "category_system_id"),
+        Index("idx_transactions_recurring", "recurring_transaction_id"),
         UniqueConstraint("account_id", "external_id", name="transactions_account_external_id"),
+    )
+
+
+class RecurringTransaction(Base):
+    """
+    Recurring Transaction model matching Drizzle schema.
+    Stores recurring transaction labels (subscriptions, bills, etc.) for automatic linking.
+    """
+    __tablename__ = "recurring_transactions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String(255), nullable=False)
+    merchant = Column(String(255), nullable=True)
+    amount = Column(Numeric(15, 2), nullable=False)
+    currency = Column(String(3), default="EUR")
+    category_id = Column(UUID(as_uuid=True), ForeignKey("categories.id"), nullable=True, index=True)
+    importance = Column(Integer, nullable=False, default=3)  # 1-5 scale
+    frequency = Column(String(20), nullable=False)  # monthly, weekly, yearly, quarterly, biweekly
+    is_active = Column(Boolean, default=True)
+    description = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    user = relationship("User", back_populates="recurring_transactions")
+    category = relationship("Category")
+    linked_transactions = relationship("Transaction", back_populates="recurring_transaction")
+
+    # Indexes and constraints
+    __table_args__ = (
+        Index("idx_recurring_transactions_user", "user_id"),
+        Index("idx_recurring_transactions_category", "category_id"),
+        Index("idx_recurring_transactions_active", "is_active"),
     )
 
 
@@ -408,6 +445,7 @@ class User(Base):
     accounts = relationship("Account", back_populates="user", cascade="all, delete-orphan")
     categories = relationship("Category", back_populates="user", cascade="all, delete-orphan")
     transactions = relationship("Transaction", back_populates="user", cascade="all, delete-orphan")
+    recurring_transactions = relationship("RecurringTransaction", back_populates="user", cascade="all, delete-orphan")
     categorization_rules = relationship("CategorizationRule", back_populates="user", cascade="all, delete-orphan")
     bank_connections = relationship("BankConnection", back_populates="user", cascade="all, delete-orphan")
     csv_imports = relationship("CsvImport", back_populates="user", cascade="all, delete-orphan")

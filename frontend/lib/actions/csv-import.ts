@@ -382,12 +382,25 @@ export async function previewImportedTransactions(
         const cleaned = dateStr.replace(/['"]/g, "").trim();
         parsedDate = new Date(cleaned);
         if (isNaN(parsedDate.getTime())) {
-          // Try DD/MM/YYYY format
-          const parts = cleaned.split(/[\/\-\.]/);
-          if (parts.length === 3) {
-            const [day, month, year] = parts;
-            parsedDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+          // Try YYYYMMDD format (e.g., 20240727)
+          if (/^\d{8}$/.test(cleaned)) {
+            const year = parseInt(cleaned.substring(0, 4));
+            const month = parseInt(cleaned.substring(4, 6)) - 1;
+            const day = parseInt(cleaned.substring(6, 8));
+            parsedDate = new Date(year, month, day);
           }
+          // Try DD/MM/YYYY format
+          else {
+            const parts = cleaned.split(/[\/\-\.]/);
+            if (parts.length === 3) {
+              const [day, month, year] = parts;
+              parsedDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+            }
+          }
+        }
+        // Validate the final parsed date
+        if (isNaN(parsedDate.getTime())) {
+          continue; // Skip rows with invalid dates
         }
       } catch {
         continue; // Skip invalid rows
@@ -557,44 +570,63 @@ export async function finalizeImport(
       calculate_balances: true,
     };
 
-    // Call backend API
+    // Call backend API with 10-minute timeout
     const backendUrl = process.env.BACKEND_API_URL || "http://localhost:8000";
-    const response = await fetch(`${backendUrl}/api/transactions/import`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(backendRequest),
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10 * 60 * 1000); // 10 minutes
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("Backend import failed:", response.status, errorText);
-      return { success: false, error: `Backend import failed: ${response.status} - ${errorText}` };
+    try {
+      const response = await fetch(`${backendUrl}/api/transactions/import`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(backendRequest),
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Backend import failed:", response.status, errorText);
+        return { success: false, error: `Backend import failed: ${response.status} - ${errorText}` };
+      }
+
+      const backendResponse: BackendTransactionImportResponse = await response.json();
+
+      if (!backendResponse.success) {
+        return { success: false, error: backendResponse.message };
+      }
+
+      // Update import session
+      await db
+        .update(csvImports)
+        .set({
+          status: "completed",
+          importedRows: backendResponse.transactions_inserted,
+          completedAt: new Date(),
+        })
+        .where(eq(csvImports.id, importId));
+
+      // Revalidate all relevant paths to ensure UI updates
+      revalidatePath("/transactions");
+      revalidatePath("/");
+      revalidatePath("/dashboard");
+      revalidatePath("/settings");
+      
+      return {
+        success: true,
+        importedCount: backendResponse.transactions_inserted,
+        categorizationSummary: backendResponse.categorization_summary,
+      };
+    } catch (fetchError) {
+      clearTimeout(timeoutId);
+      if (fetchError instanceof Error && fetchError.name === "AbortError") {
+        console.error("Import timeout after 10 minutes");
+        return { success: false, error: "Import timeout: The operation took too long to complete. Please try with fewer transactions." };
+      }
+      throw fetchError; // Re-throw to outer catch
     }
-
-    const backendResponse: BackendTransactionImportResponse = await response.json();
-
-    if (!backendResponse.success) {
-      return { success: false, error: backendResponse.message };
-    }
-
-    // Update import session
-    await db
-      .update(csvImports)
-      .set({
-        status: "completed",
-        importedRows: backendResponse.transactions_inserted,
-        completedAt: new Date(),
-      })
-      .where(eq(csvImports.id, importId));
-
-    revalidatePath("/transactions");
-    return {
-      success: true,
-      importedCount: backendResponse.transactions_inserted,
-      categorizationSummary: backendResponse.categorization_summary,
-    };
   } catch (error) {
     console.error("Failed to finalize import:", error);
     return { success: false, error: error instanceof Error ? error.message : "Failed to import transactions" };

@@ -19,7 +19,6 @@ import {
 } from "@tanstack/react-table";
 
 import {
-  Table,
   TableBody,
   TableCell,
   TableHead,
@@ -94,9 +93,9 @@ export function DataTable<TData, TValue>({
   return (
     <div className={cn("w-full", wrapperClassName)}>
       {toolbar && <div className="shrink-0 mb-4">{toolbar(table)}</div>}
-      <div className={cn("overflow-auto rounded-md border", tableContainerClassName)}>
-        <Table className="w-full table-fixed">
-          <TableHeader className="bg-muted sticky top-0 z-10">
+      <div className={cn("overflow-auto rounded-md border relative", tableContainerClassName)}>
+        <table className="w-full table-fixed caption-bottom text-xs">
+          <TableHeader className="bg-muted sticky top-0 z-20 shadow-sm">
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id} className="border-b hover:bg-transparent">
                 {headerGroup.headers.map((header, index) => {
@@ -110,7 +109,7 @@ export function DataTable<TData, TValue>({
                         position: "relative",
                       }}
                       className={cn(
-                        "font-medium",
+                        "font-medium bg-muted",
                         enableColumnResizing && "select-none"
                       )}
                     >
@@ -177,7 +176,7 @@ export function DataTable<TData, TValue>({
               </TableRow>
             )}
           </TableBody>
-        </Table>
+        </table>
       </div>
       {pagination && <div className="shrink-0 mt-4">{pagination(table)}</div>}
       {bulkActions && bulkActions(table)}

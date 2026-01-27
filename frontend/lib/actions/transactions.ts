@@ -347,6 +347,13 @@ export interface TransactionWithRelations {
     color: string | null;
     icon: string | null;
   } | null;
+  recurringTransactionId: string | null;
+  recurringTransaction: {
+    id: string;
+    name: string;
+    merchant: string | null;
+    frequency: string;
+  } | null;
   bookedAt: Date;
   pending: boolean | null;
   transactionType: string | null;
@@ -366,6 +373,7 @@ export async function getTransactions(): Promise<TransactionWithRelations[]> {
       account: true,
       category: true,
       categorySystem: true,
+      recurringTransaction: true,
     },
   });
 
@@ -398,6 +406,15 @@ export async function getTransactions(): Promise<TransactionWithRelations[]> {
           name: tx.categorySystem.name,
           color: tx.categorySystem.color,
           icon: tx.categorySystem.icon,
+        }
+      : null,
+    recurringTransactionId: tx.recurringTransactionId,
+    recurringTransaction: tx.recurringTransaction
+      ? {
+          id: tx.recurringTransaction.id,
+          name: tx.recurringTransaction.name,
+          merchant: tx.recurringTransaction.merchant,
+          frequency: tx.recurringTransaction.frequency,
         }
       : null,
     bookedAt: tx.bookedAt,
