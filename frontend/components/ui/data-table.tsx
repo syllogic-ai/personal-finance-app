@@ -38,6 +38,7 @@ interface DataTableProps<TData, TValue> {
   toolbar?: (table: TanStackTable<TData>) => React.ReactNode;
   pagination?: (table: TanStackTable<TData>) => React.ReactNode;
   bulkActions?: (table: TanStackTable<TData>) => React.ReactNode;
+  footer?: React.ReactNode;
   wrapperClassName?: string;
   tableContainerClassName?: string;
 }
@@ -53,6 +54,7 @@ export function DataTable<TData, TValue>({
   toolbar,
   pagination,
   bulkActions,
+  footer,
   wrapperClassName,
   tableContainerClassName,
 }: DataTableProps<TData, TValue>) {
@@ -178,6 +180,7 @@ export function DataTable<TData, TValue>({
           </TableBody>
         </table>
       </div>
+      {footer && <div className="shrink-0">{footer}</div>}
       {pagination && <div className="shrink-0 mt-4">{pagination(table)}</div>}
       {bulkActions && bulkActions(table)}
     </div>
