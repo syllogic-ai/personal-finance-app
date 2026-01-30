@@ -105,7 +105,9 @@ export default function CsvImportPage() {
               ) : (
                 <Select value={selectedAccountId} onValueChange={(v) => v && setSelectedAccountId(v)}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select an account" />
+                    <SelectValue placeholder="Select an account">
+                      {accounts.find((a) => a.id === selectedAccountId)?.name ?? "Select an account"}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {accounts.map((account) => (

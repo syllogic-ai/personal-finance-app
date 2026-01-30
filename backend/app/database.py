@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     """
     database_url: str = os.getenv(
         "DATABASE_URL",
-        "postgresql+psycopg://financeuser:financepass@localhost:5432/finance_db"
+        "postgresql+psycopg://financeuser:financepass@localhost:5433/finance_db"
     )
 
     class Config:

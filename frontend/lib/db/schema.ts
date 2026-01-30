@@ -153,6 +153,7 @@ export const transactions = pgTable(
     pending: boolean("pending").default(false),
     categorizationInstructions: text("categorization_instructions"), // User instructions for AI categorization
     enrichmentData: jsonb("enrichment_data"), // Enriched merchant info, logos, etc.
+    recurringTransactionId: uuid("recurring_transaction_id").references(() => recurringTransactions.id, { onDelete: "set null" }), // Link to recurring transaction label
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
@@ -162,7 +163,34 @@ export const transactions = pgTable(
     index("idx_transactions_booked_at").on(table.bookedAt),
     index("idx_transactions_category").on(table.categoryId),
     index("idx_transactions_category_system").on(table.categorySystemId),
+    index("idx_transactions_recurring").on(table.recurringTransactionId),
     unique("transactions_account_external_id").on(table.accountId, table.externalId),
+  ]
+);
+
+export const recurringTransactions = pgTable(
+  "recurring_transactions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: text("user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    name: varchar("name", { length: 255 }).notNull(),
+    merchant: varchar("merchant", { length: 255 }),
+    amount: decimal("amount", { precision: 15, scale: 2 }).notNull(),
+    currency: char("currency", { length: 3 }).default("EUR"),
+    categoryId: uuid("category_id").references(() => categories.id),
+    importance: integer("importance").notNull().default(3), // 1-5 scale
+    frequency: varchar("frequency", { length: 20 }).notNull(), // monthly, weekly, yearly, quarterly, biweekly
+    isActive: boolean("is_active").default(true),
+    description: text("description"),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => [
+    index("idx_recurring_transactions_user").on(table.userId),
+    index("idx_recurring_transactions_category").on(table.categoryId),
+    index("idx_recurring_transactions_active").on(table.isActive),
   ]
 );
 
@@ -284,6 +312,38 @@ export const exchangeRates = pgTable(
   ]
 );
 
+export const subscriptionSuggestions = pgTable(
+  "subscription_suggestions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: text("user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+
+    // Suggestion details
+    suggestedName: varchar("suggested_name", { length: 255 }).notNull(),
+    suggestedMerchant: varchar("suggested_merchant", { length: 255 }),
+    suggestedAmount: decimal("suggested_amount", { precision: 15, scale: 2 }).notNull(),
+    currency: char("currency", { length: 3 }).default("EUR").notNull(),
+    detectedFrequency: varchar("detected_frequency", { length: 20 }).notNull(), // weekly, biweekly, monthly, quarterly, yearly
+    confidence: integer("confidence").notNull(), // 0-100
+
+    // Linked transactions (stored as JSON array of IDs)
+    matchedTransactionIds: text("matched_transaction_ids").notNull(), // JSON array
+
+    // Status
+    status: varchar("status", { length: 20 }).default("pending").notNull(), // pending, approved, dismissed
+
+    // Timestamps
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("idx_subscription_suggestions_user").on(table.userId),
+    index("idx_subscription_suggestions_status").on(table.status),
+  ]
+);
+
 export const accountBalances = pgTable(
   "account_balances",
   {
@@ -319,6 +379,7 @@ export const usersRelations = relations(users, ({ many }) => ({
   csvImports: many(csvImports),
   properties: many(properties),
   vehicles: many(vehicles),
+  subscriptionSuggestions: many(subscriptionSuggestions),
 }));
 
 export const sessionsRelations = relations(sessions, ({ one }) => ({
@@ -386,6 +447,23 @@ export const transactionsRelations = relations(transactions, ({ one }) => ({
     references: [categories.id],
     relationName: "transactionCategorySystem",
   }),
+  recurringTransaction: one(recurringTransactions, {
+    fields: [transactions.recurringTransactionId],
+    references: [recurringTransactions.id],
+    relationName: "recurringTransactionLink",
+  }),
+}));
+
+export const recurringTransactionsRelations = relations(recurringTransactions, ({ one, many }) => ({
+  user: one(users, {
+    fields: [recurringTransactions.userId],
+    references: [users.id],
+  }),
+  category: one(categories, {
+    fields: [recurringTransactions.categoryId],
+    references: [categories.id],
+  }),
+  linkedTransactions: many(transactions),
 }));
 
 export const categorizationRulesRelations = relations(categorizationRules, ({ one }) => ({
@@ -433,6 +511,13 @@ export const vehiclesRelations = relations(vehicles, ({ one }) => ({
 
 export const exchangeRatesRelations = relations(exchangeRates, () => ({}));
 
+export const subscriptionSuggestionsRelations = relations(subscriptionSuggestions, ({ one }) => ({
+  user: one(users, {
+    fields: [subscriptionSuggestions.userId],
+    references: [users.id],
+  }),
+}));
+
 // ============================================================================
 // Type Exports
 // ============================================================================
@@ -451,6 +536,9 @@ export type NewCategory = typeof categories.$inferInsert;
 
 export type Transaction = typeof transactions.$inferSelect;
 export type NewTransaction = typeof transactions.$inferInsert;
+
+export type RecurringTransaction = typeof recurringTransactions.$inferSelect;
+export type NewRecurringTransaction = typeof recurringTransactions.$inferInsert;
 
 export type CategorizationRule = typeof categorizationRules.$inferSelect;
 export type NewCategorizationRule = typeof categorizationRules.$inferInsert;
@@ -472,3 +560,6 @@ export type NewExchangeRate = typeof exchangeRates.$inferInsert;
 
 export type AccountBalance = typeof accountBalances.$inferSelect;
 export type NewAccountBalance = typeof accountBalances.$inferInsert;
+
+export type SubscriptionSuggestion = typeof subscriptionSuggestions.$inferSelect;
+export type NewSubscriptionSuggestion = typeof subscriptionSuggestions.$inferInsert;

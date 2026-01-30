@@ -283,11 +283,28 @@ class CategoryMatcher:
             Dictionary mapping category name (lowercase) to Category object
         """
         if self._category_cache is None:
+            logger.debug(f"[CATEGORY_MATCHER] Loading categories for user_id: {self.user_id}")
             categories = self.db.query(Category).filter(Category.user_id == self.user_id).all()
+            logger.debug(f"[CATEGORY_MATCHER] Found {len(categories)} categories for user_id: {self.user_id}")
+            
             if not categories:
+                # Debug: Check if there are any categories in the database at all
+                all_categories_count = self.db.query(Category).count()
+                # Get distinct user_ids from categories table to see what's actually stored
+                distinct_user_ids = self.db.query(Category.user_id).distinct().all()
+                user_ids_list = [str(uid[0]) for uid in distinct_user_ids] if distinct_user_ids else []
+                
+                logger.warning(
+                    f"[CATEGORY_MATCHER] No categories found for user_id '{self.user_id}'. "
+                    f"Total categories in database: {all_categories_count}. "
+                    f"User IDs with categories: {user_ids_list}. "
+                    f"This may indicate categories weren't saved during onboarding or user_id mismatch."
+                )
                 # Return empty dict if no categories exist
                 self._category_cache = {}
             else:
+                category_names = [cat.name for cat in categories]
+                logger.debug(f"[CATEGORY_MATCHER] Loaded categories: {', '.join(category_names)}")
                 self._category_cache = {cat.name.lower(): cat for cat in categories}
         return self._category_cache
     

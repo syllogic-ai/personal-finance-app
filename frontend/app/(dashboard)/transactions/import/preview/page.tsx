@@ -101,7 +101,10 @@ function PreviewPageContent() {
       const result = await finalizeImport(importId, selectedIndices);
       if (result.success) {
         toast.success(`Successfully imported ${result.importedCount} transactions`);
-        router.push("/transactions");
+        // Navigate to transactions page with cache-busting query param to ensure fresh data
+        router.push(`/transactions?refresh=${Date.now()}`);
+        // Also refresh the router to ensure cache is cleared
+        router.refresh();
       } else {
         toast.error(result.error || "Failed to import transactions");
       }

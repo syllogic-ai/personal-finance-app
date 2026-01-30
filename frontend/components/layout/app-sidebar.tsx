@@ -9,6 +9,7 @@ import {
   RiWalletLine,
   RiWallet3Line,
   RiArrowUpDownLine,
+  RiLoopRightLine,
 } from "@remixicon/react";
 import { signOut, useSession } from "@/lib/auth-client";
 import {
@@ -42,6 +43,11 @@ const navItems = [
     title: "Transactions",
     href: "/transactions",
     icon: RiExchangeLine,
+  },
+  {
+    title: "Subscriptions",
+    href: "/subscriptions",
+    icon: RiLoopRightLine,
   },
   {
     title: "Assets",
