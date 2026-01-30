@@ -236,7 +236,7 @@ export const transactionColumns: ColumnDef<TransactionWithRelations>[] = [
   },
   {
     accessorKey: "recurringTransaction",
-    header: "Recurring",
+    header: "Subscription",
     cell: ({ row, column }) => {
       const recurring = row.original.recurringTransaction;
       const columnSize = column.getSize();
@@ -262,7 +262,7 @@ export const transactionColumns: ColumnDef<TransactionWithRelations>[] = [
     size: 180,
     filterFn: (row, id, filterValue) => {
       if (!filterValue || !Array.isArray(filterValue) || filterValue.length === 0) return true;
-      if (filterValue.includes("no_recurring") && !row.original.recurringTransaction) return true;
+      if (filterValue.includes("no_subscription") && !row.original.recurringTransaction) return true;
       if (row.original.recurringTransaction) {
         return filterValue.includes(row.original.recurringTransaction.id);
       }

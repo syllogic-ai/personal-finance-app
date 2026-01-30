@@ -45,8 +45,8 @@ const navItems = [
     icon: RiExchangeLine,
   },
   {
-    title: "Recurring",
-    href: "/recurring-transactions",
+    title: "Subscriptions",
+    href: "/subscriptions",
     icon: RiLoopRightLine,
   },
   {

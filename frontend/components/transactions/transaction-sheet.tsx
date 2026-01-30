@@ -34,8 +34,10 @@ import { cn, formatDate, formatAmount } from "@/lib/utils";
 import type { TransactionWithRelations } from "@/lib/actions/transactions";
 import { updateTransactionCategory, deleteBalancingTransaction } from "@/lib/actions/transactions";
 import type { CategoryDisplay } from "@/types";
-import { RiDeleteBinLine } from "@remixicon/react";
+import { RiDeleteBinLine, RiLoopRightLine } from "@remixicon/react";
 import { toast } from "sonner";
+import { SubscriptionDetectionDialog } from "./subscription-detection-dialog";
+import { SubscriptionLinkedDialog } from "./subscription-linked-dialog";
 
 interface TransactionSheetProps {
   transaction: TransactionWithRelations | null;
@@ -59,8 +61,12 @@ export function TransactionSheet({
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isReverting, setIsReverting] = useState(false);
+  const [showSubscriptionDialog, setShowSubscriptionDialog] = useState(false);
+  const [showLinkedSubscriptionDialog, setShowLinkedSubscriptionDialog] = useState(false);
 
   const isBalancingTransfer = transaction?.category?.name === "Balancing Transfer";
+  const isExpense = transaction?.amount ? parseFloat(String(transaction.amount)) < 0 : false;
+  const hasLinkedSubscription = !!transaction?.recurringTransactionId;
 
   const handleRevertBalancingTransfer = async () => {
     if (!transaction) return;
@@ -124,6 +130,21 @@ export function TransactionSheet({
       }
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleSubscriptionSuccess = () => {
+    // Refresh the transaction to show updated subscription link
+    onOpenChange(false);
+    // Force a page refresh to reload transaction data
+    window.location.reload();
+  };
+
+  const handleSubscriptionButtonClick = () => {
+    if (hasLinkedSubscription) {
+      setShowLinkedSubscriptionDialog(true);
+    } else {
+      setShowSubscriptionDialog(true);
     }
   };
 
@@ -261,8 +282,22 @@ export function TransactionSheet({
           </div>
         </div>
 
-        {/* Footer with Save Button and Revert Option */}
+        {/* Footer with Save Button, Subscription Button and Revert Option */}
         <div className="mt-6 pt-4 border-t space-y-3">
+          {/* Subscription button - only show for expenses and not balancing transfers */}
+          {isExpense && !isBalancingTransfer && (
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={handleSubscriptionButtonClick}
+            >
+              <RiLoopRightLine className="h-4 w-4 mr-2" />
+              {hasLinkedSubscription
+                ? `Linked: ${transaction.recurringTransaction?.name}`
+                : "Mark as Subscription"}
+            </Button>
+          )}
+
           <Button
             onClick={handleSave}
             disabled={!hasChanges || isSaving}
@@ -309,6 +344,23 @@ export function TransactionSheet({
           )}
         </div>
       </SheetContent>
+
+      {/* Subscription Detection Dialog */}
+      <SubscriptionDetectionDialog
+        transaction={transaction}
+        open={showSubscriptionDialog}
+        onOpenChange={setShowSubscriptionDialog}
+        onSuccess={handleSubscriptionSuccess}
+        categories={categories}
+      />
+
+      {/* Linked Subscription Dialog */}
+      <SubscriptionLinkedDialog
+        transaction={transaction}
+        open={showLinkedSubscriptionDialog}
+        onOpenChange={setShowLinkedSubscriptionDialog}
+        onSuccess={handleSubscriptionSuccess}
+      />
     </Sheet>
   );
 }

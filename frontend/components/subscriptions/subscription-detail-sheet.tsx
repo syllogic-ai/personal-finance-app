@@ -121,9 +121,22 @@ export function SubscriptionDetailSheet({
       const result = await matchTransactionsToSubscription(subscription.id);
 
       if (result.success) {
-        toast.success(
-          `Matched ${result.matchedCount || 0} transaction(s) to "${subscription.name}"`
-        );
+        const matchedCount = result.matchedCount || 0;
+
+        if (matchedCount === 0) {
+          // Provide context based on whether there are already linked transactions
+          if (linkedTransactions.length > 0) {
+            toast.info(
+              `All ${linkedTransactions.length} transaction(s) are already linked to "${subscription.name}"`
+            );
+          } else {
+            toast.info("No matching transactions found");
+          }
+        } else {
+          toast.success(
+            `Matched ${matchedCount} new transaction(s) to "${subscription.name}"`
+          );
+        }
         // Reload data to show new matches
         await loadData();
         onRefresh();

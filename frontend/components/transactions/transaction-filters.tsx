@@ -449,11 +449,11 @@ export function TransactionFilters({ table, categories, accounts, action }: Tran
     });
   });
 
-  // Recurring transaction tags
+  // Subscription tags
   recurringTransactionValues.forEach((id) => {
-    if (id === "no_recurring") {
+    if (id === "no_subscription") {
       filterTags.push({
-        label: "No Recurring",
+        label: "No Subscription",
         onRemove: () => recurringTransactionColumn?.setFilterValue(recurringTransactionValues.filter((v) => v !== id)),
       });
     } else {
@@ -574,10 +574,10 @@ export function TransactionFilters({ table, categories, accounts, action }: Tran
               />
 
               <MultiSelectFilter
-                label="Recurring Transaction"
+                label="Subscription"
                 icon={<RiRepeatLine className="h-4 w-4" />}
                 options={[
-                  { id: "no_recurring", label: "No Recurring" },
+                  { id: "no_subscription", label: "No Subscription" },
                   ...recurringTransactionOptions,
                 ]}
                 selectedIds={recurringTransactionValues}
