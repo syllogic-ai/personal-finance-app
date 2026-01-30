@@ -39,7 +39,7 @@ interface SubscriptionFormDialogProps {
   subscription?: RecurringTransaction | null;
   suggestion?: SubscriptionSuggestionWithMeta | null;
   categories: Array<{ id: string; name: string; color: string | null }>;
-  onSuccess?: (suggestionId?: string) => void;
+  onSuccess?: (suggestionId?: string, newSubscription?: RecurringTransaction) => void;
 }
 
 const frequencyOptions = [
@@ -158,7 +158,7 @@ export function SubscriptionFormDialog({
             `Subscription created and ${result.linkedCount || 0} transaction(s) linked`
           );
           onOpenChange(false);
-          onSuccess?.(suggestion.id);
+          onSuccess?.(suggestion.id, result.subscription as RecurringTransaction);
         } else {
           toast.error(result.error || "Failed to verify");
         }
@@ -344,17 +344,7 @@ export function SubscriptionFormDialog({
               Cancel
             </Button>
             <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting
-                ? isEditMode
-                  ? "Updating..."
-                  : isVerifyMode
-                  ? "Verifying..."
-                  : "Creating..."
-                : isEditMode
-                ? "Update"
-                : isVerifyMode
-                ? "Confirm & Create"
-                : "Create"}
+              {isSubmitting ? "Saving..." : "Confirm"}
             </Button>
           </DialogFooter>
         </form>

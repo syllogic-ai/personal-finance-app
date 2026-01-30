@@ -16,7 +16,6 @@ import {
   RiDeleteBinLine,
   RiCheckLine,
   RiCloseLine,
-  RiLightbulbLine,
 } from "@remixicon/react";
 import type { SubscriptionOrSuggestion } from "./subscriptions-client";
 
@@ -63,28 +62,23 @@ export const createSubscriptionColumns = ({
       const matchCount = row.original.matchCount;
 
       return (
-        <div className={!isSuggestion && !isActive ? "opacity-50" : ""}>
-          <div className="flex items-center gap-2">
-            {isSuggestion && (
-              <RiLightbulbLine className="h-4 w-4 text-yellow-500 flex-shrink-0" />
-            )}
-            <div>
-              <div className="font-medium">{row.getValue("name")}</div>
-              {merchant && (
-                <div className="text-sm text-muted-foreground">{merchant}</div>
-              )}
-              {isSuggestion && (
-                <div className="text-xs text-muted-foreground">
-                  {confidence}% confidence
-                  {matchCount && ` | ${matchCount} transaction${matchCount !== 1 ? "s" : ""}`}
-                </div>
-              )}
+        <div className={`min-w-0 max-w-full ${!isSuggestion && !isActive ? "opacity-50" : ""}`}>
+          <div className="font-medium truncate">{row.getValue("name")}</div>
+          {merchant && (
+            <div className="text-sm text-muted-foreground truncate">{merchant}</div>
+          )}
+          {isSuggestion && (
+            <div className="text-xs text-muted-foreground truncate">
+              {confidence}% confidence
+              {matchCount && ` | ${matchCount} txn${matchCount !== 1 ? "s" : ""}`}
             </div>
-          </div>
+          )}
         </div>
       );
     },
-    size: 200,
+    size: 220,
+    minSize: 150,
+    maxSize: 280,
   },
   {
     accessorKey: "amount",
@@ -95,12 +89,14 @@ export const createSubscriptionColumns = ({
       const isSuggestion = row.original.isSuggestion;
       const isActive = row.original.isActive;
       return (
-        <span className={`font-mono ${!isSuggestion && !isActive ? "opacity-50" : ""}`}>
+        <span className={`font-mono whitespace-nowrap ${!isSuggestion && !isActive ? "opacity-50" : ""}`}>
           {amount.toFixed(2)} {currency}
         </span>
       );
     },
-    size: 120,
+    size: 110,
+    minSize: 100,
+    maxSize: 130,
   },
   {
     accessorKey: "category",
@@ -131,7 +127,9 @@ export const createSubscriptionColumns = ({
         </span>
       );
     },
-    size: 160,
+    size: 120,
+    minSize: 100,
+    maxSize: 150,
   },
   {
     accessorKey: "importance",
@@ -165,7 +163,9 @@ export const createSubscriptionColumns = ({
         </div>
       );
     },
-    size: 100,
+    size: 90,
+    minSize: 80,
+    maxSize: 110,
   },
   {
     accessorKey: "frequency",
@@ -185,23 +185,20 @@ export const createSubscriptionColumns = ({
       );
     },
     size: 110,
+    minSize: 90,
+    maxSize: 130,
   },
   {
     accessorKey: "isActive",
     header: "Status",
     cell: ({ row }) => {
+      const isActive = row.getValue("isActive") as boolean;
       const isSuggestion = row.original.isSuggestion;
 
       if (isSuggestion) {
-        return (
-          <Badge variant="outline" className="bg-yellow-500/10 text-yellow-700 border-yellow-300">
-            <RiLightbulbLine className="mr-1 h-3 w-3" />
-            Suggested
-          </Badge>
-        );
+        return null; // Verify button is shown in actions column
       }
 
-      const isActive = row.getValue("isActive") as boolean;
       return isActive ? (
         <Badge variant="default" className="bg-green-500/10 text-green-700">
           <RiCheckLine className="mr-1 h-3 w-3" />
@@ -214,7 +211,9 @@ export const createSubscriptionColumns = ({
         </Badge>
       );
     },
-    size: 100,
+    size: 90,
+    minSize: 80,
+    maxSize: 100,
   },
   {
     id: "actions",
@@ -285,7 +284,9 @@ export const createSubscriptionColumns = ({
         </div>
       );
     },
-    size: 120,
+    size: 130,
+    minSize: 100,
+    maxSize: 150,
     enableSorting: false,
     enableHiding: false,
   },

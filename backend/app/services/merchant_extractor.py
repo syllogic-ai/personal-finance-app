@@ -92,6 +92,18 @@ class MerchantExtractor:
         'swapfiets': 'Swapfiets',
         'ns.nl': 'NS',
         'ns ': 'NS',
+        'ns reizigers': 'NS',
+        'ns groep': 'NS',
+        'ov-chipkaart': 'OV-chipkaart',
+        'ovchipkaart': 'OV-chipkaart',
+        'translink': 'Translink',
+        'gvb': 'GVB',
+        'ret': 'RET',
+        'htm': 'HTM',
+        'arriva': 'Arriva',
+        'connexxion': 'Connexxion',
+        'ebs': 'EBS',
+        'flixbus': 'FlixBus',
 
         # Food & Delivery
         'deliveroo': 'Deliveroo',
@@ -106,7 +118,7 @@ class MerchantExtractor:
         'mcdonalds': "McDonald's",
         "mcdonald's": "McDonald's",
 
-        # Utilities
+        # Utilities & Telecom
         'vattenfall': 'Vattenfall',
         'essent': 'Essent',
         'eneco': 'Eneco',
@@ -116,6 +128,9 @@ class MerchantExtractor:
         't-mobile': 'T-Mobile',
         'vodafone': 'Vodafone',
         'lebara': 'Lebara',
+        'odido': 'ODIDO',
+        'odido netherlands': 'ODIDO',
+        'odido nederland': 'ODIDO',
 
         # Finance & Insurance
         'paypal': 'PayPal',
@@ -126,6 +141,28 @@ class MerchantExtractor:
         'transferwise': 'Wise',
         'bunq': 'Bunq',
         'n26': 'N26',
+        'zilveren kruis': 'Zilveren Kruis',
+        'zilverenkruis': 'Zilveren Kruis',
+        'achmea': 'Achmea',
+        'centraal beheer': 'Centraal Beheer',
+        'interpolis': 'Interpolis',
+        'nationale nederlanden': 'Nationale Nederlanden',
+        'nn': 'Nationale Nederlanden',
+        'aegon': 'Aegon',
+        'asr': 'a.s.r.',
+        'cz': 'CZ',
+        'vgz': 'VGZ',
+        'menzis': 'Menzis',
+        'ohra': 'OHRA',
+        'ditzo': 'Ditzo',
+        'unive': 'Univé',
+        'abn amro': 'ABN AMRO',
+        'abnamro': 'ABN AMRO',
+        'ing': 'ING',
+        'rabobank': 'Rabobank',
+        'sns': 'SNS',
+        'triodos': 'Triodos',
+        'knab': 'Knab',
 
         # Fitness & Health
         'basic-fit': 'Basic-Fit',
@@ -133,6 +170,12 @@ class MerchantExtractor:
         'fitfor free': 'Fit For Free',
         'anytime fitness': 'Anytime Fitness',
         'sportcity': 'SportCity',
+        'volt45': 'VOLT45',
+        'volt 45': 'VOLT45',
+        'trainmore': 'TrainMore',
+        'sportschool': 'Sportschool',
+        'fitness': 'Fitness',
+        'gym': 'Gym',
 
         # Business Services
         'moneybird': 'Moneybird',
@@ -219,6 +262,9 @@ class MerchantExtractor:
 
         return cleaned
 
+    # Payment processors - we should look for the actual merchant after these
+    PAYMENT_PROCESSORS = {'mollie', 'stripe', 'paypal', 'adyen', 'worldpay', 'buckaroo'}
+
     def _find_known_merchant(self, text: str) -> Optional[str]:
         """
         Check if text contains a known merchant name.
@@ -231,9 +277,22 @@ class MerchantExtractor:
         """
         text_lower = text.lower()
 
+        # First pass: look for specific merchants (not payment processors)
+        # This ensures "Mollie VOLT45" matches VOLT45 instead of Mollie
         for pattern, canonical_name in self.KNOWN_MERCHANTS.items():
+            # Skip payment processors on first pass
+            if pattern.lower() in self.PAYMENT_PROCESSORS:
+                continue
+
             # Check for word boundary matches to avoid false positives
-            # e.g., "amazon" should not match in "damazon"
+            if re.search(rf'\b{re.escape(pattern)}\b', text_lower):
+                return canonical_name
+
+        # Second pass: if no specific merchant found, accept payment processors
+        for pattern, canonical_name in self.KNOWN_MERCHANTS.items():
+            if pattern.lower() not in self.PAYMENT_PROCESSORS:
+                continue
+
             if re.search(rf'\b{re.escape(pattern)}\b', text_lower):
                 return canonical_name
 

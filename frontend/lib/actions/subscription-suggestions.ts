@@ -99,7 +99,7 @@ export async function verifySuggestion(
   suggestionId: string
 ): Promise<{
   success: boolean;
-  subscriptionId?: string;
+  subscription?: typeof recurringTransactions.$inferSelect;
   linkedCount?: number;
   error?: string;
 }> {
@@ -162,7 +162,7 @@ export async function verifySuggestion(
         importance: 2, // Default medium importance
         isActive: true,
       })
-      .returning({ id: recurringTransactions.id });
+      .returning();
 
     // Link matched transactions to the new subscription
     let linkedCount = 0;
@@ -205,7 +205,7 @@ export async function verifySuggestion(
 
     return {
       success: true,
-      subscriptionId: created.id,
+      subscription: created,
       linkedCount,
     };
   } catch (error) {

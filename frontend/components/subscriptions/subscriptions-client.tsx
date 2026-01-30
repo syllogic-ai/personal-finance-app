@@ -161,10 +161,14 @@ export function SubscriptionsClient({
     }
   };
 
-  const handleFormSuccess = (suggestionId?: string) => {
+  const handleFormSuccess = (suggestionId?: string, newSubscription?: SubscriptionWithCategory) => {
     // If we were verifying a suggestion, remove it from the list
     if (suggestionId) {
       setSuggestions((prev) => prev.filter((s) => s.id !== suggestionId));
+    }
+    // If a new subscription was created, add it to the list
+    if (newSubscription) {
+      setSubscriptions((prev) => [...prev, { ...newSubscription, category: null }]);
     }
     setVerifyingSuggestion(null);
     router.refresh();

@@ -4,10 +4,12 @@ Handles the complete workflow:
 1. Normalize transaction amounts based on transactionType
 2. Categorize transactions using batch API
 3. Insert transactions with categories
-4. Sync exchange rates
-5. Update functional amounts
-6. Calculate account balances
-7. Calculate and store account timeseries (daily balance snapshots)
+4. Match transactions to existing subscriptions
+5. Detect new subscription patterns
+6. Sync exchange rates
+7. Update functional amounts
+8. Calculate account balances
+9. Calculate and store account timeseries (daily balance snapshots)
 """
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -32,6 +34,8 @@ from app.models import Category
 from app.services.category_matcher import CategoryMatcher
 from app.services.exchange_rate_service import ExchangeRateService
 from app.services.account_balance_service import AccountBalanceService
+from app.services.subscription_matcher import SubscriptionMatcher
+from app.services.subscription_detector import SubscriptionDetector
 from sqlalchemy import func
 
 logger = logging.getLogger(__name__)
@@ -59,6 +63,7 @@ class TransactionImportRequest(BaseModel):
     sync_exchange_rates: bool = True
     update_functional_amounts: bool = True
     calculate_balances: bool = True
+    detect_subscriptions: bool = True
 
 
 class TransactionImportResponse(BaseModel):
@@ -68,6 +73,8 @@ class TransactionImportResponse(BaseModel):
     transactions_inserted: int
     transaction_ids: Optional[List[str]] = None  # IDs of inserted transactions for verification
     categorization_summary: Optional[dict] = None
+    subscription_matches: Optional[dict] = None
+    subscription_detection: Optional[dict] = None
     exchange_rates_synced: Optional[dict] = None
     functional_amounts_updated: Optional[dict] = None
     balances_calculated: Optional[dict] = None
@@ -533,10 +540,82 @@ def import_transactions(
         
         if skipped_count > 0:
             logger.warning(f"[IMPORT] Skipped {skipped_count} duplicate transaction(s) during insert")
-        
+
         logger.info(f"[IMPORT] Successfully inserted {inserted_count} transactions")
-        
-        # Step 5: Sync exchange rates
+
+        # Step 5: Match transactions to subscriptions
+        subscription_matches_result = None
+        if inserted_transactions:
+            logger.info(f"[IMPORT] Matching {len(inserted_transactions)} transactions to subscriptions...")
+            try:
+                subscription_matcher = SubscriptionMatcher(db, user_id=user_id)
+                matched_count = 0
+
+                for txn in inserted_transactions:
+                    # Only match expense transactions (negative amounts)
+                    if float(txn.amount) >= 0:
+                        continue
+
+                    # Skip if already has a recurring_transaction_id
+                    if txn.recurring_transaction_id:
+                        continue
+
+                    match = subscription_matcher.match_transaction(
+                        description=txn.description,
+                        merchant=txn.merchant,
+                        amount=txn.amount
+                    )
+
+                    if match:
+                        txn.recurring_transaction_id = match.id
+                        matched_count += 1
+                        logger.debug(
+                            f"[IMPORT] Matched transaction '{txn.description}' to subscription '{match.name}'"
+                        )
+
+                if matched_count > 0:
+                    db.commit()
+                    logger.info(f"[IMPORT] Matched {matched_count} transactions to subscriptions")
+                else:
+                    logger.info("[IMPORT] No subscription matches found")
+
+                subscription_matches_result = {
+                    "matched": matched_count,
+                    "total_checked": len([t for t in inserted_transactions if float(t.amount) < 0])
+                }
+            except Exception as e:
+                logger.error(f"[IMPORT] Error matching subscriptions: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
+                subscription_matches_result = {"error": str(e)}
+
+        # Step 5b: Detect subscription patterns from newly imported transactions
+        subscription_detection_result = None
+        if request.detect_subscriptions and inserted_ids:
+            logger.info(f"[IMPORT] Detecting subscription patterns from {len(inserted_ids)} new transactions...")
+            try:
+                detector = SubscriptionDetector(db, user_id=user_id)
+                suggestions_count = detector.detect_and_save(inserted_ids)
+
+                subscription_detection_result = {
+                    "suggestions_created": suggestions_count,
+                    "enabled": True
+                }
+
+                if suggestions_count > 0:
+                    logger.info(f"[IMPORT] Created {suggestions_count} subscription suggestion(s)")
+                else:
+                    logger.info("[IMPORT] No new subscription patterns detected")
+
+            except Exception as e:
+                logger.error(f"[IMPORT] Error detecting subscription patterns: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
+                subscription_detection_result = {"suggestions_created": 0, "enabled": True, "error": str(e)}
+        else:
+            subscription_detection_result = {"suggestions_created": 0, "enabled": False}
+
+        # Step 6: Sync exchange rates (renumbered from 5)
         exchange_rates_result = None
         if request.sync_exchange_rates:
             logger.info("[IMPORT] Syncing exchange rates...")
@@ -717,6 +796,8 @@ def import_transactions(
                 "tokens_used": categorization_result.total_tokens_used if categorization_result else 0,
                 "cost_usd": categorization_result.total_cost_usd if categorization_result else 0.0
             },
+            subscription_matches=subscription_matches_result,
+            subscription_detection=subscription_detection_result,
             exchange_rates_synced=exchange_rates_result,
             functional_amounts_updated=functional_amounts_result,
             balances_calculated=balances_result,

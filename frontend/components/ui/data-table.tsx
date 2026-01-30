@@ -107,11 +107,11 @@ export function DataTable<TData, TValue>({
                       key={header.id}
                       style={{
                         width: isLastColumn ? "auto" : header.getSize(),
-                        minWidth: header.getSize(),
+                        maxWidth: isLastColumn ? undefined : header.getSize(),
                         position: "relative",
                       }}
                       className={cn(
-                        "font-medium bg-muted",
+                        "font-medium bg-muted overflow-hidden",
                         enableColumnResizing && "select-none"
                       )}
                     >
@@ -153,9 +153,10 @@ export function DataTable<TData, TValue>({
                     return (
                       <TableCell
                         key={cell.id}
+                        className="overflow-hidden"
                         style={{
                           width: isLastColumn ? "auto" : cell.column.getSize(),
-                          minWidth: cell.column.getSize(),
+                          maxWidth: isLastColumn ? undefined : cell.column.getSize(),
                         }}
                       >
                         {flexRender(
