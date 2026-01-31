@@ -16,6 +16,8 @@ export interface ColumnMapping {
   description: string | null;
   merchant: string | null;
   transactionType: string | null;
+  // Fee column - fees are deducted from balance
+  fee: string | null;
   // Balance fields for verification
   startingBalance: string | null;
   endingBalance: string | null;
@@ -223,6 +225,7 @@ Map these columns to the following transaction fields:
 - description: The transaction description/narrative column
 - merchant: The merchant/payee name column (if separate from description)
 - transactionType: The column indicating debit/credit (if exists)
+- fee: Column containing transaction fees (if exists, e.g., "fee", "fees", "charge", "commission") - these are additional charges deducted from balance
 - startingBalance: Column containing opening/starting balance (if exists, e.g., "startsaldo", "opening_balance", "balance_before")
 - endingBalance: Column containing closing/ending balance (if exists, e.g., "endsaldo", "closing_balance", "balance_after", "balance")
 
@@ -238,6 +241,7 @@ Respond ONLY with a valid JSON object in this exact format:
   "description": "column_name_or_null",
   "merchant": "column_name_or_null",
   "transactionType": "column_name_or_null",
+  "fee": "column_name_or_null",
   "startingBalance": "column_name_or_null",
   "endingBalance": "column_name_or_null",
   "typeConfig": {
@@ -580,6 +584,7 @@ export async function previewImportedTransactions(
 
     const startBalIdx = mapping.startingBalance ? headers.indexOf(mapping.startingBalance) : -1;
     const endBalIdx = mapping.endingBalance ? headers.indexOf(mapping.endingBalance) : -1;
+    const feeIdx = mapping.fee ? headers.indexOf(mapping.fee) : -1;
 
     // Helper to clean and parse balance amounts
     const cleanAmount = (str: string | undefined): number | null => {
@@ -589,6 +594,18 @@ export async function previewImportedTransactions(
       return isNaN(parsed) ? null : parsed;
     };
 
+    // Calculate total fees from CSV if fee column is mapped
+    let totalFees = 0;
+    if (feeIdx >= 0) {
+      for (const row of rows) {
+        const fee = cleanAmount(row[feeIdx]);
+        if (fee !== null && fee > 0) {
+          totalFees += fee;
+        }
+      }
+      totalFees = Math.round(totalFees * 100) / 100;
+    }
+
     if (mapping.startingBalance || mapping.endingBalance) {
       // Get first row's starting balance, last row's ending balance
       const firstRow = rows[0];
@@ -597,21 +614,45 @@ export async function previewImportedTransactions(
       const fileStartingBalance = startBalIdx >= 0 ? cleanAmount(firstRow?.[startBalIdx]) : null;
       const fileEndingBalance = endBalIdx >= 0 ? cleanAmount(lastRow?.[endBalIdx]) : null;
 
+      // Calculate starting balance from first row's ending balance when no explicit starting balance
+      // Formula: balance_before_first_tx = first_ending_balance - first_amount
+      // This works because: first_ending_balance = balance_before_first_tx + first_amount
+      // Note: Fees are not included here because they affect balance differently and are
+      // captured in the daily balances from the CSV which are the source of truth.
+      let calculatedStartingBalance: number | null = null;
+      if (fileStartingBalance === null && endBalIdx >= 0) {
+        const firstRowEndingBalance = cleanAmount(firstRow?.[endBalIdx]);
+        const amountIdx = mapping.amount ? headers.indexOf(mapping.amount) : -1;
+        const firstRowAmount = amountIdx >= 0 ? cleanAmount(firstRow?.[amountIdx]) : null;
+
+        if (firstRowEndingBalance !== null && firstRowAmount !== null) {
+          // first_ending_balance = starting_balance + first_amount
+          // starting_balance = first_ending_balance - first_amount
+          calculatedStartingBalance = Math.round((firstRowEndingBalance - firstRowAmount) * 100) / 100;
+        }
+      }
+
       // Calculate sum of transactions (credits positive, debits negative)
       const transactionSum = previewTransactions.reduce((sum, tx) => {
         return sum + (tx.transactionType === "credit" ? tx.amount : -Math.abs(tx.amount));
       }, 0);
 
+      // Use explicit starting balance if available, otherwise use calculated
+      const effectiveStartingBalance = fileStartingBalance ?? calculatedStartingBalance;
+
       // Calculate expected ending balance
-      const calculatedEndingBalance = fileStartingBalance !== null
-        ? Math.round((fileStartingBalance + transactionSum) * 100) / 100
+      // Note: We don't subtract fees here because the transactionSum already reflects
+      // the actual amounts from the CSV. Fees affect the balance separately and are
+      // captured in the daily balances from the CSV which are the source of truth.
+      const calculatedEndingBalance = effectiveStartingBalance !== null
+        ? Math.round((effectiveStartingBalance + transactionSum) * 100) / 100
         : null;
 
       const discrepancy = (fileEndingBalance !== null && calculatedEndingBalance !== null)
         ? Math.round((fileEndingBalance - calculatedEndingBalance) * 100) / 100
         : null;
 
-      const canVerify = fileStartingBalance !== null && fileEndingBalance !== null;
+      const canVerify = effectiveStartingBalance !== null && fileEndingBalance !== null;
 
       // Calculate suggested starting balance for recalculation
       // Formula: startingBalance = fileEndingBalance - transactionSum
@@ -620,9 +661,9 @@ export async function previewImportedTransactions(
         : null;
 
       balanceVerification = {
-        hasBalanceData: fileEndingBalance !== null || fileStartingBalance !== null,
+        hasBalanceData: fileEndingBalance !== null || effectiveStartingBalance !== null,
         canVerify,
-        fileStartingBalance,
+        fileStartingBalance: effectiveStartingBalance, // Use effective (calculated if needed)
         fileEndingBalance,
         calculatedEndingBalance,
         discrepancy,

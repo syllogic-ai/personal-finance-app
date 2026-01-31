@@ -229,16 +229,75 @@ class AccountBalanceService:
                     # Get skip dates for this account (if any)
                     account_skip_dates = skip_dates.get(str(account.id), set()) if skip_dates else set()
 
+                    # Get the max date with CSV data to know when to carry forward balances
+                    max_csv_date = max(account_skip_dates) if account_skip_dates else None
+
+                    # Track last known balance for carry-forward
+                    last_known_balance_account = None
+                    last_known_balance_functional = None
+
                     while current_date <= end_date:
                         # Skip dates that already have authoritative balance data from CSV
                         if current_date in account_skip_dates:
+                            # Get the balance from account_balances to track for carry-forward
+                            rate_datetime = datetime.combine(current_date, datetime.min.time())
+                            existing_entry = self.db.query(AccountBalance).filter(
+                                AccountBalance.account_id == account.id,
+                                AccountBalance.date == rate_datetime
+                            ).first()
+                            if existing_entry:
+                                last_known_balance_account = existing_entry.balance_in_account_currency
+                                last_known_balance_functional = existing_entry.balance_in_functional_currency
+
                             logger.debug(
                                 f"[TIMESERIES] Skipping {current_date} for account {account.name} "
-                                f"(has authoritative balance from CSV)"
+                                f"(has authoritative balance from CSV: {last_known_balance_account})"
                             )
                             current_date += timedelta(days=1)
                             skipped_count += 1
                             continue
+
+                        # For dates after the last CSV date, check if there are transactions on THIS specific date
+                        # If no transactions and we have a last known balance, carry it forward
+                        if max_csv_date and current_date > max_csv_date and last_known_balance_account is not None:
+                            # Check if there are any transactions on this specific date
+                            transactions_on_date = self.db.query(func.count(Transaction.id)).filter(
+                                Transaction.user_id == user_id,
+                                Transaction.account_id == account.id,
+                                func.date(Transaction.booked_at) == current_date
+                            ).scalar()
+
+                            if not transactions_on_date or transactions_on_date == 0:
+                                # No transactions on this date - carry forward the last known balance
+                                balance_in_account_currency = last_known_balance_account
+                                balance_in_functional_currency = last_known_balance_functional
+
+                                # Store this balance
+                                rate_datetime = datetime.combine(current_date, datetime.min.time())
+                                existing_timeseries = self.db.query(AccountBalance).filter(
+                                    AccountBalance.account_id == account.id,
+                                    AccountBalance.date == rate_datetime
+                                ).first()
+
+                                if not existing_timeseries:
+                                    timeseries_record = AccountBalance(
+                                        account_id=account.id,
+                                        date=rate_datetime,
+                                        balance_in_account_currency=balance_in_account_currency,
+                                        balance_in_functional_currency=balance_in_functional_currency
+                                    )
+                                    self.db.add(timeseries_record)
+                                    records_stored += 1
+                                    logger.debug(
+                                        f"[TIMESERIES] Carried forward balance for {current_date}: "
+                                        f"{balance_in_account_currency} (no transactions after CSV data)"
+                                    )
+                                else:
+                                    skipped_count += 1
+
+                                days_processed += 1
+                                current_date += timedelta(days=1)
+                                continue
 
                         # Calculate cumulative balance up to this date (in account currency)
                         # Sum all transactions up to and including this date
@@ -247,12 +306,12 @@ class AccountBalanceService:
                             Transaction.account_id == account.id,
                             func.date(Transaction.booked_at) <= current_date
                         ).scalar()
-                        
+
                         if transaction_sum_result is None:
                             transaction_sum = Decimal("0")
                         else:
                             transaction_sum = Decimal(str(transaction_sum_result))
-                        
+
                         # Balance in account currency = starting_balance + sum of transactions up to this date
                         balance_in_account_currency = starting_balance + transaction_sum
                         
@@ -301,14 +360,17 @@ class AccountBalanceService:
                             AccountBalance.account_id == account.id,
                             AccountBalance.date == rate_datetime
                         ).first()
-                        
+
                         if existing_timeseries:
-                            # Update existing record
-                            existing_timeseries.balance_in_account_currency = balance_in_account_currency
-                            existing_timeseries.balance_in_functional_currency = balance_in_functional_currency
-                            existing_timeseries.updated_at = datetime.utcnow()
+                            # DON'T update existing records - they may have authoritative data from CSV
+                            # that accounts for fees and other adjustments not in transactions
+                            logger.debug(
+                                f"[TIMESERIES] Preserving existing balance for {current_date}: "
+                                f"{existing_timeseries.balance_in_account_currency} (not overwriting with calculated {balance_in_account_currency})"
+                            )
+                            skipped_count += 1
                         else:
-                            # Create new record
+                            # Create new record only if no existing entry
                             timeseries_record = AccountBalance(
                                 account_id=account.id,
                                 date=rate_datetime,
@@ -316,8 +378,7 @@ class AccountBalanceService:
                                 balance_in_functional_currency=balance_in_functional_currency
                             )
                             self.db.add(timeseries_record)
-                        
-                        records_stored += 1
+                            records_stored += 1
                         days_processed += 1
                         current_date += timedelta(days=1)
                     
@@ -342,6 +403,26 @@ class AccountBalanceService:
                     continue
             
             self.db.commit()
+
+            # Update each account's functional_balance from the latest account_balances entry
+            # This ensures functional_balance reflects the actual balance (including fees from CSV)
+            for account in accounts:
+                try:
+                    latest_balance = self.db.query(AccountBalance).filter(
+                        AccountBalance.account_id == account.id
+                    ).order_by(desc(AccountBalance.date)).first()
+
+                    if latest_balance:
+                        account.functional_balance = latest_balance.balance_in_functional_currency
+                        logger.debug(
+                            f"[TIMESERIES] Updated {account.name} functional_balance to "
+                            f"{latest_balance.balance_in_functional_currency} from {latest_balance.date.date()}"
+                        )
+                except Exception as e:
+                    logger.error(f"[TIMESERIES] Error updating functional_balance for {account.name}: {e}")
+
+            self.db.commit()
+
             result = {
                 "accounts_processed": len(accounts) - failed_accounts,
                 "accounts_failed": failed_accounts,
