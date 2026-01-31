@@ -168,7 +168,7 @@ export function SubscriptionsClient({
     }
     // If a new subscription was created, add it to the list
     if (newSubscription) {
-      setSubscriptions((prev) => [...prev, { ...newSubscription, category: null }]);
+      setSubscriptions((prev) => [...prev, newSubscription]);
     }
     setVerifyingSuggestion(null);
     router.refresh();

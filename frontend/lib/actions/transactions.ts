@@ -357,6 +357,7 @@ export interface TransactionWithRelations {
   bookedAt: Date;
   pending: boolean | null;
   transactionType: string | null;
+  includeInAnalytics: boolean;
 }
 
 export async function getTransactions(): Promise<TransactionWithRelations[]> {
@@ -420,6 +421,7 @@ export async function getTransactions(): Promise<TransactionWithRelations[]> {
     bookedAt: tx.bookedAt,
     pending: tx.pending,
     transactionType: tx.transactionType,
+    includeInAnalytics: tx.includeInAnalytics,
   }));
 }
 
@@ -470,6 +472,84 @@ export async function bulkUpdateTransactionCategory(
     return { success: true, updatedCount: transactionIds.length };
   } catch (error) {
     console.error("Failed to bulk update transaction categories:", error);
+    return { success: false, error: "Failed to update transactions" };
+  }
+}
+
+export async function updateTransactionIncludeInAnalytics(
+  transactionId: string,
+  includeInAnalytics: boolean
+): Promise<{ success: boolean; error?: string }> {
+  const userId = await requireAuth();
+
+  if (!userId) {
+    return { success: false, error: "Not authenticated" };
+  }
+
+  try {
+    // Verify the transaction belongs to the user
+    const transaction = await db.query.transactions.findFirst({
+      where: and(
+        eq(transactions.id, transactionId),
+        eq(transactions.userId, userId)
+      ),
+    });
+
+    if (!transaction) {
+      return { success: false, error: "Transaction not found" };
+    }
+
+    await db
+      .update(transactions)
+      .set({
+        includeInAnalytics,
+        updatedAt: new Date(),
+      })
+      .where(eq(transactions.id, transactionId));
+
+    revalidatePath("/transactions");
+    revalidatePath("/");
+    return { success: true };
+  } catch (error) {
+    console.error("Failed to update transaction include_in_analytics:", error);
+    return { success: false, error: "Failed to update transaction" };
+  }
+}
+
+export async function bulkUpdateTransactionIncludeInAnalytics(
+  transactionIds: string[],
+  includeInAnalytics: boolean
+): Promise<{ success: boolean; error?: string; updatedCount?: number }> {
+  const userId = await requireAuth();
+
+  if (!userId) {
+    return { success: false, error: "Not authenticated" };
+  }
+
+  if (transactionIds.length === 0) {
+    return { success: false, error: "No transactions selected" };
+  }
+
+  try {
+    // Update all transactions that belong to the user
+    await db
+      .update(transactions)
+      .set({
+        includeInAnalytics,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          inArray(transactions.id, transactionIds),
+          eq(transactions.userId, userId)
+        )
+      );
+
+    revalidatePath("/transactions");
+    revalidatePath("/");
+    return { success: true, updatedCount: transactionIds.length };
+  } catch (error) {
+    console.error("Failed to bulk update transaction include_in_analytics:", error);
     return { success: false, error: "Failed to update transactions" };
   }
 }

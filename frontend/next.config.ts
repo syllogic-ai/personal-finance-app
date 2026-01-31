@@ -1,7 +1,13 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // Reduce cache times in development to prevent stale data issues
+  experimental: {
+    staleTimes: {
+      dynamic: 0,
+      static: 30, // Minimum allowed by Next.js
+    },
+  },
 };
 
 export default nextConfig;

@@ -94,9 +94,19 @@ export async function getPendingSuggestionCount(): Promise<number> {
 
 /**
  * Verify (approve) a suggestion - creates subscription and links transactions
+ * Accepts optional overrides for fields the user might customize in the form
  */
 export async function verifySuggestion(
-  suggestionId: string
+  suggestionId: string,
+  overrides?: {
+    name?: string;
+    merchant?: string;
+    amount?: number;
+    categoryId?: string;
+    importance?: number;
+    frequency?: "weekly" | "biweekly" | "monthly" | "quarterly" | "yearly";
+    description?: string;
+  }
 ): Promise<{
   success: boolean;
   subscription?: typeof recurringTransactions.$inferSelect;
@@ -134,11 +144,18 @@ export async function verifySuggestion(
       transactionIds = [];
     }
 
+    // Use overrides or fall back to suggestion values
+    const finalName = overrides?.name?.trim() || suggestion.suggestedName;
+    const finalMerchant = overrides?.merchant?.trim() || suggestion.suggestedMerchant;
+    const finalAmount = overrides?.amount?.toFixed(2) || suggestion.suggestedAmount;
+    const finalFrequency = overrides?.frequency || (suggestion.detectedFrequency as "weekly" | "biweekly" | "monthly" | "quarterly" | "yearly");
+    const finalImportance = overrides?.importance ?? 2;
+
     // Check for duplicate subscription name
     const existingSubscription = await db.query.recurringTransactions.findFirst({
       where: and(
         eq(recurringTransactions.userId, userId),
-        eq(recurringTransactions.name, suggestion.suggestedName)
+        eq(recurringTransactions.name, finalName)
       ),
     });
 
@@ -154,12 +171,14 @@ export async function verifySuggestion(
       .insert(recurringTransactions)
       .values({
         userId,
-        name: suggestion.suggestedName,
-        merchant: suggestion.suggestedMerchant,
-        amount: suggestion.suggestedAmount,
+        name: finalName,
+        merchant: finalMerchant,
+        amount: finalAmount,
         currency: suggestion.currency,
-        frequency: suggestion.detectedFrequency as "weekly" | "biweekly" | "monthly" | "quarterly" | "yearly",
-        importance: 2, // Default medium importance
+        frequency: finalFrequency,
+        importance: finalImportance,
+        categoryId: overrides?.categoryId || null,
+        description: overrides?.description?.trim() || null,
         isActive: true,
       })
       .returning();
@@ -200,12 +219,20 @@ export async function verifySuggestion(
       })
       .where(eq(subscriptionSuggestions.id, suggestionId));
 
+    // Fetch the created subscription with category relation
+    const subscriptionWithCategory = await db.query.recurringTransactions.findFirst({
+      where: eq(recurringTransactions.id, created.id),
+      with: {
+        category: true,
+      },
+    });
+
     revalidatePath("/subscriptions");
     revalidatePath("/transactions");
 
     return {
       success: true,
-      subscription: created,
+      subscription: subscriptionWithCategory || created,
       linkedCount,
     };
   } catch (error) {

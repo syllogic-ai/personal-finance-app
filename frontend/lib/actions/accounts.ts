@@ -184,7 +184,7 @@ export async function recalculateStartingBalance(
     // Trigger backend timeseries recalculation
     try {
       const backendUrl = process.env.BACKEND_URL || "http://localhost:8000";
-      await fetch(`${backendUrl}/api/accounts/${accountId}/recalculate-timeseries`, {
+      await fetch(`${backendUrl}/api/accounts/${accountId}/recalculate-timeseries?user_id=${userId}`, {
         method: "POST",
       });
     } catch (backendError) {
@@ -265,4 +265,76 @@ export async function getAccountBalanceOnDate(
     balance: startingBalance + transactionSum,
     found: true,
   };
+}
+
+export async function recalculateAccountTimeseries(
+  accountId: string
+): Promise<{ success: boolean; error?: string; message?: string; daysProcessed?: number; recordsStored?: number }> {
+  const userId = await requireAuth();
+
+  if (!userId) {
+    return { success: false, error: "Not authenticated" };
+  }
+
+  try {
+    // Verify account belongs to user
+    const account = await db.query.accounts.findFirst({
+      where: and(eq(accounts.id, accountId), eq(accounts.userId, userId)),
+    });
+
+    if (!account) {
+      return { success: false, error: "Account not found" };
+    }
+
+    // Call backend to recalculate timeseries
+    const backendUrl = process.env.BACKEND_URL || "http://localhost:8000";
+    const response = await fetch(`${backendUrl}/api/accounts/${accountId}/recalculate-timeseries?user_id=${userId}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ detail: "Unknown error" }));
+      return { success: false, error: errorData.detail || "Failed to recalculate timeseries" };
+    }
+
+    const data = await response.json();
+
+    // Recalculate functional_balance on the account as well
+    const txResult = await db
+      .select({
+        total: sql<string>`COALESCE(SUM(${transactions.amount}), 0)`,
+      })
+      .from(transactions)
+      .where(eq(transactions.accountId, accountId));
+
+    const transactionSum = parseFloat(txResult[0]?.total || "0");
+    const startingBalance = parseFloat(account.startingBalance || "0");
+    const newFunctionalBalance = startingBalance + transactionSum;
+
+    await db
+      .update(accounts)
+      .set({
+        functionalBalance: newFunctionalBalance.toFixed(2),
+        updatedAt: new Date(),
+      })
+      .where(eq(accounts.id, accountId));
+
+    revalidatePath("/settings");
+    revalidatePath("/");
+    revalidatePath("/transactions");
+    revalidatePath("/assets");
+
+    return {
+      success: true,
+      message: data.message || "Balance recalculated successfully",
+      daysProcessed: data.days_processed,
+      recordsStored: data.records_stored,
+    };
+  } catch (error) {
+    console.error("Failed to recalculate timeseries:", error);
+    return { success: false, error: "Failed to recalculate timeseries" };
+  }
 }

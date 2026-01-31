@@ -11,13 +11,14 @@ const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8000";
 export interface BankConnection {
   id: string;
   institutionName: string | null;
-  status: string | null;
-  provider: string | null;
-  lastSyncedAt: string | null;
-  syncStatus: string | null;
-  errorMessage: string | null;
+  institutionId: string;
+  requisitionId: string | null;
+  status: string | null; // pending, linked, expired, revoked
+  agreementId: string | null;
+  link: string | null;
   accountCount: number;
   createdAt: string | null;
+  expiresAt: string | null;
 }
 
 export interface InitiateBankConnectionResult {
@@ -131,30 +132,30 @@ export async function getBankConnections(): Promise<BankConnection[]> {
   try {
     // Get connections from the database
     const connections = await db.query.bankConnections.findMany({
-      where: and(
-        eq(bankConnections.userId, userId),
-        eq(bankConnections.provider, "ponto")
-      ),
+      where: eq(bankConnections.userId, userId),
     });
 
     // Get account counts for each connection
     const result: BankConnection[] = [];
 
-    for (const conn of connections) {
-      const connAccounts = await db.query.accounts.findMany({
-        where: eq(accounts.bankConnectionId, conn.id),
-      });
+    // Get total account count for the user (accounts aren't directly linked to connections)
+    const userAccounts = await db.query.accounts.findMany({
+      where: eq(accounts.userId, userId),
+    });
+    const accountCount = userAccounts.length;
 
+    for (const conn of connections) {
       result.push({
         id: conn.id,
-        institutionName: conn.institutionName,
-        status: conn.status,
-        provider: conn.provider,
-        lastSyncedAt: conn.lastSyncedAt?.toISOString() || null,
-        syncStatus: conn.syncStatus,
-        errorMessage: conn.errorMessage,
-        accountCount: connAccounts.length,
+        institutionName: conn.institutionName || null,
+        institutionId: conn.institutionId,
+        requisitionId: conn.requisitionId || null,
+        status: conn.status || null,
+        agreementId: conn.agreementId || null,
+        link: conn.link || null,
+        accountCount,
         createdAt: conn.createdAt?.toISOString() || null,
+        expiresAt: conn.expiresAt?.toISOString() || null,
       });
     }
 
@@ -299,9 +300,11 @@ export async function getConnectionAccounts(connectionId: string) {
       return [];
     }
 
+    // Note: accounts table doesn't have bankConnectionId field
+    // Returning all active accounts for the user for now
     return db.query.accounts.findMany({
       where: and(
-        eq(accounts.bankConnectionId, connectionId),
+        eq(accounts.userId, userId),
         eq(accounts.isActive, true)
       ),
       orderBy: (accounts, { asc }) => [asc(accounts.name)],

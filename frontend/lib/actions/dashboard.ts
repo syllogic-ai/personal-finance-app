@@ -201,6 +201,7 @@ export async function getMonthlySpending(referenceDate?: Date, accountId?: strin
   const conditions = [
     eq(transactions.userId, session.user.id),
     eq(transactions.transactionType, "debit"),
+    eq(transactions.includeInAnalytics, true),
     gte(transactions.bookedAt, startOfMonth),
     lte(transactions.bookedAt, endOfMonth),
   ];
@@ -238,6 +239,7 @@ export async function getMonthlyIncome(referenceDate?: Date, accountId?: string)
   const conditions = [
     eq(transactions.userId, session.user.id),
     eq(transactions.transactionType, "credit"),
+    eq(transactions.includeInAnalytics, true),
     gte(transactions.bookedAt, startOfMonth),
     lte(transactions.bookedAt, endOfMonth),
   ];
@@ -275,6 +277,7 @@ export async function getSpendingHistory(days: number = 7, referenceDate?: Date,
   const conditions = [
     eq(transactions.userId, session.user.id),
     eq(transactions.transactionType, "debit"),
+    eq(transactions.includeInAnalytics, true),
     gte(transactions.bookedAt, startDate),
     lte(transactions.bookedAt, refDate),
   ];
@@ -312,6 +315,7 @@ export async function getIncomeHistory(days: number = 7, referenceDate?: Date, a
   const conditions = [
     eq(transactions.userId, session.user.id),
     eq(transactions.transactionType, "credit"),
+    eq(transactions.includeInAnalytics, true),
     gte(transactions.bookedAt, startDate),
     lte(transactions.bookedAt, refDate),
   ];
@@ -351,6 +355,7 @@ export async function getIncomeExpenseData(referenceDate?: Date, accountId?: str
 
   const conditions = [
     eq(transactions.userId, session.user.id),
+    eq(transactions.includeInAnalytics, true),
     gte(transactions.bookedAt, startDate),
     lte(transactions.bookedAt, endOfRefMonth),
   ];
@@ -444,6 +449,7 @@ export async function getSpendingByCategory(limit: number = 5, referenceDate?: D
   const baseConditions = [
     eq(transactions.userId, session.user.id),
     eq(transactions.transactionType, "debit"),
+    eq(transactions.includeInAnalytics, true),
     gte(transactions.bookedAt, startOfMonth),
     lte(transactions.bookedAt, endOfMonth),
   ];
@@ -796,6 +802,7 @@ export async function getSankeyData(
 
   const conditions = [
     eq(transactions.userId, session.user.id),
+    eq(transactions.includeInAnalytics, true),
     gte(transactions.bookedAt, startDate),
     lte(transactions.bookedAt, endDate),
   ];

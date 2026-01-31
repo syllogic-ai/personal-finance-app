@@ -107,40 +107,48 @@ export function BankConnectionStatus({
     }
   };
 
-  const getSyncStatusBadge = () => {
-    const syncStatus = connection.syncStatus || "idle";
+  const getStatusBadge = () => {
+    const status = connection.status || "pending";
 
-    switch (syncStatus) {
-      case "syncing":
-        return (
-          <Badge variant="secondary" className="gap-1">
-            <RiLoader4Line className="h-3 w-3 animate-spin" />
-            Syncing
-          </Badge>
-        );
-      case "error":
-        return (
-          <Badge variant="destructive" className="gap-1">
-            <RiErrorWarningLine className="h-3 w-3" />
-            Error
-          </Badge>
-        );
-      default:
+    switch (status) {
+      case "linked":
         return (
           <Badge variant="outline" className="gap-1">
             <RiCheckLine className="h-3 w-3" />
             Connected
           </Badge>
         );
+      case "expired":
+        return (
+          <Badge variant="destructive" className="gap-1">
+            <RiErrorWarningLine className="h-3 w-3" />
+            Expired
+          </Badge>
+        );
+      case "revoked":
+        return (
+          <Badge variant="destructive" className="gap-1">
+            <RiErrorWarningLine className="h-3 w-3" />
+            Revoked
+          </Badge>
+        );
+      case "pending":
+      default:
+        return (
+          <Badge variant="secondary" className="gap-1">
+            <RiTimeLine className="h-3 w-3" />
+            Pending
+          </Badge>
+        );
     }
   };
 
-  const formatLastSynced = () => {
-    if (!connection.lastSyncedAt) {
-      return "Never synced";
+  const formatCreatedAt = () => {
+    if (!connection.createdAt) {
+      return "Unknown";
     }
 
-    const date = new Date(connection.lastSyncedAt);
+    const date = new Date(connection.createdAt);
     const now = new Date();
     const diff = now.getTime() - date.getTime();
     const hours = Math.floor(diff / (1000 * 60 * 60));
@@ -176,20 +184,14 @@ export function BankConnectionStatus({
               </CardDescription>
             </div>
           </div>
-          {getSyncStatusBadge()}
+          {getStatusBadge()}
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        {connection.errorMessage && (
-          <div className="text-sm text-destructive bg-destructive/10 p-2 rounded">
-            {connection.errorMessage}
-          </div>
-        )}
-
         <div className="flex items-center justify-between text-sm text-muted-foreground">
           <div className="flex items-center gap-1">
             <RiTimeLine className="h-4 w-4" />
-            Last synced: {formatLastSynced()}
+            Connected: {formatCreatedAt()}
           </div>
         </div>
 
@@ -198,10 +200,10 @@ export function BankConnectionStatus({
             variant="outline"
             size="sm"
             onClick={handleSync}
-            disabled={isSyncing || connection.syncStatus === "syncing"}
+            disabled={isSyncing}
             className="flex-1"
           >
-            {isSyncing || connection.syncStatus === "syncing" ? (
+            {isSyncing ? (
               <>
                 <RiLoader4Line className="mr-2 h-4 w-4 animate-spin" />
                 Syncing...

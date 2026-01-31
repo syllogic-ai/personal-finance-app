@@ -117,6 +117,7 @@ class Transaction(Base):
     categorization_instructions = Column(Text)  # User instructions for AI categorization
     enrichment_data = Column(JSONB)  # Enriched merchant info, logos, etc.
     recurring_transaction_id = Column(UUID(as_uuid=True), ForeignKey("recurring_transactions.id", ondelete="SET NULL"), nullable=True, index=True)  # Link to recurring transaction label
+    include_in_analytics = Column(Boolean, default=True, nullable=False)  # Whether to include in analytics (charts, KPIs, etc.)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

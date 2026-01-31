@@ -154,6 +154,7 @@ export const transactions = pgTable(
     categorizationInstructions: text("categorization_instructions"), // User instructions for AI categorization
     enrichmentData: jsonb("enrichment_data"), // Enriched merchant info, logos, etc.
     recurringTransactionId: uuid("recurring_transaction_id").references(() => recurringTransactions.id, { onDelete: "set null" }), // Link to recurring transaction label
+    includeInAnalytics: boolean("include_in_analytics").default(true).notNull(), // Whether to include in analytics (charts, KPIs, etc.)
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },

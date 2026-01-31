@@ -90,21 +90,50 @@ export function CsvMappingTable({
         </div>
       </div>
 
-      {/* Amount Sign Configuration */}
-      <div className="rounded-lg border bg-card p-4">
-        <div className="flex items-center space-x-3">
-          <Checkbox
-            id="isAmountSigned"
-            checked={mapping.typeConfig?.isAmountSigned ?? false}
-            onCheckedChange={(checked) => updateTypeConfig("isAmountSigned", !!checked)}
-          />
-          <div>
-            <Label htmlFor="isAmountSigned" className="font-medium">
-              Amount is signed
-            </Label>
-            <p className="text-xs text-muted-foreground">
-              Positive values = income, negative values = expense
-            </p>
+      {/* Configuration Options */}
+      <div className="space-y-3">
+        <h3 className="text-sm font-medium text-muted-foreground">Options</h3>
+
+        {/* Amount Sign Configuration */}
+        <div className="rounded-lg border bg-card p-4">
+          <div className="flex items-center space-x-3">
+            <Checkbox
+              id="isAmountSigned"
+              checked={mapping.typeConfig?.isAmountSigned ?? false}
+              onCheckedChange={(checked) => updateTypeConfig("isAmountSigned", !!checked)}
+            />
+            <div>
+              <Label htmlFor="isAmountSigned" className="font-medium">
+                Amount is signed
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                Positive values = income, negative values = expense
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Date Format Configuration */}
+        <div className="rounded-lg border bg-card p-4">
+          <div className="space-y-3">
+            <div>
+              <Label className="font-medium">Date Format</Label>
+              <p className="text-xs text-muted-foreground">
+                For ambiguous dates (e.g., 01/02/2025), specify the format
+              </p>
+            </div>
+            <Select
+              value={mapping.typeConfig?.dateFormat ?? "DD-MM-YYYY"}
+              onValueChange={(value) => updateTypeConfig("dateFormat", value as "DD-MM-YYYY" | "MM-DD-YYYY")}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select date format" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="DD-MM-YYYY">DD-MM-YYYY (European)</SelectItem>
+                <SelectItem value="MM-DD-YYYY">MM-DD-YYYY (US)</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
       </div>

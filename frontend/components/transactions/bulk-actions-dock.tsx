@@ -8,6 +8,7 @@ import {
   RiCloseLine,
   RiDeleteBinLine,
   RiSearchLine,
+  RiLineChartLine,
 } from "@remixicon/react";
 import { Dock, DockIcon } from "@/components/ui/dock";
 import {
@@ -23,7 +24,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
-import { bulkUpdateTransactionCategory } from "@/lib/actions/transactions";
+import { bulkUpdateTransactionCategory, bulkUpdateTransactionIncludeInAnalytics } from "@/lib/actions/transactions";
 import { exportTransactionsToCSV } from "@/lib/utils/csv-export";
 import type { CategoryDisplay } from "@/types";
 import type { TransactionWithRelations } from "@/lib/actions/transactions";
@@ -35,6 +36,7 @@ interface BulkActionsDockProps {
   categories: CategoryDisplay[];
   onClearSelection: () => void;
   onBulkUpdate: (categoryId: string | null) => void;
+  onBulkAnalyticsUpdate?: (includeInAnalytics: boolean) => void;
 }
 
 export function BulkActionsDock({
@@ -44,9 +46,12 @@ export function BulkActionsDock({
   categories,
   onClearSelection,
   onBulkUpdate,
+  onBulkAnalyticsUpdate,
 }: BulkActionsDockProps) {
   const [isLoading, setIsLoading] = useState(false);
+  const [isAnalyticsLoading, setIsAnalyticsLoading] = useState(false);
   const [categoryPopoverOpen, setCategoryPopoverOpen] = useState(false);
+  const [analyticsPopoverOpen, setAnalyticsPopoverOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
   const filteredCategories = useMemo(() => {
@@ -91,6 +96,30 @@ export function BulkActionsDock({
       toast.success(`Exported ${selectedTransactions.length} transactions`);
     } catch {
       toast.error("Failed to export transactions");
+    }
+  };
+
+  const handleAnalyticsUpdate = async (includeInAnalytics: boolean) => {
+    setIsAnalyticsLoading(true);
+    try {
+      const result = await bulkUpdateTransactionIncludeInAnalytics(selectedIds, includeInAnalytics);
+
+      if (result.success) {
+        toast.success(
+          includeInAnalytics
+            ? `${result.updatedCount} transactions included in analytics`
+            : `${result.updatedCount} transactions excluded from analytics`
+        );
+        onBulkAnalyticsUpdate?.(includeInAnalytics);
+        onClearSelection();
+        setAnalyticsPopoverOpen(false);
+      } else {
+        toast.error(result.error || "Failed to update transactions");
+      }
+    } catch {
+      toast.error("An error occurred. Please try again.");
+    } finally {
+      setIsAnalyticsLoading(false);
     }
   };
 
@@ -169,6 +198,46 @@ export function BulkActionsDock({
                   No categories found
                 </p>
               )}
+            </div>
+          </PopoverContent>
+        </Popover>
+
+        {/* Analytics */}
+        <Popover
+          open={analyticsPopoverOpen}
+          onOpenChange={setAnalyticsPopoverOpen}
+        >
+          <PopoverTrigger
+            nativeButton={false}
+            render={<DockIcon className="bg-muted hover:bg-muted/80" />}
+          >
+            <RiLineChartLine className="size-5" />
+          </PopoverTrigger>
+          <PopoverContent className="w-48 p-0" align="center" side="top" sideOffset={12}>
+            <div className="p-2 border-b">
+              <p className="text-xs font-medium text-muted-foreground">
+                Analytics
+              </p>
+            </div>
+            <div className="p-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full justify-start"
+                onClick={() => handleAnalyticsUpdate(true)}
+                disabled={isAnalyticsLoading}
+              >
+                Include in Analytics
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full justify-start text-muted-foreground"
+                onClick={() => handleAnalyticsUpdate(false)}
+                disabled={isAnalyticsLoading}
+              >
+                Exclude from Analytics
+              </Button>
             </div>
           </PopoverContent>
         </Popover>

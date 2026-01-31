@@ -29,7 +29,10 @@ def get_monthly_cashflow(
         extract("month", Transaction.booked_at).label("month"),
         func.sum(case((Transaction.amount > 0, Transaction.amount), else_=0)).label("income"),
         func.sum(case((Transaction.amount < 0, func.abs(Transaction.amount)), else_=0)).label("expenses"),
-    ).filter(Transaction.user_id == user_id)
+    ).filter(
+        Transaction.user_id == user_id,
+        Transaction.include_in_analytics == True
+    )
 
     if from_date:
         query = query.filter(Transaction.booked_at >= from_date)
@@ -86,7 +89,8 @@ def get_sankey_data(
     # Get total income
     income_query = db.query(func.sum(Transaction.amount)).filter(
         Transaction.user_id == user_id,
-        Transaction.amount > 0
+        Transaction.amount > 0,
+        Transaction.include_in_analytics == True
     )
     if from_date:
         income_query = income_query.filter(Transaction.booked_at >= from_date)
@@ -106,7 +110,8 @@ def get_sankey_data(
         (Transaction.category_id == Category.id) | (Transaction.category_system_id == Category.id)
     ).filter(
         Transaction.user_id == user_id,
-        Transaction.amount > 0
+        Transaction.amount > 0,
+        Transaction.include_in_analytics == True
     )
 
     if from_date:
@@ -132,7 +137,8 @@ def get_sankey_data(
         (Transaction.category_id == Category.id) | (Transaction.category_system_id == Category.id)
     ).filter(
         Transaction.user_id == user_id,
-        Transaction.amount < 0
+        Transaction.amount < 0,
+        Transaction.include_in_analytics == True
     )
 
     if from_date:

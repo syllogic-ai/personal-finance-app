@@ -29,6 +29,7 @@ export async function getTransactionSummary(days: number = 30) {
     .where(
       and(
         eq(transactions.userId, userId),
+        eq(transactions.includeInAnalytics, true),
         gte(transactions.bookedAt, startDate)
       )
     )

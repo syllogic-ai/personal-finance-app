@@ -39,6 +39,7 @@ import {
   RiArrowDownSLine,
   RiCloseLine,
   RiRepeatLine,
+  RiLineChartLine,
 } from "@remixicon/react";
 import type { TransactionWithRelations } from "@/lib/actions/transactions";
 import type { CategoryForFilter, AccountForFilter } from "@/types";
@@ -339,6 +340,7 @@ export function TransactionFilters({ table, categories, accounts, action }: Tran
   const bookedAtColumn = table.getColumn("bookedAt");
   const amountColumn = table.getColumn("amount");
   const recurringTransactionColumn = table.getColumn("recurringTransaction");
+  const includeInAnalyticsColumn = table.getColumn("includeInAnalytics");
 
   const descriptionValue = (descriptionColumn?.getFilterValue() as string) ?? "";
 
@@ -347,6 +349,7 @@ export function TransactionFilters({ table, categories, accounts, action }: Tran
   const accountValues = (accountColumn?.getFilterValue() as string[]) ?? [];
   const statusValues = (pendingColumn?.getFilterValue() as string[]) ?? [];
   const recurringTransactionValues = (recurringTransactionColumn?.getFilterValue() as string[]) ?? [];
+  const analyticsValues = (includeInAnalyticsColumn?.getFilterValue() as string[]) ?? [];
 
   // Date range filter
   const dateRange = (bookedAtColumn?.getFilterValue() as DateRange | undefined);
@@ -362,6 +365,7 @@ export function TransactionFilters({ table, categories, accounts, action }: Tran
     accountValues.length +
     statusValues.length +
     recurringTransactionValues.length +
+    analyticsValues.length +
     (dateRange?.from ? 1 : 0) +
     (minAmount || maxAmount ? 1 : 0);
 
@@ -370,6 +374,7 @@ export function TransactionFilters({ table, categories, accounts, action }: Tran
     accountColumn?.setFilterValue([]);
     pendingColumn?.setFilterValue([]);
     recurringTransactionColumn?.setFilterValue([]);
+    includeInAnalyticsColumn?.setFilterValue([]);
     bookedAtColumn?.setFilterValue(undefined);
     amountColumn?.setFilterValue(undefined);
   };
@@ -389,6 +394,11 @@ export function TransactionFilters({ table, categories, accounts, action }: Tran
   const statusOptions: FilterOption[] = [
     { id: "completed", label: "Completed" },
     { id: "pending", label: "Pending" },
+  ];
+
+  const analyticsOptions: FilterOption[] = [
+    { id: "included", label: "Included in Analytics" },
+    { id: "excluded", label: "Excluded from Analytics" },
   ];
 
   // Extract unique recurring transactions from table data
@@ -493,6 +503,14 @@ export function TransactionFilters({ table, categories, accounts, action }: Tran
       onRemove: () => amountColumn?.setFilterValue(undefined),
     });
   }
+
+  // Analytics tags
+  analyticsValues.forEach((id) => {
+    filterTags.push({
+      label: id === "included" ? "In Analytics" : "Excluded from Analytics",
+      onRemove: () => includeInAnalyticsColumn?.setFilterValue(analyticsValues.filter((v) => v !== id)),
+    });
+  });
 
   const totalRows = table.getFilteredRowModel().rows.length;
   const totalUnfiltered = table.getPreFilteredRowModel().rows.length;
@@ -600,6 +618,14 @@ export function TransactionFilters({ table, categories, accounts, action }: Tran
                     max: value || undefined,
                   })
                 }
+              />
+
+              <MultiSelectFilter
+                label="Analytics"
+                icon={<RiLineChartLine className="h-4 w-4" />}
+                options={analyticsOptions}
+                selectedIds={analyticsValues}
+                onSelectionChange={(ids) => includeInAnalyticsColumn?.setFilterValue(ids)}
               />
             </div>
           </PopoverContent>

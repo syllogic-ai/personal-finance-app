@@ -20,7 +20,7 @@ from app.database import SessionLocal, engine
 from app.models import (
     User, Account, Category, Transaction,
     CategorizationRule, BankConnection, ExchangeRate, AuthAccount, AccountBalance,
-    RecurringTransaction
+    RecurringTransaction, SubscriptionSuggestion
 )
 from datetime import datetime, timedelta
 
@@ -77,7 +77,7 @@ def get_table_stats():
         with engine.connect() as conn:
             tables = ['users', 'auth_accounts', 'accounts', 'categories', 'transactions',
                      'categorization_rules', 'bank_connections', 'exchange_rates', 'account_balances',
-                     'recurring_transactions']
+                     'recurring_transactions', 'subscription_suggestions']
             
             for table in tables:
                 try:
@@ -124,7 +124,7 @@ st.title("📊 Database Monitor")
 st.markdown("Monitor and explore your database tables")
 
 # Create tabs
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11 = st.tabs([
     "👥 Users",
     "🔐 Auth Accounts",
     "💳 Accounts",
@@ -134,7 +134,8 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10 = st.tabs([
     "🏦 Bank Connections",
     "💱 Exchange Rates",
     "📈 Account Balances",
-    "🔄 Recurring Transactions"
+    "🔄 Recurring Transactions",
+    "💡 Subscription Suggestions"
 ])
 
 # Tab 1: Users
@@ -1117,6 +1118,168 @@ with tab10:
                     st.metric("Linked Transactions", linked_count)
     else:
         st.info("No recurring transactions found in the database.")
+
+# Tab 11: Subscription Suggestions
+with tab11:
+    st.header("Subscription Suggestions Table")
+
+    col1, col2, col3, col4 = st.columns([2, 2, 2, 1])
+    with col1:
+        st.markdown(f"**Total Suggestions:** {stats.get('subscription_suggestions', 0)}")
+    with col2:
+        user_filter = st.selectbox(
+            "Filter by User:",
+            ["All"] + (df_users['id'].tolist() if not df_users.empty else []),
+            key="suggestion_user_filter"
+        )
+    with col3:
+        status_filter = st.selectbox(
+            "Filter by Status:",
+            ["All", "Pending", "Approved", "Dismissed"],
+            key="suggestion_status_filter"
+        )
+    with col4:
+        if st.button("🔄 Refresh", key="refresh_suggestions"):
+            st.rerun()
+
+    filters = {}
+    if user_filter != "All":
+        filters['user_id'] = user_filter
+    if status_filter != "All":
+        filters['status'] = status_filter.lower()
+
+    df_suggestions = get_table_data(SubscriptionSuggestion, filters)
+
+    if not df_suggestions.empty:
+        # Summary metrics
+        col1, col2, col3, col4, col5 = st.columns(5)
+        with col1:
+            pending_count = len(df_suggestions[df_suggestions.get('status', '') == 'pending'])
+            st.metric("Pending", pending_count)
+        with col2:
+            approved_count = len(df_suggestions[df_suggestions.get('status', '') == 'approved'])
+            st.metric("Approved", approved_count)
+        with col3:
+            dismissed_count = len(df_suggestions[df_suggestions.get('status', '') == 'dismissed'])
+            st.metric("Dismissed", dismissed_count)
+        with col4:
+            if 'confidence' in df_suggestions.columns:
+                confidence_values = pd.to_numeric(df_suggestions['confidence'], errors='coerce')
+                avg_confidence = float(confidence_values.mean()) if not confidence_values.isna().all() else 0.0
+                st.metric("Avg Confidence", f"{avg_confidence:.0f}%")
+            else:
+                st.metric("Avg Confidence", "N/A")
+        with col5:
+            if 'suggested_amount' in df_suggestions.columns:
+                amounts = pd.to_numeric(df_suggestions['suggested_amount'], errors='coerce')
+                total_amount = float(amounts.sum()) if not amounts.isna().all() else 0.0
+                st.metric("Total Amount", f"€{total_amount:,.2f}")
+            else:
+                st.metric("Total Amount", "N/A")
+
+        # Status breakdown
+        if 'status' in df_suggestions.columns:
+            st.markdown("### Status Breakdown")
+            status_counts = df_suggestions['status'].value_counts()
+            status_cols = st.columns(len(status_counts))
+            for idx, (status, count) in enumerate(status_counts.items()):
+                with status_cols[idx]:
+                    st.metric(f"{status.title()}", count)
+
+        # Frequency breakdown
+        if 'detected_frequency' in df_suggestions.columns:
+            st.markdown("### Detected Frequency Breakdown")
+            frequency_counts = df_suggestions['detected_frequency'].value_counts()
+            freq_cols = st.columns(len(frequency_counts))
+            for idx, (freq, count) in enumerate(frequency_counts.items()):
+                with freq_cols[idx]:
+                    st.metric(f"{freq.title()}", count)
+
+        # Show high confidence suggestions
+        if 'confidence' in df_suggestions.columns:
+            df_suggestions['confidence_numeric'] = pd.to_numeric(df_suggestions['confidence'], errors='coerce')
+            high_confidence = df_suggestions[df_suggestions['confidence_numeric'] >= 80]
+            if len(high_confidence) > 0:
+                st.info(f"💡 {len(high_confidence)} suggestion(s) with confidence ≥ 80%")
+
+        st.dataframe(
+            df_suggestions,
+            width='stretch',
+            hide_index=True,
+            height=400
+        )
+
+        # Suggestion details
+        if len(df_suggestions) > 0:
+            st.markdown("### Suggestion Details")
+            selected_suggestion = st.selectbox(
+                "Select a suggestion to view details:",
+                df_suggestions['id'].tolist(),
+                key="suggestion_select",
+                format_func=lambda x: df_suggestions[df_suggestions['id'] == x]['suggested_name'].iloc[0] if len(df_suggestions[df_suggestions['id'] == x]) > 0 else str(x)
+            )
+
+            if selected_suggestion:
+                suggestion_data = df_suggestions[df_suggestions['id'] == selected_suggestion].iloc[0]
+
+                col1, col2, col3, col4, col5 = st.columns(5)
+                with col1:
+                    st.metric("Name", suggestion_data.get('suggested_name', 'N/A'))
+                with col2:
+                    if 'suggested_amount' in suggestion_data:
+                        amount_val = pd.to_numeric(suggestion_data.get('suggested_amount'), errors='coerce')
+                        currency = suggestion_data.get('currency', 'EUR')
+                        st.metric("Amount", f"{currency} {amount_val:,.2f}" if pd.notna(amount_val) else "N/A")
+                    else:
+                        st.metric("Amount", "N/A")
+                with col3:
+                    st.metric("Frequency", suggestion_data.get('detected_frequency', 'N/A').title())
+                with col4:
+                    confidence_val = suggestion_data.get('confidence', 'N/A')
+                    if confidence_val != 'N/A':
+                        confidence_num = pd.to_numeric(confidence_val, errors='coerce')
+                        confidence_display = f"{int(confidence_num)}%" if pd.notna(confidence_num) else "N/A"
+                    else:
+                        confidence_display = "N/A"
+                    st.metric("Confidence", confidence_display)
+                with col5:
+                    status = suggestion_data.get('status', 'N/A')
+                    status_emoji = {"pending": "⏳", "approved": "✓", "dismissed": "✗"}.get(status, "")
+                    st.metric("Status", f"{status_emoji} {status.title()}")
+
+                if 'suggested_merchant' in suggestion_data and pd.notna(suggestion_data.get('suggested_merchant')):
+                    st.markdown(f"**Merchant:** {suggestion_data.get('suggested_merchant')}")
+
+                # Parse and display matched transaction IDs
+                if 'matched_transaction_ids' in suggestion_data and pd.notna(suggestion_data.get('matched_transaction_ids')):
+                    import json
+                    try:
+                        matched_ids_str = suggestion_data.get('matched_transaction_ids')
+                        if matched_ids_str:
+                            matched_ids = json.loads(matched_ids_str) if isinstance(matched_ids_str, str) else matched_ids_str
+                            st.markdown(f"**Matched Transactions:** {len(matched_ids)} transaction(s)")
+                            if st.checkbox("Show transaction IDs", key=f"show_tx_ids_{selected_suggestion}"):
+                                for tx_id in matched_ids:
+                                    st.text(f"- {tx_id}")
+                    except (json.JSONDecodeError, TypeError):
+                        st.markdown("**Matched Transactions:** Invalid data format")
+
+                # Show timestamps
+                if 'created_at' in suggestion_data:
+                    created_at_val = suggestion_data.get('created_at')
+                    if created_at_val is not None and str(created_at_val) != 'None' and str(created_at_val).strip() != '':
+                        try:
+                            created_at = pd.to_datetime(created_at_val, errors='coerce')
+                            if pd.notna(created_at):
+                                st.markdown(f"**Created:** {created_at.strftime('%Y-%m-%d %H:%M:%S')}")
+                        except (ValueError, TypeError):
+                            pass
+    else:
+        st.info("No subscription suggestions found in the database.")
+        st.markdown("""
+        **Note:** Subscription suggestions are detected automatically by the subscription detection service
+        when analyzing transaction patterns. Run the subscription detection endpoint to generate suggestions.
+        """)
 
 # Footer
 st.markdown("---")

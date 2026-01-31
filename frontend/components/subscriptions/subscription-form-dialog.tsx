@@ -151,7 +151,16 @@ export function SubscriptionFormDialog({
         }
       } else if (isVerifyMode) {
         // Verify suggestion - creates subscription and links transactions
-        const result = await verifySuggestion(suggestion.id);
+        // Pass form values as overrides to allow user customization
+        const result = await verifySuggestion(suggestion.id, {
+          name: name.trim(),
+          merchant: merchant.trim() || undefined,
+          amount: amountNum,
+          categoryId: categoryId || undefined,
+          importance,
+          frequency: frequency as any,
+          description: description.trim() || undefined,
+        });
 
         if (result.success) {
           toast.success(

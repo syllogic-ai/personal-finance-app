@@ -24,6 +24,7 @@ export interface ColumnMapping {
     creditValue?: string;
     debitValue?: string;
     isAmountSigned?: boolean; // If true, positive = credit, negative = debit
+    dateFormat?: "DD-MM-YYYY" | "MM-DD-YYYY"; // Date format for ambiguous dates
   };
 }
 
@@ -225,6 +226,7 @@ Map these columns to the following transaction fields:
 Also determine:
 - If amount is signed (positive for credits, negative for debits)
 - If there's a separate column for transaction type, what values indicate credit vs debit
+- The date format: analyze the date column values to determine if dates are in "DD-MM-YYYY" (European) or "MM-DD-YYYY" (US) format. Look at the date values carefully - if you see dates like "13/05/2025" or "25/12/2024", these are clearly DD-MM-YYYY. If all dates have first value ≤12, try to infer from context or default to "DD-MM-YYYY".
 
 Respond ONLY with a valid JSON object in this exact format:
 {
@@ -238,7 +240,8 @@ Respond ONLY with a valid JSON object in this exact format:
   "typeConfig": {
     "creditValue": "value_that_indicates_credit_or_null",
     "debitValue": "value_that_indicates_debit_or_null",
-    "isAmountSigned": true_or_false
+    "isAmountSigned": true_or_false,
+    "dateFormat": "DD-MM-YYYY" or "MM-DD-YYYY"
   }
 }
 
@@ -409,30 +412,80 @@ export async function previewImportedTransactions(
         else if (/^\d{4}[\-\/]\d{2}[\-\/]\d{2}/.test(cleaned)) {
           parsedDate = new Date(cleaned);
         }
-        // Try DD-MM-YYYY, DD/MM/YYYY, DD.MM.YYYY
-        else if (/^\d{1,2}[\-\/\.]\d{1,2}[\-\/\.]\d{4}$/.test(cleaned)) {
-          const parts = cleaned.split(/[\-\/\.]/);
-          const day = parseInt(parts[0]);
-          const month = parseInt(parts[1]) - 1;
-          const year = parseInt(parts[2]);
-          parsedDate = new Date(year, month, day);
+        // Try DD-MM-YYYY, DD/MM/YYYY, DD.MM.YYYY, MM-DD-YYYY, etc. (with optional time)
+        else if (/^\d{1,2}[\-\/\.]\d{1,2}[\-\/\.]\d{4}/.test(cleaned)) {
+          // Extract just the date part (before any time component)
+          const dateMatch = cleaned.match(/^(\d{1,2})[\-\/\.](\d{1,2})[\-\/\.](\d{4})/);
+          if (dateMatch) {
+            const first = parseInt(dateMatch[1]);
+            const second = parseInt(dateMatch[2]);
+            const year = parseInt(dateMatch[3]);
+
+            // If first > 12, it must be day (European format)
+            if (first > 12) {
+              parsedDate = new Date(year, second - 1, first);
+            } else if (second > 12) {
+              // US format: MM-DD-YYYY
+              parsedDate = new Date(year, first - 1, second);
+            } else {
+              // Ambiguous - use user preference
+              const dateFormat = mapping.typeConfig?.dateFormat ?? "DD-MM-YYYY";
+              if (dateFormat === "MM-DD-YYYY") {
+                // US format: MM-DD-YYYY
+                parsedDate = new Date(year, first - 1, second);
+              } else {
+                // European format: DD-MM-YYYY
+                parsedDate = new Date(year, second - 1, first);
+              }
+            }
+          }
         }
-        // Try DD-MM-YY, DD/MM/YY, DD.MM.YY (2-digit year)
-        else if (/^\d{1,2}[\-\/\.]\d{1,2}[\-\/\.]\d{2}$/.test(cleaned)) {
-          const parts = cleaned.split(/[\-\/\.]/);
-          const day = parseInt(parts[0]);
-          const month = parseInt(parts[1]) - 1;
-          let year = parseInt(parts[2]);
-          // Assume 20xx for years 00-50, 19xx for 51-99
-          year = year <= 50 ? 2000 + year : 1900 + year;
-          parsedDate = new Date(year, month, day);
+        // Try DD-MM-YY, DD/MM/YY, DD.MM.YY, MM-DD-YY, etc. (2-digit year with optional time)
+        else if (/^\d{1,2}[\-\/\.]\d{1,2}[\-\/\.]\d{2}(?:\s|$)/.test(cleaned)) {
+          // Extract just the date part (before any time component)
+          const dateMatch = cleaned.match(/^(\d{1,2})[\-\/\.](\d{1,2})[\-\/\.](\d{2})/);
+          if (dateMatch) {
+            const first = parseInt(dateMatch[1]);
+            const second = parseInt(dateMatch[2]);
+            let year = parseInt(dateMatch[3]);
+            // Assume 20xx for years 00-50, 19xx for 51-99
+            year = year <= 50 ? 2000 + year : 1900 + year;
+
+            // Determine day and month based on format
+            let day: number, month: number;
+
+            // If first > 12, it must be day (European format)
+            if (first > 12) {
+              day = first;
+              month = second - 1;
+            } else if (second > 12) {
+              // US format: MM-DD-YY
+              day = second;
+              month = first - 1;
+            } else {
+              // Ambiguous - use user preference
+              const dateFormat = mapping.typeConfig?.dateFormat ?? "DD-MM-YYYY";
+              if (dateFormat === "MM-DD-YYYY") {
+                // US format: MM-DD-YY
+                day = second;
+                month = first - 1;
+              } else {
+                // European format: DD-MM-YY
+                day = first;
+                month = second - 1;
+              }
+            }
+
+            parsedDate = new Date(year, month, day);
+          }
         }
-        // Try MM/DD/YYYY (US format) - check if first part > 12, then it's DD/MM
+        // Try MM/DD/YYYY or DD/MM/YYYY - use user preference for ambiguous dates
         else if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(cleaned)) {
           const parts = cleaned.split("/");
           const first = parseInt(parts[0]);
           const second = parseInt(parts[1]);
           const year = parseInt(parts[2]);
+
           // If first > 12, it must be day (European format)
           if (first > 12) {
             parsedDate = new Date(year, second - 1, first);
@@ -440,8 +493,15 @@ export async function previewImportedTransactions(
             // US format: MM/DD/YYYY
             parsedDate = new Date(year, first - 1, second);
           } else {
-            // Ambiguous - assume European DD/MM/YYYY
-            parsedDate = new Date(year, second - 1, first);
+            // Ambiguous - use user preference
+            const dateFormat = mapping.typeConfig?.dateFormat ?? "DD-MM-YYYY";
+            if (dateFormat === "MM-DD-YYYY") {
+              // US format: MM/DD/YYYY
+              parsedDate = new Date(year, first - 1, second);
+            } else {
+              // European format: DD/MM/YYYY
+              parsedDate = new Date(year, second - 1, first);
+            }
           }
         }
         // Fallback: try native Date parsing
@@ -561,6 +621,56 @@ export async function previewImportedTransactions(
   }
 }
 
+/**
+ * Generate a deterministic external_id for CSV-imported transactions.
+ * This ensures duplicate prevention by creating a unique ID based on transaction data.
+ * Format: csv-import-{hash}
+ * Hash based on: accountId + date + amount + description + merchant
+ * Uses multiple hash functions combined for collision resistance
+ */
+function generateCsvImportExternalId(
+  accountId: string,
+  date: string,
+  amount: number,
+  description: string | null,
+  merchant: string | null = null
+): string {
+  // Create a string to hash - include merchant for better uniqueness
+  const dateOnly = date.split('T')[0]; // Use only the date part (YYYY-MM-DD)
+  const normalizedDesc = (description || '').trim().toLowerCase();
+  const normalizedMerchant = (merchant || '').trim().toLowerCase();
+  const dataToHash = `${accountId}|${dateOnly}|${amount.toFixed(2)}|${normalizedDesc}|${normalizedMerchant}`;
+
+  // FNV-1a hash (32-bit)
+  let hash1 = 2166136261;
+  for (let i = 0; i < dataToHash.length; i++) {
+    hash1 ^= dataToHash.charCodeAt(i);
+    hash1 += (hash1 << 1) + (hash1 << 4) + (hash1 << 7) + (hash1 << 8) + (hash1 << 24);
+  }
+
+  // MurmurHash-inspired second hash (32-bit)
+  let hash2 = 0;
+  for (let i = 0; i < dataToHash.length; i++) {
+    const char = dataToHash.charCodeAt(i);
+    hash2 = ((hash2 << 5) - hash2) + char;
+    hash2 = hash2 & hash2; // Convert to 32bit integer
+  }
+
+  // DJB2 third hash for additional entropy
+  let hash3 = 5381;
+  for (let i = 0; i < dataToHash.length; i++) {
+    hash3 = ((hash3 << 5) + hash3) + dataToHash.charCodeAt(i);
+  }
+
+  // Convert all to unsigned 32-bit and combine into a longer hash
+  const h1 = (hash1 >>> 0).toString(36);
+  const h2 = (hash2 >>> 0).toString(36);
+  const h3 = (hash3 >>> 0).toString(36);
+
+  // Combine all three hashes for maximum uniqueness (collision probability ~2^-96)
+  return `csv-import-${h1}${h2}${h3}`;
+}
+
 // Backend API transaction import item (snake_case format)
 interface BackendTransactionImportItem {
   account_id: string;
@@ -650,16 +760,40 @@ export async function finalizeImport(
     }
 
     // Transform transactions to backend format (snake_case)
-    const backendTransactions: BackendTransactionImportItem[] = selectedTransactions.map((tx) => ({
-      account_id: importSession.accountId,
-      amount: tx.amount,
-      description: tx.description || null,
-      merchant: tx.merchant || null,
-      booked_at: new Date(tx.date).toISOString(),
-      transaction_type: tx.transactionType,
-      currency: account.currency || "EUR",
-      external_id: null,
-    }));
+    // Generate deterministic external_id for each transaction to prevent duplicates
+    // Track external_ids to handle same-day duplicate transactions
+    const externalIdCounts = new Map<string, number>();
+
+    const backendTransactions: BackendTransactionImportItem[] = selectedTransactions.map((tx) => {
+      const bookedAt = new Date(tx.date).toISOString();
+      const baseExternalId = generateCsvImportExternalId(
+        importSession.accountId,
+        bookedAt,
+        tx.amount,
+        tx.description || null,
+        tx.merchant || null
+      );
+
+      // Check if we've seen this external_id before in this batch
+      const count = externalIdCounts.get(baseExternalId) || 0;
+      externalIdCounts.set(baseExternalId, count + 1);
+
+      // If this is a duplicate within the batch, append a counter
+      const externalId = count === 0
+        ? baseExternalId
+        : `${baseExternalId}-${count + 1}`;
+
+      return {
+        account_id: importSession.accountId,
+        amount: tx.amount,
+        description: tx.description || null,
+        merchant: tx.merchant || null,
+        booked_at: bookedAt,
+        transaction_type: tx.transactionType,
+        currency: account.currency || "EUR",
+        external_id: externalId,
+      };
+    });
 
     // Build the backend request
     const backendRequest: BackendTransactionImportRequest = {

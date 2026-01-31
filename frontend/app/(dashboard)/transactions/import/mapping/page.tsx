@@ -36,6 +36,7 @@ function MappingPageContent() {
     endingBalance: null,
     typeConfig: {
       isAmountSigned: false,
+      dateFormat: "DD-MM-YYYY",
     },
   });
 

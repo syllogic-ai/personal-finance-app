@@ -12,6 +12,7 @@ import {
   RiCarLine,
   RiMoreLine,
   RiScalesLine,
+  RiCalculatorLine,
 } from "@remixicon/react";
 import {
   Card,
@@ -55,7 +56,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { CURRENCIES } from "@/lib/constants/currencies";
-import { updateAccount, deleteAccount } from "@/lib/actions/accounts";
+import { updateAccount, deleteAccount, recalculateAccountTimeseries } from "@/lib/actions/accounts";
 import { updateProperty, deleteProperty } from "@/lib/actions/properties";
 import { updateVehicle, deleteVehicle } from "@/lib/actions/vehicles";
 import { AddAssetDialog } from "@/components/assets/add-asset-dialog";
@@ -212,6 +213,27 @@ export function AssetManagement({
       }
     } catch {
       toast.error("An error occurred");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleRecalculateBalance = async (account: Account) => {
+    setIsLoading(true);
+    toast.loading(`Recalculating balance for ${account.name}...`, { id: "recalculate" });
+    try {
+      const result = await recalculateAccountTimeseries(account.id);
+      if (result.success) {
+        toast.success(
+          `Balance recalculated for ${account.name}. Processed ${result.daysProcessed || 0} days.`,
+          { id: "recalculate" }
+        );
+        handleRefresh();
+      } else {
+        toast.error(result.error || "Failed to recalculate balance", { id: "recalculate" });
+      }
+    } catch {
+      toast.error("An error occurred", { id: "recalculate" });
     } finally {
       setIsLoading(false);
     }
@@ -397,6 +419,10 @@ export function AssetManagement({
                         <DropdownMenuItem onClick={() => openEditAccountDialog(account)}>
                           <RiEditLine className="mr-2 h-4 w-4" />
                           Edit
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleRecalculateBalance(account)} disabled={isLoading}>
+                          <RiCalculatorLine className="mr-2 h-4 w-4" />
+                          Recalculate balance
                         </DropdownMenuItem>
                         <DropdownMenuItem className="text-destructive" onClick={() => setDeletingAccount(account)}>
                           <RiDeleteBinLine className="mr-2 h-4 w-4" />

@@ -266,145 +266,101 @@ def import_transactions(
         if pre_selected_count > 0:
             logger.info(f"[IMPORT] {pre_selected_count} transactions using pre-selected categories")
         
-        # Step 4: Check for and remove duplicate transactions before inserting
+        # Step 4: Pre-check for duplicates (don't delete, just identify for skipping)
+        # Build a set of external_ids that already exist to skip them during insert
         logger.info("[IMPORT] Checking for existing duplicate transactions...")
-        deleted_count = 0
-        checked_count = 0
-        
-        for txn_data in normalized_transactions:
-            checked_count += 1
-            # Check 1: Check for existing transactions with same account_id and external_id
-            if txn_data.get("external_id"):
-                existing_by_external_id = db.query(Transaction).filter(
-                    Transaction.account_id == txn_data["account_id"],
-                    Transaction.external_id == txn_data["external_id"],
-                    Transaction.user_id == user_id
-                ).all()
-                
-                if existing_by_external_id:
-                    logger.info(
-                        f"[IMPORT] Found {len(existing_by_external_id)} existing transaction(s) with "
-                        f"account_id={txn_data['account_id']}, external_id={txn_data['external_id']}. "
-                        f"Removing duplicates..."
-                    )
-                    for existing_txn in existing_by_external_id:
-                        db.delete(existing_txn)
-                        deleted_count += 1
-                    continue  # Skip to next transaction if found by external_id
-            
-            # Check 2: Check for existing transactions with same amount, description, and booked_at
-            # This helps catch duplicates even when external_id is not available
-            # Use date comparison (not exact datetime) to handle microsecond differences
-            if txn_data.get("description") and txn_data.get("booked_at"):
-                # Normalize description for comparison (strip whitespace, case-insensitive)
-                normalized_description = txn_data["description"].strip() if txn_data["description"] else None
-                
-                # Extract date from booked_at (handle both datetime and date objects)
-                if isinstance(txn_data["booked_at"], datetime):
-                    booked_date = txn_data["booked_at"].date()
-                elif hasattr(txn_data["booked_at"], 'date'):
-                    booked_date = txn_data["booked_at"].date()
-                else:
-                    booked_date = txn_data["booked_at"]
-                
-                # Query using date comparison and normalized description
-                # Use cast to ensure proper date comparison
-                from sqlalchemy import func, cast, Date
-                from sqlalchemy import and_
-                
-                # Build the query with proper date casting
-                query = db.query(Transaction).filter(
-                    Transaction.account_id == txn_data["account_id"],
-                    Transaction.user_id == user_id,
-                    Transaction.amount == txn_data["amount"]
-                )
-                
-                # Add description filter (case-insensitive, trimmed)
-                if normalized_description:
-                    query = query.filter(
-                        func.lower(func.trim(Transaction.description)) == normalized_description.lower().strip()
-                    )
-                
-                # Add date filter (compare dates, not exact datetime)
-                query = query.filter(
-                    cast(Transaction.booked_at, Date) == booked_date
-                )
-                
-                existing_by_details = query.all()
-                
-                if existing_by_details:
-                    logger.info(
-                        f"[IMPORT] Found {len(existing_by_details)} existing transaction(s) with "
-                        f"matching amount={txn_data['amount']}, description='{normalized_description}', "
-                        f"booked_at={booked_date}. Removing duplicates..."
-                    )
-                    for existing_txn in existing_by_details:
-                        logger.debug(
-                            f"[IMPORT] Removing duplicate: ID={existing_txn.id}, "
-                            f"amount={existing_txn.amount}, description='{existing_txn.description}', "
-                            f"booked_at={existing_txn.booked_at}"
-                        )
-                        db.delete(existing_txn)
-                        deleted_count += 1
-                else:
-                    logger.debug(
-                        f"[IMPORT] No duplicates found for: amount={txn_data['amount']}, "
-                        f"description='{normalized_description}', booked_at={booked_date}"
-                    )
-                    # Also log what we're searching for to help debug
-                    logger.debug(
-                        f"[IMPORT] Search criteria: account_id={txn_data['account_id']}, "
-                        f"user_id={user_id}, amount={txn_data['amount']}, "
-                        f"description='{normalized_description}', date={booked_date}"
-                    )
-        
-        logger.info(
-            f"[IMPORT] Checked {checked_count} transactions for duplicates, "
-            f"found and removed {deleted_count} duplicate(s)"
-        )
-        
-        # Log summary of what was checked
-        if checked_count > 0 and deleted_count == 0:
-            logger.info(
-                "[IMPORT] No duplicates found in pre-check. "
-                "Will check again before inserting each transaction."
+        duplicate_external_ids = set()
+
+        # Collect all external_ids from incoming transactions
+        incoming_external_ids = [
+            txn_data.get("external_id")
+            for txn_data in normalized_transactions
+            if txn_data.get("external_id")
+        ]
+
+        logger.info(f"[IMPORT] Total incoming transactions: {len(normalized_transactions)}")
+        logger.info(f"[IMPORT] Transactions with external_ids: {len(incoming_external_ids)}")
+
+        # Check for duplicate external_ids within the incoming batch itself
+        incoming_external_ids_set = set(incoming_external_ids)
+        if len(incoming_external_ids) != len(incoming_external_ids_set):
+            duplicates_in_batch = len(incoming_external_ids) - len(incoming_external_ids_set)
+            logger.warning(
+                f"[IMPORT] Warning: Found {duplicates_in_batch} duplicate external_id(s) "
+                f"within the incoming batch itself (possible hash collision)"
             )
-        
-        if deleted_count > 0:
-            try:
-                db.commit()
-                logger.info(f"[IMPORT] Removed {deleted_count} duplicate transaction(s)")
-            except Exception as e:
-                db.rollback()
-                logger.warning(f"[IMPORT] Error removing duplicates: {e}. Continuing with insert...")
+
+        if incoming_external_ids:
+            # Flush any pending changes to ensure clean query
+            db.flush()
+
+            # Query for existing transactions with these external_ids
+            existing_with_external_ids = db.query(Transaction.external_id).filter(
+                Transaction.user_id == user_id,
+                Transaction.external_id.in_(incoming_external_ids)
+            ).all()
+
+            # Build set of duplicate external_ids
+            duplicate_external_ids = set(ext_id[0] for ext_id in existing_with_external_ids if ext_id and ext_id[0])
+
+            if duplicate_external_ids:
+                logger.info(
+                    f"[IMPORT] Found {len(duplicate_external_ids)} existing transaction(s) "
+                    f"with matching external_ids that will be skipped"
+                )
+                logger.debug(f"[IMPORT] Duplicate external_ids: {list(duplicate_external_ids)[:10]}...")  # Log first 10
+            else:
+                logger.info("[IMPORT] No existing duplicates found by external_id")
+
+        logger.info(
+            f"[IMPORT] Will skip {len(duplicate_external_ids)} duplicate(s) during insert"
+        )
         
         # Step 5: Insert transactions with categories
         logger.info("[IMPORT] Inserting transactions into database...")
         inserted_count = 0
         inserted_transactions = []  # Store transaction objects to get IDs after commit
         skipped_count = 0
-        
+        seen_external_ids_in_batch = set()  # Track external_ids we've already added in this batch
+
         for idx, txn_data in enumerate(normalized_transactions):
             # Get category_id from categorization results (either AI or pre-selected)
             category_id = categorization_results.get(idx)
 
             try:
-                # Check if transaction already exists (double-check before insert)
-                # Check 1: By external_id if available
-                if txn_data.get("external_id"):
-                    existing_by_external_id = db.query(Transaction).filter(
-                        Transaction.account_id == txn_data["account_id"],
-                        Transaction.external_id == txn_data["external_id"],
-                        Transaction.user_id == user_id
-                    ).first()
-                    
-                    if existing_by_external_id:
-                        logger.warning(
-                            f"[IMPORT] Skipping duplicate transaction {idx} "
-                            f"(account_id={txn_data['account_id']}, external_id={txn_data['external_id']})"
+                # Skip if external_id already exists in database OR in current batch
+                external_id = txn_data.get("external_id")
+                if external_id:
+                    # Check if already in database
+                    if external_id in duplicate_external_ids:
+                        logger.info(
+                            f"[IMPORT] Skipping duplicate transaction {idx}: "
+                            f"external_id={external_id}, "
+                            f"description='{txn_data.get('description', '')[:50]}', "
+                            f"amount={txn_data.get('amount')} "
+                            f"(already exists in database)"
                         )
                         skipped_count += 1
                         continue
+
+                    # Check if already added in this batch
+                    if external_id in seen_external_ids_in_batch:
+                        logger.warning(
+                            f"[IMPORT] Skipping duplicate transaction {idx}: "
+                            f"external_id={external_id}, "
+                            f"description='{txn_data.get('description', '')[:50]}', "
+                            f"amount={txn_data.get('amount')} "
+                            f"(duplicate within same import batch - hash collision)"
+                        )
+                        skipped_count += 1
+                        continue
+
+                    # Mark this external_id as seen in this batch
+                    seen_external_ids_in_batch.add(external_id)
+
+                    logger.debug(
+                        f"[IMPORT] Transaction {idx} is new (external_id={external_id})"
+                    )
                 
                 # Check 2: By amount, description, and booked_at
                 # Use date comparison (not exact datetime) to handle microsecond differences

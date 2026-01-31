@@ -189,12 +189,20 @@ class AccountBalanceService:
                         Transaction.user_id == user_id,
                         Transaction.account_id == account.id
                     ).scalar()
-                    
+
                     if not min_date_result:
-                        logger.debug(f"[TIMESERIES] No transactions found for account {account.name}, skipping timeseries")
-                        continue
-                    
-                    min_date = min_date_result.date() if isinstance(min_date_result, datetime) else min_date_result
+                        # No transactions - use account created_at date or today as starting point
+                        # This ensures accounts with only starting balance still appear in analytics
+                        logger.info(f"[TIMESERIES] No transactions found for account {account.name}, using starting balance only")
+
+                        # Use account creation date, or today if not available
+                        if account.created_at:
+                            min_date = account.created_at.date() if isinstance(account.created_at, datetime) else account.created_at
+                        else:
+                            min_date = datetime.now().date()
+                    else:
+                        min_date = min_date_result.date() if isinstance(min_date_result, datetime) else min_date_result
+
                     end_date = datetime.now().date()
                     account_currency = account.currency or "EUR"
                     starting_balance = account.starting_balance or Decimal("0")

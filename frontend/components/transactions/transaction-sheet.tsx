@@ -32,7 +32,8 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { cn, formatDate, formatAmount } from "@/lib/utils";
 import type { TransactionWithRelations } from "@/lib/actions/transactions";
-import { updateTransactionCategory, deleteBalancingTransaction } from "@/lib/actions/transactions";
+import { updateTransactionCategory, updateTransactionIncludeInAnalytics, deleteBalancingTransaction } from "@/lib/actions/transactions";
+import { Switch } from "@/components/ui/switch";
 import type { CategoryDisplay } from "@/types";
 import { RiDeleteBinLine, RiLoopRightLine } from "@remixicon/react";
 import { toast } from "sonner";
@@ -57,10 +58,12 @@ export function TransactionSheet({
   categories = [],
 }: TransactionSheetProps) {
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+  const [includeInAnalytics, setIncludeInAnalytics] = useState<boolean>(true);
   const [instructions, setInstructions] = useState<string>("");
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isReverting, setIsReverting] = useState(false);
+  const [isTogglingAnalytics, setIsTogglingAnalytics] = useState(false);
   const [showSubscriptionDialog, setShowSubscriptionDialog] = useState(false);
   const [showLinkedSubscriptionDialog, setShowLinkedSubscriptionDialog] = useState(false);
 
@@ -93,6 +96,7 @@ export function TransactionSheet({
   useEffect(() => {
     if (transaction) {
       setSelectedCategoryId(transaction.categoryId);
+      setIncludeInAnalytics(transaction.includeInAnalytics ?? true);
       setInstructions("");
       setHasChanges(false);
     }
@@ -107,6 +111,29 @@ export function TransactionSheet({
 
   const handleInstructionsChange = (value: string) => {
     setInstructions(value);
+  };
+
+  const handleIncludeInAnalyticsChange = async (checked: boolean) => {
+    if (!transaction) return;
+
+    setIsTogglingAnalytics(true);
+    try {
+      const result = await updateTransactionIncludeInAnalytics(transaction.id, checked);
+
+      if (result.success) {
+        setIncludeInAnalytics(checked);
+        onUpdateTransaction?.(transaction.id, {
+          includeInAnalytics: checked,
+        });
+        toast.success(checked ? "Transaction included in analytics" : "Transaction excluded from analytics");
+      } else {
+        toast.error(result.error || "Failed to update transaction");
+      }
+    } catch {
+      toast.error("Failed to update transaction");
+    } finally {
+      setIsTogglingAnalytics(false);
+    }
   };
 
   const handleSave = async () => {
@@ -252,6 +279,22 @@ export function TransactionSheet({
               value={instructions}
               onChange={(e) => handleInstructionsChange(e.target.value)}
               className="min-h-[100px] resize-none"
+            />
+          </div>
+
+          {/* Include in Analytics Toggle */}
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label htmlFor="include-analytics">Include in Analytics</Label>
+              <p className="text-xs text-muted-foreground">
+                When disabled, this transaction won&apos;t appear in charts or reports
+              </p>
+            </div>
+            <Switch
+              id="include-analytics"
+              checked={includeInAnalytics}
+              onCheckedChange={handleIncludeInAnalyticsChange}
+              disabled={isTogglingAnalytics}
             />
           </div>
 

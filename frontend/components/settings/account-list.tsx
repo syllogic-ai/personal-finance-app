@@ -8,6 +8,7 @@ import {
   RiBankLine,
   RiMoreLine,
   RiScalesLine,
+  RiRefreshLine,
 } from "@remixicon/react";
 import {
   Card,
@@ -51,7 +52,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { CURRENCIES } from "@/lib/constants/currencies";
-import { updateAccount, deleteAccount } from "@/lib/actions/accounts";
+import { updateAccount, deleteAccount, recalculateAccountTimeseries } from "@/lib/actions/accounts";
 import { UpdateBalanceDialog } from "@/components/accounts/update-balance-dialog";
 import type { Account } from "@/lib/db/schema";
 
@@ -93,7 +94,7 @@ export function AccountList({ accounts, onAccountUpdated }: AccountListProps) {
     setEditAccountType(account.accountType);
     setEditInstitution(account.institution || "");
     setEditCurrency(account.currency || "EUR");
-    setEditBalance(account.functionalBalance || "0");
+    setEditBalance(account.startingBalance || "0");
   };
 
   const handleEdit = async (e: React.FormEvent) => {
@@ -148,6 +149,26 @@ export function AccountList({ accounts, onAccountUpdated }: AccountListProps) {
       }
     } catch {
       toast.error("An error occurred. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleRecalculate = async (accountId: string, accountName: string) => {
+    setIsLoading(true);
+    const toastId = toast.loading(`Recalculating balance for ${accountName}...`);
+
+    try {
+      const result = await recalculateAccountTimeseries(accountId);
+
+      if (result.success) {
+        toast.success(result.message || "Balance recalculated successfully", { id: toastId });
+        onAccountUpdated?.();
+      } else {
+        toast.error(result.error || "Failed to recalculate balance", { id: toastId });
+      }
+    } catch {
+      toast.error("An error occurred. Please try again.", { id: toastId });
     } finally {
       setIsLoading(false);
     }
@@ -219,6 +240,10 @@ export function AccountList({ accounts, onAccountUpdated }: AccountListProps) {
                       <DropdownMenuItem onClick={() => openEditDialog(account)}>
                         <RiEditLine className="mr-2 h-4 w-4" />
                         Edit
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleRecalculate(account.id, account.name)}>
+                        <RiRefreshLine className="mr-2 h-4 w-4" />
+                        Recalculate Balance
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         className="text-destructive"
@@ -298,30 +323,15 @@ export function AccountList({ accounts, onAccountUpdated }: AccountListProps) {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="edit-balance">Current Balance</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="edit-balance"
-                    type="number"
-                    step="0.01"
-                    value={editBalance}
-                    disabled
-                    className="flex-1"
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      if (editingAccount) {
-                        setUpdateBalanceAccount(editingAccount);
-                      }
-                    }}
-                  >
-                    <RiScalesLine className="mr-2 h-4 w-4" />
-                    Adjust
-                  </Button>
-                </div>
+                <Label htmlFor="edit-balance">Starting Balance</Label>
+                <Input
+                  id="edit-balance"
+                  type="number"
+                  step="0.01"
+                  value={editBalance}
+                  onChange={(e) => setEditBalance(e.target.value)}
+                  className="flex-1"
+                />
               </div>
             </div>
             <DialogFooter>

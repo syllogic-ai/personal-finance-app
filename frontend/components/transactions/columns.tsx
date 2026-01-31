@@ -5,7 +5,12 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import type { TransactionWithRelations } from "@/lib/actions/transactions";
-import { RiArrowUpDownLine, RiArrowUpLine, RiArrowDownLine } from "@remixicon/react";
+import { RiArrowUpDownLine, RiArrowUpLine, RiArrowDownLine, RiSubtractLine } from "@remixicon/react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { format } from "date-fns";
 
 export const transactionColumns: ColumnDef<TransactionWithRelations>[] = [
@@ -99,13 +104,26 @@ export const transactionColumns: ColumnDef<TransactionWithRelations>[] = [
     header: "Description",
     cell: ({ row, column }) => {
       const columnSize = column.getSize();
+      const isExcludedFromAnalytics = row.original.includeInAnalytics === false;
       return (
-        <div
-          className="truncate"
-          style={{ maxWidth: `${columnSize}px` }}
-          title={row.getValue("description") || ""}
-        >
-          {row.getValue("description")}
+        <div className="flex items-center gap-1.5">
+          {isExcludedFromAnalytics && (
+            <Tooltip>
+              <TooltipTrigger render={<span className="shrink-0" />}>
+                <RiSubtractLine className="h-4 w-4 text-muted-foreground" />
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                <p>Excluded from analytics</p>
+              </TooltipContent>
+            </Tooltip>
+          )}
+          <div
+            className="truncate"
+            style={{ maxWidth: `${columnSize - (isExcludedFromAnalytics ? 24 : 0)}px` }}
+            title={row.getValue("description") || ""}
+          >
+            {row.getValue("description")}
+          </div>
         </div>
       );
     },
@@ -283,6 +301,20 @@ export const transactionColumns: ColumnDef<TransactionWithRelations>[] = [
       if (!filterValue || !Array.isArray(filterValue) || filterValue.length === 0) return true;
       if (filterValue.includes("pending") && row.original.pending) return true;
       if (filterValue.includes("completed") && !row.original.pending) return true;
+      return false;
+    },
+  },
+  {
+    accessorKey: "includeInAnalytics",
+    header: "Analytics",
+    cell: () => null, // Hidden column used for filtering only
+    size: 0,
+    enableHiding: true,
+    filterFn: (row, id, filterValue) => {
+      if (!filterValue || !Array.isArray(filterValue) || filterValue.length === 0) return true;
+      const includeInAnalytics = row.original.includeInAnalytics ?? true;
+      if (filterValue.includes("included") && includeInAnalytics) return true;
+      if (filterValue.includes("excluded") && !includeInAnalytics) return true;
       return false;
     },
   },
