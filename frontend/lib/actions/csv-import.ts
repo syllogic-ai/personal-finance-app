@@ -709,6 +709,7 @@ interface BackendTransactionImportRequest {
   update_functional_amounts: boolean;
   calculate_balances: boolean;
   daily_balances?: BackendDailyBalance[];
+  starting_balance?: number;  // Starting balance from CSV to update account
 }
 
 // Backend API response format
@@ -799,6 +800,8 @@ export async function finalizeImport(
       calculate_balances: true,
       // Include daily balances from CSV for accurate balance storage
       daily_balances: previewResult.dailyBalances || undefined,
+      // Include starting balance from CSV to update account's starting balance
+      starting_balance: previewResult.balanceVerification?.fileStartingBalance ?? undefined,
     };
 
     // Call backend API with 10-minute timeout

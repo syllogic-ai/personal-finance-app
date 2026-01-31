@@ -66,6 +66,7 @@ class TransactionImportRequest(BaseModel):
     calculate_balances: bool = True
     detect_subscriptions: bool = True
     daily_balances: Optional[List[DailyBalanceImport]] = None  # Daily balances from CSV
+    starting_balance: Optional[Decimal] = None  # Starting balance from CSV to update account
 
 
 class TransactionImportResponse(BaseModel):
@@ -811,6 +812,16 @@ def import_transactions(
                 "total_dates_imported": len(request.daily_balances),
                 "accounts_updated": len(affected_account_ids)
             }
+
+        # Step 8c: Update account starting balance if provided from CSV
+        if request.starting_balance is not None and affected_account_ids:
+            logger.info(f"[IMPORT] Updating account starting balance to {request.starting_balance}...")
+            for account_id in affected_account_ids:
+                account = db.query(Account).filter(Account.id == account_id).first()
+                if account:
+                    account.starting_balance = request.starting_balance
+                    logger.info(f"[IMPORT] Updated starting balance for account {account.name} to {request.starting_balance}")
+            db.commit()
 
         # Step 9: Calculate and store account timeseries for affected accounts only
         # Skip dates that already have authoritative balance data from CSV
