@@ -35,7 +35,7 @@ ENABLE_SUBSCRIPTION_SUGGESTIONS = os.getenv(
     "ENABLE_SUBSCRIPTION_SUGGESTIONS", "true"
 ).lower() == "true"
 
-MIN_CONFIDENCE = int(os.getenv("SUBSCRIPTION_SUGGESTION_MIN_CONFIDENCE", "30"))
+MIN_CONFIDENCE = int(os.getenv("SUBSCRIPTION_SUGGESTION_MIN_CONFIDENCE", "55"))
 MAX_SUGGESTIONS = int(os.getenv("SUBSCRIPTION_SUGGESTION_MAX_COUNT", "20"))
 MIN_TRANSACTIONS = int(os.getenv("SUBSCRIPTION_SUGGESTION_MIN_TRANSACTIONS", "2"))
 
@@ -48,6 +48,40 @@ AMOUNT_TOLERANCE_PERCENT = 0.30
 # Interval consistency threshold - how much variation in days between payments is allowed
 # E.g., 0.25 means intervals can vary by 25% from the average
 INTERVAL_CONSISTENCY_THRESHOLD = 0.35
+
+# Cadence configuration for tiered scoring system
+# Prioritizes monthly/annual cadences, reduces score for weekly/custom patterns
+CADENCE_CONFIG = {
+    'monthly': {'bonus': 15, 'multiplier': 1.0, 'min_txns': 3},
+    'yearly': {'bonus': 15, 'multiplier': 1.0, 'min_txns': 2},
+    'quarterly': {'bonus': 10, 'multiplier': 0.9, 'min_txns': 2},
+    'semi-annual': {'bonus': 10, 'multiplier': 0.9, 'min_txns': 2},
+    'biweekly': {'bonus': 2, 'multiplier': 0.7, 'min_txns': 4},
+    'weekly': {'bonus': 0, 'multiplier': 0.6, 'min_txns': 5},
+    'custom': {'bonus': -5, 'multiplier': 0.4, 'min_txns': 5},
+}
+
+# P2P/Personal transfer patterns to exclude from subscription detection
+# These patterns indicate transfers to individuals rather than businesses
+P2P_PATTERNS = [
+    # Dutch personal transfer patterns
+    r'\bnaar\s+(?:hr|mw|dhr|mevr)\.?\s*[A-Za-z]+',  # "naar hr/mw [Name]"
+    r'\bvan\s+(?:hr|mw|dhr|mevr)\.?\s*[A-Za-z]+',   # "van hr/mw [Name]"
+    r'\boverboeking\s+(?:naar|van)\s+[A-Z][a-z]+',  # "overboeking naar/van [Name]"
+    r'\bhr\.\s*[A-Z]\s+[A-Za-z]+',                   # "Hr. J Lastname"
+    r'\bmw\.\s*[A-Z]\s+[A-Za-z]+',                   # "Mw. M Lastname"
+    r'\bdhr\.\s*[A-Z]\s+[A-Za-z]+',                  # "Dhr. J Lastname"
+    r'\bmevr\.\s*[A-Z]\s+[A-Za-z]+',                 # "Mevr. M Lastname"
+    # English personal transfer patterns
+    r'\btransfer\s+(?:to|from)\s+[A-Z][a-z]+\s+[A-Z][a-z]+',  # "transfer to/from John Doe"
+    r'\bpayment\s+(?:to|from)\s+[A-Z][a-z]+\s+[A-Z][a-z]+',   # "payment to/from John Doe"
+    # P2P services (not subscriptions, often person-to-person)
+    r'\btikkie\b',                  # Dutch P2P payment app
+    r'\bpaypal\s+(?:to|from|aan)\b', # PayPal P2P transfers
+    r'\bbunq\s+(?:to|from|naar)\b',  # Bunq P2P transfers
+    # Name patterns: "Naam: [FirstName] [LastName]" without business indicators
+    r'naam:\s*[A-Z][a-z]+\s+[A-Z][a-z]+\s*$',  # Just a name, nothing else
+]
 
 
 @dataclass
@@ -125,6 +159,78 @@ class SubscriptionDetector:
                 RecurringTransaction.is_active == True
             ).all()
         return self._existing_subscriptions
+
+    def _is_personal_transfer(self, txn: Transaction) -> bool:
+        """
+        Check if a transaction appears to be a personal/P2P transfer.
+
+        Personal transfers should be excluded from subscription detection
+        as they are typically one-time or irregular payments to individuals.
+        """
+        text = (txn.description or "") + " " + (txn.merchant or "")
+
+        # Check against P2P patterns
+        for pattern in P2P_PATTERNS:
+            if re.search(pattern, text, re.IGNORECASE):
+                return True
+
+        # Check for personal IBANs without SEPA Creditor ID
+        # CSIDs start with country code + digits + ZZZ (e.g., NL10ZZZ...)
+        # Personal IBANs have bank code instead of ZZZ (e.g., NL23ABNA...)
+        csid = self._extract_sepa_creditor_id(text)
+        if csid:
+            # If it has a CSID (ZZZ pattern), it's a business - not personal
+            return False
+
+        # Check for IBAN without CSID - could be personal transfer
+        iban_match = re.search(r'\b([A-Z]{2}\d{2}[A-Z]{4}\d{10})\b', text, re.IGNORECASE)
+        if iban_match:
+            # If we have an IBAN but no CSID, and description has personal indicators
+            personal_indicators = [
+                r'\b(naar|van|to|from)\s+[A-Z][a-z]+\b',  # "naar John" / "to John"
+                r'\bnaam:\s*[A-Z]',  # "Naam: J..."
+            ]
+            for indicator in personal_indicators:
+                if re.search(indicator, text, re.IGNORECASE):
+                    return True
+
+        return False
+
+    def _get_cadence_type(self, frequency_label: str) -> str:
+        """
+        Determine the cadence type from a frequency label.
+
+        Returns one of: 'monthly', 'yearly', 'quarterly', 'semi-annual',
+                       'biweekly', 'weekly', or 'custom'
+        """
+        if frequency_label in CADENCE_CONFIG:
+            return frequency_label
+
+        # Check if it's a custom variant of a known cadence
+        label_lower = frequency_label.lower()
+
+        if 'month' in label_lower:
+            # "every 2 months", "bimonthly", etc.
+            if 'every 2' in label_lower or 'bimonth' in label_lower:
+                return 'quarterly'  # Treat bimonthly like quarterly
+            return 'monthly'
+        elif 'year' in label_lower or 'annual' in label_lower:
+            return 'yearly'
+        elif 'quarter' in label_lower:
+            return 'quarterly'
+        elif 'semi' in label_lower and 'annual' in label_lower:
+            return 'semi-annual'
+        elif 'biweek' in label_lower or 'bi-week' in label_lower:
+            return 'biweekly'
+        elif 'week' in label_lower:
+            # "every 6 weeks" should be custom, "weekly" is weekly
+            if frequency_label == 'weekly':
+                return 'weekly'
+            return 'custom'
+        elif 'day' in label_lower:
+            return 'custom'
+
+        return 'custom'
 
     def _extract_sepa_creditor_id(self, text: Optional[str]) -> Optional[str]:
         """
@@ -533,11 +639,25 @@ class SubscriptionDetector:
             else:
                 return None
 
-        # Calculate confidence score
+        # Get frequency label first - needed for tiered scoring
+        frequency_label = self._get_frequency_label(avg_interval)
+        cadence_type = self._get_cadence_type(frequency_label)
+        cadence_config = CADENCE_CONFIG.get(cadence_type, CADENCE_CONFIG['custom'])
+
+        # Check if we have enough transactions for this cadence type
+        min_txns_required = cadence_config['min_txns']
+        if len(transactions) < min_txns_required:
+            logger.debug(
+                f"[SUBSCRIPTION_DETECTOR] Skipping pattern: {len(transactions)} txns "
+                f"< {min_txns_required} required for {cadence_type} cadence"
+            )
+            return None
+
+        # Calculate confidence score using tiered system
         confidence = 0
 
-        # Base confidence from interval consistency (0-40 points)
-        confidence += int(consistency_score * 40)
+        # Base confidence from interval consistency (0-25 points, reduced from 40)
+        confidence += int(consistency_score * 25)
 
         # Big bonus for CSID-based groups (0-25 points)
         # CSID = definitive proof it's the same merchant
@@ -547,17 +667,62 @@ class SubscriptionDetector:
             else:
                 confidence += 15  # Unknown CSID, but still same creditor
 
-        # Bonus for transaction count (0-25 points)
-        count_bonus = min(25, (len(transactions) - 1) * 5)
+        # Cadence-based bonus (from CADENCE_CONFIG)
+        cadence_bonus = cadence_config['bonus']
+        confidence += cadence_bonus
+
+        # Transaction count bonus - different for different cadence types
+        is_preferred_cadence = cadence_type in ['monthly', 'yearly', 'quarterly', 'semi-annual']
+        txn_count = len(transactions)
+
+        if is_preferred_cadence:
+            # Monthly/Yearly/Quarterly/Semi-annual: higher bonuses for fewer transactions
+            if cadence_type == 'yearly' and txn_count == 2:
+                count_bonus = 8  # Yearly subscriptions often only have 2 data points
+            elif txn_count == 2:
+                count_bonus = 0
+            elif txn_count == 3:
+                count_bonus = 10
+            elif txn_count == 4:
+                count_bonus = 18
+            else:  # 5+
+                count_bonus = 25
+        else:
+            # Weekly/Biweekly/Custom: require more transactions, lower max bonus
+            if txn_count < 4:
+                count_bonus = 0
+            elif txn_count == 4:
+                count_bonus = 8
+            elif txn_count == 5:
+                count_bonus = 12
+            else:  # 6+
+                count_bonus = 15  # Capped lower than preferred cadences
+
         confidence += count_bonus
 
-        # Bonus for amount consistency (0-15 points)
-        if amount_cv < 0.05:  # Very consistent
-            confidence += 15
-        elif amount_cv < 0.10:
-            confidence += 10
-        elif amount_cv < 0.20:
-            confidence += 5
+        # Amount consistency bonus - stricter for preferred cadences
+        if is_preferred_cadence:
+            # Stricter thresholds for monthly/yearly
+            if amount_cv < 0.01:  # CV < 1%: fixed amount
+                amount_bonus = 15
+            elif amount_cv < 0.03:  # CV < 3%
+                amount_bonus = 12
+            elif amount_cv < 0.05:  # CV < 5%
+                amount_bonus = 8
+            elif amount_cv < 0.10:  # CV < 10%
+                amount_bonus = 3
+            else:
+                amount_bonus = 0
+        else:
+            # More lenient for other cadences
+            if amount_cv < 0.05:
+                amount_bonus = 10
+            elif amount_cv < 0.10:
+                amount_bonus = 5
+            else:
+                amount_bonus = 0
+
+        confidence += amount_bonus
 
         # Bonus for known merchant from extractor (0-10 points) - only if not already from CSID
         if not known_merchant:
@@ -569,12 +734,8 @@ class SubscriptionDetector:
             elif merchant_result.merchant and merchant_result.confidence >= 60:
                 confidence += 5
 
-        # Bonus for being in a typical subscription frequency (0-10 points)
-        frequency_label = self._get_frequency_label(avg_interval)
-        if frequency_label in ['weekly', 'biweekly', 'monthly', 'quarterly', 'yearly']:
-            confidence += 10
-        elif frequency_label in ['bimonthly', 'semi-annual']:
-            confidence += 5
+        # Apply cadence multiplier (reduces score for non-preferred cadences)
+        confidence = int(confidence * cadence_config['multiplier'])
 
         confidence = min(100, confidence)
 
@@ -802,6 +963,20 @@ class SubscriptionDetector:
 
         if not transactions:
             logger.info("[SUBSCRIPTION_DETECTOR] No unlinked expense transactions found")
+            return []
+
+        # Filter out personal/P2P transfers
+        pre_filter_count = len(transactions)
+        transactions = [txn for txn in transactions if not self._is_personal_transfer(txn)]
+        filtered_count = pre_filter_count - len(transactions)
+
+        if filtered_count > 0:
+            logger.info(
+                f"[SUBSCRIPTION_DETECTOR] Filtered out {filtered_count} personal/P2P transfers"
+            )
+
+        if not transactions:
+            logger.info("[SUBSCRIPTION_DETECTOR] No transactions left after P2P filtering")
             return []
 
         logger.info(
