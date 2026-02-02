@@ -4,7 +4,7 @@ Ponto Connect OAuth and sync routes.
 import os
 import logging
 from typing import Optional
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
@@ -220,7 +220,7 @@ async def callback(
                 access_token=token_service.encrypt_token(token_response.access_token),
                 refresh_token=token_service.encrypt_token(token_response.refresh_token),
                 access_token_expires_at=datetime.now(timezone.utc) +
-                    __import__('datetime').timedelta(seconds=token_response.expires_in),
+                    timedelta(seconds=token_response.expires_in),
                 sync_status="idle",
             )
             db.add(connection)

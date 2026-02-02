@@ -33,6 +33,8 @@ import {
 } from "@/lib/actions/subscription-suggestions";
 import type { RecurringTransaction } from "@/lib/db/schema";
 
+type SubscriptionFrequency = "monthly" | "weekly" | "yearly" | "quarterly" | "biweekly";
+
 interface SubscriptionFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -63,7 +65,7 @@ export function SubscriptionFormDialog({
   const [amount, setAmount] = useState("");
   const [categoryId, setCategoryId] = useState<string>("");
   const [importance, setImportance] = useState(2);
-  const [frequency, setFrequency] = useState<string>("monthly");
+  const [frequency, setFrequency] = useState<SubscriptionFrequency>("monthly");
   const [description, setDescription] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -81,7 +83,7 @@ export function SubscriptionFormDialog({
         setCategoryId(subscription.categoryId || "");
         // Cap importance at 3 for existing subscriptions with higher values
         setImportance(Math.min(subscription.importance, 3));
-        setFrequency(subscription.frequency);
+        setFrequency(subscription.frequency as SubscriptionFrequency);
         setDescription(subscription.description || "");
       } else if (suggestion) {
         // Verify mode - populate with suggestion data
@@ -90,7 +92,7 @@ export function SubscriptionFormDialog({
         setAmount(suggestion.suggestedAmount);
         setCategoryId("");
         setImportance(2);
-        setFrequency(suggestion.detectedFrequency);
+        setFrequency(suggestion.detectedFrequency as SubscriptionFrequency);
         setDescription("");
       } else {
         // Create mode - reset to defaults
@@ -136,7 +138,7 @@ export function SubscriptionFormDialog({
           amount: amountNum,
           categoryId: categoryId || undefined,
           importance,
-          frequency: frequency as any,
+          frequency,
           description: description.trim() || undefined,
         };
 
@@ -158,7 +160,7 @@ export function SubscriptionFormDialog({
           amount: amountNum,
           categoryId: categoryId || undefined,
           importance,
-          frequency: frequency as any,
+          frequency,
           description: description.trim() || undefined,
         });
 
@@ -179,7 +181,7 @@ export function SubscriptionFormDialog({
           amount: amountNum,
           categoryId: categoryId || undefined,
           importance,
-          frequency: frequency as any,
+          frequency,
           description: description.trim() || undefined,
         };
 
@@ -292,7 +294,7 @@ export function SubscriptionFormDialog({
               <Label htmlFor="frequency">
                 Frequency <span className="text-destructive">*</span>
               </Label>
-              <Select value={frequency} onValueChange={(value) => setFrequency(value ?? "monthly")}>
+              <Select value={frequency} onValueChange={(value) => setFrequency((value ?? "monthly") as SubscriptionFrequency)}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>

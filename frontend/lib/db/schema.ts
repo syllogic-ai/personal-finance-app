@@ -148,6 +148,7 @@ export const categories = pgTable(
   },
   (table) => [
     index("idx_categories_user").on(table.userId),
+    index("idx_categories_user_type").on(table.userId, table.categoryType),
     unique("categories_user_name_parent").on(table.userId, table.name, table.parentId),
   ]
 );
@@ -187,6 +188,10 @@ export const transactions = pgTable(
     index("idx_transactions_category").on(table.categoryId),
     index("idx_transactions_category_system").on(table.categorySystemId),
     index("idx_transactions_recurring").on(table.recurringTransactionId),
+    // Composite indexes for common query patterns
+    index("idx_transactions_user_category_system").on(table.userId, table.categorySystemId),
+    index("idx_transactions_user_type_date").on(table.userId, table.transactionType, table.bookedAt),
+    index("idx_transactions_merchant").on(table.merchant),
     unique("transactions_account_external_id").on(table.accountId, table.externalId),
   ]
 );
@@ -391,6 +396,8 @@ export const accountBalances = pgTable(
   (table) => [
     index("idx_account_balances_account").on(table.accountId),
     index("idx_account_balances_date").on(table.date),
+    // Composite index for efficient "latest balance" lookups
+    index("idx_account_balances_account_date_desc").on(table.accountId, table.date),
     unique("account_balances_account_date").on(table.accountId, table.date),
   ]
 );

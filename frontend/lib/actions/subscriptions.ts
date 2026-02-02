@@ -810,7 +810,7 @@ export async function matchTransactionsToSubscription(
   }
 
   try {
-    const backendUrl = process.env.BACKEND_API_URL || "http://localhost:8000";
+    const backendUrl = process.env.BACKEND_URL || "http://localhost:8000";
 
     const response = await fetch(
       `${backendUrl}/api/subscriptions/${subscriptionId}/match-transactions?user_id=${userId}&description_similarity_threshold=${descriptionSimilarityThreshold}&amount_tolerance_percent=${amountTolerancePercent}`,

@@ -169,10 +169,33 @@ export async function deleteCategory(
       return { success: false, error: "System categories cannot be deleted" };
     }
 
+    // Clear categoryId references on transactions before deleting
+    await db
+      .update(transactions)
+      .set({ categoryId: null })
+      .where(
+        and(
+          eq(transactions.userId, userId),
+          eq(transactions.categoryId, categoryId)
+        )
+      );
+
+    // Clear categorySystemId references on transactions as well
+    await db
+      .update(transactions)
+      .set({ categorySystemId: null })
+      .where(
+        and(
+          eq(transactions.userId, userId),
+          eq(transactions.categorySystemId, categoryId)
+        )
+      );
+
     await db.delete(categories).where(eq(categories.id, categoryId));
 
     revalidatePath("/");
     revalidatePath("/settings");
+    revalidatePath("/transactions");
     return { success: true };
   } catch (error) {
     console.error("Failed to delete category:", error);
@@ -324,7 +347,7 @@ export async function deleteCategoryWithReassignment(
       );
     const reassignedCount = countResult[0]?.count ?? 0;
 
-    // Reassign transactions
+    // Reassign transactions with user-assigned categoryId
     await db
       .update(transactions)
       .set({ categoryId: reassignToCategoryId })
@@ -332,6 +355,17 @@ export async function deleteCategoryWithReassignment(
         and(
           eq(transactions.userId, userId),
           eq(transactions.categoryId, categoryId)
+        )
+      );
+
+    // Reassign transactions with system-assigned categorySystemId
+    await db
+      .update(transactions)
+      .set({ categorySystemId: reassignToCategoryId })
+      .where(
+        and(
+          eq(transactions.userId, userId),
+          eq(transactions.categorySystemId, categoryId)
         )
       );
 

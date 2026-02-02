@@ -1001,7 +1001,7 @@ export async function finalizeImport(
     // Batch the transactions to avoid request timeouts and large payload issues
     // For large imports (>500 transactions), split into batches
     const BATCH_SIZE = 500;
-    const backendUrl = process.env.BACKEND_API_URL || "http://localhost:8000";
+    const backendUrl = process.env.BACKEND_URL || "http://localhost:8000";
 
     let totalImported = 0;
     let aggregatedCategorizationSummary: BackendTransactionImportResponse["categorization_summary"] = null;
@@ -1012,7 +1012,7 @@ export async function finalizeImport(
       batches.push(backendTransactions.slice(i, i + BATCH_SIZE));
     }
 
-    console.log(`Importing ${backendTransactions.length} transactions in ${batches.length} batch(es)`);
+    // Importing transactions in batches
 
     try {
       for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
@@ -1081,7 +1081,7 @@ export async function finalizeImport(
           }
         }
 
-        console.log(`Batch ${batchIndex + 1}/${batches.length} completed: ${backendResponse.transactions_inserted} transactions imported`);
+        // Batch completed successfully
       }
 
       // Update import session
@@ -1224,7 +1224,7 @@ export async function enqueueBackgroundImport(
     });
 
     // Build enqueue request
-    const backendUrl = process.env.BACKEND_API_URL || "http://localhost:8000";
+    const backendUrl = process.env.BACKEND_URL || "http://localhost:8000";
     const enqueueRequest = {
       csv_import_id: importId,
       user_id: session.user.id,
@@ -1260,9 +1260,7 @@ export async function enqueueBackgroundImport(
       };
     }
 
-    console.log(
-      `Background import enqueued: ${backendResponse.import_id}, task: ${backendResponse.task_id}`
-    );
+    // Background import enqueued successfully
 
     return {
       success: true,

@@ -196,7 +196,7 @@ class CategorizationRule(Base):
 class BankConnection(Base):
     """
     Bank connections model matching Drizzle schema.
-    Stores GoCardless/Nordigen bank connection information.
+    Stores GoCardless/Nordigen/Ponto bank connection information.
     """
     __tablename__ = "bank_connections"
 
@@ -208,6 +208,15 @@ class BankConnection(Base):
     status = Column(String(50))  # pending, linked, expired, revoked
     agreement_id = Column(String(255))
     link = Column(Text)  # Authorization link
+    provider = Column(String(50), nullable=True)  # gocardless, ponto, etc.
+    sync_status = Column(String(50), nullable=True)  # syncing, synced, failed, idle
+    last_synced_at = Column(DateTime, nullable=True)
+    error_message = Column(Text, nullable=True)
+    # Ponto-specific fields
+    organization_id = Column(String(255), nullable=True)  # Ponto organization ID
+    access_token = Column(Text, nullable=True)  # Encrypted Ponto access token
+    refresh_token = Column(Text, nullable=True)  # Encrypted Ponto refresh token
+    access_token_expires_at = Column(DateTime, nullable=True)  # Token expiry
     created_at = Column(DateTime, default=datetime.utcnow)
     expires_at = Column(DateTime, nullable=True)
 
@@ -508,7 +517,7 @@ class ApiKey(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     name = Column(String(255), nullable=False)
-    key_hash = Column(String(64), nullable=False, index=True)
+    key_hash = Column(String(128), nullable=False, index=True)  # Supports bcrypt (60 chars) and SHA-256 (64 chars)
     key_prefix = Column(String(12), nullable=False)
     last_used_at = Column(DateTime, nullable=True)
     expires_at = Column(DateTime, nullable=True)

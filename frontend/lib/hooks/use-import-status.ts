@@ -165,8 +165,7 @@ export function useImportStatus(
       setIsImporting(true);
     };
 
-    eventSource.onerror = (event) => {
-      console.error("SSE connection error:", event);
+    eventSource.onerror = () => {
       // EventSource will automatically try to reconnect
       // Only set disconnected if the connection is fully closed
       if (eventSource.readyState === EventSource.CLOSED) {
@@ -175,8 +174,8 @@ export function useImportStatus(
     };
 
     // Handle connected event
-    eventSource.addEventListener("connected", (event) => {
-      console.log("SSE connected:", event.data);
+    eventSource.addEventListener("connected", () => {
+      // Connection established, no action needed
     });
 
     // Handle import_started event
@@ -191,8 +190,8 @@ export function useImportStatus(
         }
 
         onStarted?.(data);
-      } catch (e) {
-        console.error("Error parsing import_started event:", e);
+      } catch {
+        // Error parsing import_started event - fail silently
       }
     });
 
@@ -205,8 +204,8 @@ export function useImportStatus(
         setTotalRows(data.total_rows);
 
         onProgress?.(data);
-      } catch (e) {
-        console.error("Error parsing import_progress event:", e);
+      } catch {
+        // Error parsing import_progress event - fail silently
       }
     });
 
@@ -238,8 +237,8 @@ export function useImportStatus(
 
         // Close connection after completion
         eventSource.close();
-      } catch (e) {
-        console.error("Error parsing import_completed event:", e);
+      } catch {
+        // Error parsing import_completed event - fail silently
       }
     });
 
@@ -259,8 +258,8 @@ export function useImportStatus(
 
         // Close connection after failure
         eventSource.close();
-      } catch (e) {
-        console.error("Error parsing import_failed event:", e);
+      } catch {
+        // Error parsing import_failed event - fail silently
       }
     });
 

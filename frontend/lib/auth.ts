@@ -20,8 +20,8 @@ export const auth = betterAuth({
     requireEmailVerification: false,
   },
   session: {
-    expiresIn: 60 * 60 * 24 * 7, // 7 days
-    updateAge: 60 * 60 * 24, // 1 day
+    expiresIn: 60 * 60 * 24, // 24 hours - appropriate for financial app security
+    updateAge: 60 * 60, // 1 hour
     cookieCache: {
       enabled: true,
       maxAge: 5 * 60, // 5 minutes

@@ -9,7 +9,7 @@ import logging
 from typing import AsyncGenerator
 
 import redis.asyncio as aioredis
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 
 logger = logging.getLogger(__name__)
@@ -87,8 +87,13 @@ async def import_status_generator(user_id: str, import_id: str) -> AsyncGenerato
         logger.info(f"SSE connection closed for channel: {channel}")
 
 
+def get_cors_origin() -> str:
+    """Get allowed CORS origin from environment."""
+    return os.getenv("FRONTEND_URL", "http://localhost:3000")
+
+
 @router.get("/import-status/{user_id}/{import_id}")
-async def stream_import_status(user_id: str, import_id: str):
+async def stream_import_status(user_id: str, import_id: str, request: Request):
     """
     Stream import status updates via Server-Sent Events.
 
@@ -112,6 +117,9 @@ async def stream_import_status(user_id: str, import_id: str):
     Returns:
         StreamingResponse with SSE content type
     """
+    # Use configured frontend URL for CORS instead of wildcard
+    cors_origin = get_cors_origin()
+
     return StreamingResponse(
         import_status_generator(user_id, import_id),
         media_type="text/event-stream",
@@ -119,6 +127,7 @@ async def stream_import_status(user_id: str, import_id: str):
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",  # Disable nginx buffering
-            "Access-Control-Allow-Origin": "*",  # Enable CORS for SSE
+            "Access-Control-Allow-Origin": cors_origin,
+            "Access-Control-Allow-Credentials": "true",
         }
     )

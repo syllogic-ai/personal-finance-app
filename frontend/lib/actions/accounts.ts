@@ -107,6 +107,8 @@ export async function deleteAccount(
     }
 
     // Soft delete by setting isActive to false
+    // Note: Transactions and balances remain associated with the deactivated account
+    // Use hardDeleteAccount for complete cleanup
     await db
       .update(accounts)
       .set({
@@ -116,10 +118,70 @@ export async function deleteAccount(
       .where(eq(accounts.id, accountId));
 
     revalidatePath("/settings");
+    revalidatePath("/");
     return { success: true };
   } catch (error) {
     console.error("Failed to delete account:", error);
     return { success: false, error: "Failed to delete account" };
+  }
+}
+
+/**
+ * Permanently delete an account and all associated data.
+ * This includes all transactions and balance history records.
+ * Use with caution - this action cannot be undone.
+ */
+export async function hardDeleteAccount(
+  accountId: string
+): Promise<{ success: boolean; error?: string; deletedTransactions?: number; deletedBalances?: number }> {
+  const userId = await requireAuth();
+
+  if (!userId) {
+    return { success: false, error: "Not authenticated" };
+  }
+
+  try {
+    const account = await db.query.accounts.findFirst({
+      where: and(eq(accounts.id, accountId), eq(accounts.userId, userId)),
+    });
+
+    if (!account) {
+      return { success: false, error: "Account not found" };
+    }
+
+    // Delete associated balance records first
+    const deletedBalances = await db
+      .delete(accountBalances)
+      .where(eq(accountBalances.accountId, accountId))
+      .returning({ id: accountBalances.id });
+
+    // Delete associated transactions
+    const deletedTransactions = await db
+      .delete(transactions)
+      .where(
+        and(
+          eq(transactions.accountId, accountId),
+          eq(transactions.userId, userId)
+        )
+      )
+      .returning({ id: transactions.id });
+
+    // Delete the account
+    await db.delete(accounts).where(eq(accounts.id, accountId));
+
+    revalidatePath("/settings");
+    revalidatePath("/");
+    revalidatePath("/transactions");
+    revalidatePath("/assets");
+
+    return {
+      success: true,
+      deletedTransactions: deletedTransactions.length,
+      deletedBalances: deletedBalances.length,
+    };
+  } catch (error) {
+    console.error("Failed to hard delete account:", error);
+    return { success: false, error: "Failed to delete account and associated data" };
   }
 }
 

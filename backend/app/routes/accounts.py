@@ -162,46 +162,6 @@ def delete_revolut_default_accounts(
     }
 
 
-@router.get("/debug/all", status_code=200)
-def get_all_accounts_debug(
-    user_id: Optional[str] = None,
-    db: Session = Depends(get_db)
-):
-    """
-    Debug endpoint to see ALL accounts for the current user (including inactive ones).
-    Returns detailed information about each account.
-    """
-    user_id = get_user_id(user_id)
-    accounts = db.query(Account).filter(Account.user_id == user_id).all()
-    
-    result = []
-    for account in accounts:
-        # Count transactions for this account
-        from app.models import Transaction
-        transaction_count = db.query(Transaction).filter(
-            Transaction.user_id == user_id,
-            Transaction.account_id == account.id
-        ).count()
-        
-        result.append({
-            "id": str(account.id),
-            "name": account.name,
-            "account_type": account.account_type,
-            "institution": account.institution,
-            "currency": account.currency,
-            "provider": account.provider,
-            "external_id": account.external_id,
-            "balance_available": float(account.balance_available) if account.balance_available else None,
-            "is_active": account.is_active,
-            "transaction_count": transaction_count,
-            "created_at": account.created_at.isoformat() if account.created_at else None,
-            "updated_at": account.updated_at.isoformat() if account.updated_at else None,
-        })
-    
-    return {
-        "total_accounts": len(result),
-        "accounts": result
-    }
 
 
 @router.post("/{account_id}/recalculate-balance", status_code=200)
