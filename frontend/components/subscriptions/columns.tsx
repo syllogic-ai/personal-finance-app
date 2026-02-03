@@ -17,6 +17,7 @@ import {
   RiCheckLine,
   RiCloseLine,
 } from "@remixicon/react";
+import { CompanyLogo } from "@/components/ui/company-logo";
 import type { SubscriptionOrSuggestion } from "./subscriptions-client";
 
 interface ColumnsProps {
@@ -55,30 +56,35 @@ export const createSubscriptionColumns = ({
     accessorKey: "name",
     header: "Name",
     cell: ({ row }) => {
+      const name = row.getValue("name") as string;
       const isSuggestion = row.original.isSuggestion;
       const merchant = row.original.merchant;
       const isActive = row.original.isActive;
       const confidence = row.original.confidence;
       const matchCount = row.original.matchCount;
+      const logoUrl = row.original.logoUrl;
 
       return (
-        <div className={`min-w-0 max-w-full ${!isSuggestion && !isActive ? "opacity-50" : ""}`}>
-          <div className="font-medium truncate">{row.getValue("name")}</div>
-          {merchant && (
-            <div className="text-sm text-muted-foreground truncate">{merchant}</div>
-          )}
-          {isSuggestion && (
-            <div className="text-xs text-muted-foreground truncate">
-              {confidence}% confidence
-              {matchCount && ` | ${matchCount} txn${matchCount !== 1 ? "s" : ""}`}
-            </div>
-          )}
+        <div className={`flex items-center gap-3 min-w-0 max-w-full ${!isSuggestion && !isActive ? "opacity-50" : ""}`}>
+          <CompanyLogo name={name} logoUrl={logoUrl} size="sm" />
+          <div className="min-w-0 flex-1">
+            <div className="font-medium truncate">{name}</div>
+            {merchant && (
+              <div className="text-sm text-muted-foreground truncate">{merchant}</div>
+            )}
+            {isSuggestion && (
+              <div className="text-xs text-muted-foreground truncate">
+                {confidence}% confidence
+                {matchCount && ` | ${matchCount} txn${matchCount !== 1 ? "s" : ""}`}
+              </div>
+            )}
+          </div>
         </div>
       );
     },
-    size: 220,
-    minSize: 150,
-    maxSize: 280,
+    size: 250,
+    minSize: 180,
+    maxSize: 320,
   },
   {
     accessorKey: "amount",

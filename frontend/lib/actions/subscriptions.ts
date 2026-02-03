@@ -7,6 +7,7 @@ import {
   recurringTransactions,
   transactions,
   categories,
+  companyLogos,
   type RecurringTransaction,
   type NewRecurringTransaction,
 } from "@/lib/db/schema";
@@ -29,6 +30,7 @@ export interface SubscriptionCreateInput {
   amount: number;
   currency?: string;
   categoryId?: string;
+  logoId?: string;
   importance: number; // 1-3
   frequency: "monthly" | "weekly" | "yearly" | "quarterly" | "biweekly";
   description?: string;
@@ -40,6 +42,7 @@ export interface SubscriptionUpdateInput {
   amount?: number;
   currency?: string;
   categoryId?: string;
+  logoId?: string | null;
   importance?: number;
   frequency?: "monthly" | "weekly" | "yearly" | "quarterly" | "biweekly";
   description?: string;
@@ -119,6 +122,7 @@ export async function createSubscription(
         amount: input.amount.toFixed(2),
         currency: input.currency || "EUR",
         categoryId: input.categoryId || null,
+        logoId: input.logoId || null,
         importance: input.importance,
         frequency: input.frequency,
         description: input.description?.trim() || null,
@@ -212,6 +216,7 @@ export async function updateSubscription(
     if (input.amount !== undefined) updateData.amount = input.amount.toFixed(2);
     if (input.currency !== undefined) updateData.currency = input.currency;
     if (input.categoryId !== undefined) updateData.categoryId = input.categoryId || null;
+    if (input.logoId !== undefined) updateData.logoId = input.logoId || null;
     if (input.importance !== undefined) updateData.importance = input.importance;
     if (input.frequency !== undefined) updateData.frequency = input.frequency;
     if (input.description !== undefined) updateData.description = input.description?.trim() || null;
@@ -347,6 +352,7 @@ export async function getSubscriptions(
       where: whereConditions,
       with: {
         category: true,
+        logo: true,
       },
       orderBy: [
         desc(recurringTransactions.importance),
@@ -384,6 +390,7 @@ export async function getSubscription(
       ),
       with: {
         category: true,
+        logo: true,
       },
     });
 

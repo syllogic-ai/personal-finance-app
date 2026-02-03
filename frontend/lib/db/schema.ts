@@ -208,6 +208,7 @@ export const recurringTransactions = pgTable(
     amount: decimal("amount", { precision: 15, scale: 2 }).notNull(),
     currency: char("currency", { length: 3 }).default("EUR"),
     categoryId: uuid("category_id").references(() => categories.id),
+    logoId: uuid("logo_id").references(() => companyLogos.id, { onDelete: "set null" }),
     importance: integer("importance").notNull().default(3), // 1-5 scale
     frequency: varchar("frequency", { length: 20 }).notNull(), // monthly, weekly, yearly, quarterly, biweekly
     isActive: boolean("is_active").default(true),
@@ -423,6 +424,25 @@ export const transactionLinks = pgTable(
   ]
 );
 
+export const companyLogos = pgTable(
+  "company_logos",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    domain: varchar("domain", { length: 255 }), // "netflix.com"
+    companyName: varchar("company_name", { length: 255 }), // "Netflix"
+    logoUrl: text("logo_url"), // Local path: "/uploads/logos/netflix.png"
+    status: varchar("status", { length: 20 }).default("found").notNull(), // "found" | "not_found"
+    lastCheckedAt: timestamp("last_checked_at").defaultNow(),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => [
+    index("idx_company_logos_domain").on(table.domain),
+    index("idx_company_logos_name").on(table.companyName),
+    unique("company_logos_domain_unique").on(table.domain),
+  ]
+);
+
 // ============================================================================
 // Relations
 // ============================================================================
@@ -535,6 +555,10 @@ export const recurringTransactionsRelations = relations(recurringTransactions, (
     fields: [recurringTransactions.categoryId],
     references: [categories.id],
   }),
+  logo: one(companyLogos, {
+    fields: [recurringTransactions.logoId],
+    references: [companyLogos.id],
+  }),
   linkedTransactions: many(transactions),
 }));
 
@@ -601,6 +625,10 @@ export const transactionLinksRelations = relations(transactionLinks, ({ one }) =
   }),
 }));
 
+export const companyLogosRelations = relations(companyLogos, ({ many }) => ({
+  recurringTransactions: many(recurringTransactions),
+}));
+
 // ============================================================================
 // Type Exports
 // ============================================================================
@@ -652,3 +680,6 @@ export type NewApiKey = typeof apiKeys.$inferInsert;
 
 export type TransactionLink = typeof transactionLinks.$inferSelect;
 export type NewTransactionLink = typeof transactionLinks.$inferInsert;
+
+export type CompanyLogo = typeof companyLogos.$inferSelect;
+export type NewCompanyLogo = typeof companyLogos.$inferInsert;

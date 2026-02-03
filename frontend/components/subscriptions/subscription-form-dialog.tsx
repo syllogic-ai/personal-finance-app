@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -20,6 +20,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { CompanyLogo } from "@/components/ui/company-logo";
+import { RiSearchLine, RiCloseLine, RiLoader4Line } from "@remixicon/react";
 import { toast } from "sonner";
 import {
   createSubscription,
@@ -31,14 +33,22 @@ import {
   verifySuggestion,
   type SubscriptionSuggestionWithMeta,
 } from "@/lib/actions/subscription-suggestions";
-import type { RecurringTransaction } from "@/lib/db/schema";
+import { searchLogo, hasLogoApiKey } from "@/lib/actions/logos";
+import type { RecurringTransaction, CompanyLogo as CompanyLogoType } from "@/lib/db/schema";
 
 type SubscriptionFrequency = "monthly" | "weekly" | "yearly" | "quarterly" | "biweekly";
+
+interface SubscriptionWithLogo extends RecurringTransaction {
+  logo?: {
+    id: string;
+    logoUrl: string | null;
+  } | null;
+}
 
 interface SubscriptionFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  subscription?: RecurringTransaction | null;
+  subscription?: SubscriptionWithLogo | null;
   suggestion?: SubscriptionSuggestionWithMeta | null;
   categories: Array<{ id: string; name: string; color: string | null }>;
   onSuccess?: (suggestionId?: string, newSubscription?: RecurringTransaction) => void;
@@ -69,8 +79,21 @@ export function SubscriptionFormDialog({
   const [description, setDescription] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Logo state
+  const [logoId, setLogoId] = useState<string | null>(null);
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [logoSearch, setLogoSearch] = useState("");
+  const [isSearchingLogo, setIsSearchingLogo] = useState(false);
+  const [logoSearchAttempted, setLogoSearchAttempted] = useState(false);
+  const [logoApiEnabled, setLogoApiEnabled] = useState(false);
+
   const isEditMode = !!subscription;
   const isVerifyMode = !!suggestion;
+
+  // Check if logo API is enabled
+  useEffect(() => {
+    hasLogoApiKey().then(setLogoApiEnabled);
+  }, []);
 
   // Reset form when dialog opens/closes or subscription/suggestion changes
   useEffect(() => {
@@ -85,6 +108,11 @@ export function SubscriptionFormDialog({
         setImportance(Math.min(subscription.importance, 3));
         setFrequency(subscription.frequency as SubscriptionFrequency);
         setDescription(subscription.description || "");
+        // Set logo
+        setLogoId(subscription.logoId || null);
+        setLogoUrl(subscription.logo?.logoUrl || null);
+        setLogoSearch("");
+        setLogoSearchAttempted(false);
       } else if (suggestion) {
         // Verify mode - populate with suggestion data
         setName(suggestion.suggestedName);
@@ -94,6 +122,11 @@ export function SubscriptionFormDialog({
         setImportance(2);
         setFrequency(suggestion.detectedFrequency as SubscriptionFrequency);
         setDescription("");
+        // Reset logo
+        setLogoId(null);
+        setLogoUrl(null);
+        setLogoSearch("");
+        setLogoSearchAttempted(false);
       } else {
         // Create mode - reset to defaults
         setName("");
@@ -103,9 +136,62 @@ export function SubscriptionFormDialog({
         setImportance(2);
         setFrequency("monthly");
         setDescription("");
+        // Reset logo
+        setLogoId(null);
+        setLogoUrl(null);
+        setLogoSearch("");
+        setLogoSearchAttempted(false);
       }
     }
   }, [open, subscription, suggestion]);
+
+  // Handle logo search
+  const handleLogoSearch = useCallback(async (query: string) => {
+    if (!query.trim()) {
+      return;
+    }
+
+    setIsSearchingLogo(true);
+    setLogoSearchAttempted(true);
+
+    try {
+      const result = await searchLogo(query);
+
+      if (result.success && result.logo) {
+        setLogoId(result.logo.id);
+        setLogoUrl(result.logo.logoUrl);
+        toast.success("Logo found");
+      } else if (result.success) {
+        toast.info("No logo found for this company");
+      } else {
+        toast.error(result.error || "Failed to search for logo");
+      }
+    } catch {
+      toast.error("Failed to search for logo");
+    } finally {
+      setIsSearchingLogo(false);
+    }
+  }, []);
+
+  // Auto-search for logo when name changes (only on create/verify mode, debounced)
+  useEffect(() => {
+    if (!open || isEditMode || logoSearchAttempted || !name.trim() || logoId || !logoApiEnabled) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      handleLogoSearch(name);
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [name, open, isEditMode, logoSearchAttempted, logoId, logoApiEnabled, handleLogoSearch]);
+
+  // Clear logo
+  const handleClearLogo = () => {
+    setLogoId(null);
+    setLogoUrl(null);
+    setLogoSearch("");
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -137,6 +223,7 @@ export function SubscriptionFormDialog({
           merchant: merchant.trim() || undefined,
           amount: amountNum,
           categoryId: categoryId || undefined,
+          logoId: logoId || null,
           importance,
           frequency,
           description: description.trim() || undefined,
@@ -147,7 +234,21 @@ export function SubscriptionFormDialog({
         if (result.success) {
           toast.success("Subscription updated");
           onOpenChange(false);
-          onSuccess?.();
+          // Pass the updated subscription data for immediate UI update
+          const updatedSubscription = {
+            ...subscription,
+            name: name.trim(),
+            merchant: merchant.trim() || null,
+            amount: amountNum.toFixed(2),
+            categoryId: categoryId || null,
+            logoId: logoId || null,
+            importance,
+            frequency,
+            description: description.trim() || null,
+            logo: logoId && logoUrl ? { id: logoId, logoUrl } : null,
+            updatedAt: new Date(),
+          };
+          onSuccess?.(undefined, updatedSubscription);
         } else {
           toast.error(result.error || "Failed to update");
         }
@@ -159,6 +260,7 @@ export function SubscriptionFormDialog({
           merchant: merchant.trim() || undefined,
           amount: amountNum,
           categoryId: categoryId || undefined,
+          logoId: logoId || undefined,
           importance,
           frequency,
           description: description.trim() || undefined,
@@ -180,6 +282,7 @@ export function SubscriptionFormDialog({
           merchant: merchant.trim() || undefined,
           amount: amountNum,
           categoryId: categoryId || undefined,
+          logoId: logoId || undefined,
           importance,
           frequency,
           description: description.trim() || undefined,
@@ -249,6 +352,62 @@ export function SubscriptionFormDialog({
                 onChange={(e) => setMerchant(e.target.value)}
               />
             </div>
+
+            {/* Company Logo - only show if API key is configured */}
+            {logoApiEnabled && (
+              <div className="grid gap-2">
+                <Label>Company Logo</Label>
+                <div className="flex items-center gap-2">
+                  {/* Current logo preview - size-9 matches input height */}
+                  <div className="size-9 shrink-0">
+                    <CompanyLogo
+                      name={name || "Company"}
+                      logoUrl={logoUrl}
+                      className="!size-9"
+                    />
+                  </div>
+                  <div className="flex-1 flex gap-2">
+                    <Input
+                      placeholder="Search by domain (e.g., netflix.com)"
+                      value={logoSearch}
+                      onChange={(e) => setLogoSearch(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          handleLogoSearch(logoSearch || name);
+                        }
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      onClick={() => handleLogoSearch(logoSearch || name)}
+                      disabled={isSearchingLogo}
+                    >
+                      {isSearchingLogo ? (
+                        <RiLoader4Line className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <RiSearchLine className="h-4 w-4" />
+                      )}
+                    </Button>
+                    {logoId && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={handleClearLogo}
+                      >
+                        <RiCloseLine className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Search for a company logo by name or domain. Logos are automatically searched when you enter a name.
+                </p>
+              </div>
+            )}
 
             {/* Amount */}
             <div className="grid gap-2">

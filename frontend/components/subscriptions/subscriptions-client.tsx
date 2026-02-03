@@ -23,6 +23,10 @@ interface SubscriptionWithCategory extends RecurringTransaction {
     name: string;
     color: string | null;
   } | null;
+  logo?: {
+    id: string;
+    logoUrl: string | null;
+  } | null;
 }
 
 // Extended type for table rows that can be either a subscription or a suggestion
@@ -43,6 +47,7 @@ export interface SubscriptionOrSuggestion {
     name: string;
     color: string | null;
   } | null;
+  logoUrl?: string | null;
 }
 
 interface SubscriptionsClientProps {
@@ -72,11 +77,11 @@ export function SubscriptionsClient({
   // Order: Active subscriptions first, then suggestions, then inactive subscriptions
   const activeSubscriptions = subscriptions
     .filter((s) => s.isActive)
-    .map((s) => ({ ...s, isSuggestion: false }));
+    .map((s) => ({ ...s, isSuggestion: false, logoUrl: s.logo?.logoUrl || null }));
 
   const inactiveSubscriptions = subscriptions
     .filter((s) => !s.isActive)
-    .map((s) => ({ ...s, isSuggestion: false }));
+    .map((s) => ({ ...s, isSuggestion: false, logoUrl: s.logo?.logoUrl || null }));
 
   const suggestionRows = suggestions.map((s) => ({
     id: s.id,
@@ -171,15 +176,26 @@ export function SubscriptionsClient({
     }
   };
 
-  const handleFormSuccess = (suggestionId?: string, newSubscription?: SubscriptionWithCategory) => {
+  const handleFormSuccess = (suggestionId?: string, subscriptionData?: SubscriptionWithCategory) => {
     // If we were verifying a suggestion, remove it from the list
     if (suggestionId) {
       setSuggestions((prev) => prev.filter((s) => s.id !== suggestionId));
     }
-    // If a new subscription was created, add it to the list
-    if (newSubscription) {
-      setSubscriptions((prev) => [...prev, newSubscription]);
+
+    if (subscriptionData) {
+      // Check if this is an update (subscription exists) or a new subscription
+      const existingIndex = subscriptions.findIndex((s) => s.id === subscriptionData.id);
+      if (existingIndex >= 0) {
+        // Update existing subscription in the list
+        setSubscriptions((prev) =>
+          prev.map((s) => (s.id === subscriptionData.id ? subscriptionData : s))
+        );
+      } else {
+        // Add new subscription to the list
+        setSubscriptions((prev) => [...prev, subscriptionData]);
+      }
     }
+
     setVerifyingSuggestion(null);
     router.refresh();
   };

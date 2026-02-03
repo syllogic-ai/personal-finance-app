@@ -103,6 +103,7 @@ export async function verifySuggestion(
     merchant?: string;
     amount?: number;
     categoryId?: string;
+    logoId?: string;
     importance?: number;
     frequency?: "weekly" | "biweekly" | "monthly" | "quarterly" | "yearly";
     description?: string;
@@ -178,6 +179,7 @@ export async function verifySuggestion(
         frequency: finalFrequency,
         importance: finalImportance,
         categoryId: overrides?.categoryId || null,
+        logoId: overrides?.logoId || null,
         description: overrides?.description?.trim() || null,
         isActive: true,
       })

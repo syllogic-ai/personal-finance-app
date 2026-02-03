@@ -8,6 +8,15 @@ const nextConfig: NextConfig = {
       static: 30, // Minimum allowed by Next.js
     },
   },
+  images: {
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "img.logo.dev",
+        pathname: "/**",
+      },
+    ],
+  },
 };
 
 export default nextConfig;
