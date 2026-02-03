@@ -2,13 +2,14 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { SubscriptionsTable } from "./subscriptions-table";
+import { SubscriptionsGroupedList } from "./subscriptions-grouped-list";
 import { SubscriptionFormDialog } from "./subscription-form-dialog";
 import { SubscriptionDetailSheet } from "./subscription-detail-sheet";
 import { toast } from "sonner";
 import {
   deleteSubscription,
   toggleSubscriptionActive,
+  type SubscriptionKpis,
 } from "@/lib/actions/subscriptions";
 import {
   verifySuggestion,
@@ -54,12 +55,14 @@ interface SubscriptionsClientProps {
   initialSubscriptions: SubscriptionWithCategory[];
   categories: Array<{ id: string; name: string; color: string | null }>;
   suggestions?: SubscriptionSuggestionWithMeta[];
+  kpis: SubscriptionKpis;
 }
 
 export function SubscriptionsClient({
   initialSubscriptions,
   categories,
   suggestions: initialSuggestions = [],
+  kpis,
 }: SubscriptionsClientProps) {
   const router = useRouter();
   const [subscriptions, setSubscriptions] = useState(initialSubscriptions);
@@ -220,8 +223,9 @@ export function SubscriptionsClient({
 
   return (
     <>
-      <SubscriptionsTable
+      <SubscriptionsGroupedList
         data={tableData}
+        kpis={kpis}
         onAdd={handleAdd}
         onEdit={(row) => {
           const subscription = subscriptions.find((s) => s.id === row.id);

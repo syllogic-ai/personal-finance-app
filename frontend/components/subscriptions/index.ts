@@ -1,4 +1,4 @@
 export { SubscriptionsClient } from "./subscriptions-client";
-export { SubscriptionsTable } from "./subscriptions-table";
+export { SubscriptionsGroupedList } from "./subscriptions-grouped-list";
 export { SubscriptionFormDialog } from "./subscription-form-dialog";
-export { createSubscriptionColumns } from "./columns";
+export { SubscriptionsKpiGrid } from "./subscriptions-kpi-grid";

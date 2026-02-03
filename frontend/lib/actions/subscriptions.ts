@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { eq, and, isNull, desc, asc, sql, inArray, gte, lt } from "drizzle-orm";
+import { eq, and, isNull, desc, asc, sql, inArray, gte, lt, or, ne } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   recurringTransactions,
@@ -19,6 +19,13 @@ import { requireAuth } from "@/lib/auth-helpers";
 
 export type Subscription = RecurringTransaction;
 export type NewSubscription = NewRecurringTransaction;
+
+export interface SubscriptionKpis {
+  activeCount: number;
+  monthlyTotal: number;
+  allTimeTotal: number;
+  currency: string;
+}
 
 // ============================================================================
 // Input Interfaces
@@ -369,6 +376,71 @@ export async function getSubscriptions(
 
 // Legacy alias
 export const getRecurringTransactions = getSubscriptions;
+
+/**
+ * Get subscription KPI metrics for the current user
+ */
+export async function getSubscriptionKpis(): Promise<SubscriptionKpis> {
+  const userId = await requireAuth();
+
+  if (!userId) {
+    return { activeCount: 0, monthlyTotal: 0, allTimeTotal: 0, currency: "EUR" };
+  }
+
+  try {
+    const activeSubscriptions = await db.query.recurringTransactions.findMany({
+      where: and(
+        eq(recurringTransactions.userId, userId),
+        eq(recurringTransactions.isActive, true)
+      ),
+      columns: {
+        amount: true,
+        currency: true,
+        frequency: true,
+      },
+    });
+
+    const frequencyMultipliers: Record<string, number> = {
+      weekly: 4,
+      biweekly: 2,
+      monthly: 1,
+      quarterly: 1 / 3,
+      yearly: 1 / 12,
+    };
+
+    const monthlyTotal = activeSubscriptions.reduce((sumValue, subscription) => {
+      const amount = Math.abs(parseFloat(subscription.amount || "0"));
+      const multiplier = frequencyMultipliers[subscription.frequency] || 1;
+      return sumValue + amount * multiplier;
+    }, 0);
+
+    const currency = activeSubscriptions.find((sub) => sub.currency)?.currency || "EUR";
+
+    const allTimeResult = await db
+      .select({
+        total: sql<number>`COALESCE(SUM(ABS(${transactions.amount})), 0)`,
+      })
+      .from(transactions)
+      .where(
+        and(
+          eq(transactions.userId, userId),
+          sql`${transactions.recurringTransactionId} is not null`
+        )
+      );
+
+    const allTimeTotal = allTimeResult[0]?.total ?? 0;
+
+    return {
+      activeCount: activeSubscriptions.length,
+      monthlyTotal,
+      allTimeTotal,
+      currency,
+    };
+  } catch (error) {
+    console.error("Failed to get subscription KPIs:", error);
+    return { activeCount: 0, monthlyTotal: 0, allTimeTotal: 0, currency: "EUR" };
+  }
+}
 
 /**
  * Get a single subscription by ID
@@ -817,28 +889,92 @@ export async function matchTransactionsToSubscription(
   }
 
   try {
-    const backendUrl = process.env.BACKEND_URL || "http://localhost:8000";
+    const subscription = await db.query.recurringTransactions.findFirst({
+      where: and(
+        eq(recurringTransactions.id, subscriptionId),
+        eq(recurringTransactions.userId, userId)
+      ),
+    });
 
-    const response = await fetch(
-      `${backendUrl}/api/subscriptions/${subscriptionId}/match-transactions?user_id=${userId}&description_similarity_threshold=${descriptionSimilarityThreshold}&amount_tolerance_percent=${amountTolerancePercent}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      }
-    );
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("Backend match failed:", response.status, errorText);
-      return { success: false, error: `Failed to match transactions: ${response.status}` };
+    if (!subscription) {
+      return { success: false, error: "Subscription not found" };
     }
 
-    const backendResponse = await response.json();
+    const candidateTransactions = await db.query.transactions.findMany({
+      where: and(
+        eq(transactions.userId, userId),
+        or(
+          isNull(transactions.recurringTransactionId),
+          ne(transactions.recurringTransactionId, subscriptionId)
+        )
+      ),
+      orderBy: [desc(transactions.bookedAt)],
+      limit: 2000,
+    });
 
-    if (!backendResponse.success) {
-      return { success: false, error: backendResponse.message };
+    const subscriptionAmount = Math.abs(parseFloat(subscription.amount || "0"));
+    const matchedTransactionIds: string[] = [];
+
+    for (const txn of candidateTransactions) {
+      const txnAmount = Math.abs(parseFloat(txn.amount || "0"));
+
+      if (txnAmount === 0 || subscriptionAmount === 0) {
+        continue;
+      }
+
+      const diff = Math.abs(subscriptionAmount - txnAmount);
+      const avg = (subscriptionAmount + txnAmount) / 2;
+      const percentDiff = avg === 0 ? 1 : diff / avg;
+
+      if (percentDiff > amountTolerancePercent) {
+        continue;
+      }
+
+      let bestScore = 0;
+
+      if (subscription.merchant && txn.merchant) {
+        bestScore = Math.max(
+          bestScore,
+          calculateStringSimilarity(subscription.merchant, txn.merchant)
+        );
+      }
+
+      if (subscription.name && txn.description) {
+        bestScore = Math.max(
+          bestScore,
+          calculateStringSimilarity(subscription.name, txn.description)
+        );
+      }
+
+      if (subscription.name && txn.merchant) {
+        bestScore = Math.max(
+          bestScore,
+          calculateStringSimilarity(subscription.name, txn.merchant)
+        );
+      }
+
+      if (subscription.merchant && txn.description) {
+        bestScore = Math.max(
+          bestScore,
+          calculateStringSimilarity(subscription.merchant, txn.description)
+        );
+      }
+
+      if (bestScore / 100 < descriptionSimilarityThreshold) {
+        continue;
+      }
+
+      matchedTransactionIds.push(txn.id);
+    }
+
+    if (matchedTransactionIds.length > 0) {
+      await db
+        .update(transactions)
+        .set({
+          recurringTransactionId: subscriptionId,
+          updatedAt: new Date(),
+        })
+        .where(inArray(transactions.id, matchedTransactionIds));
     }
 
     revalidatePath("/transactions");
@@ -846,8 +982,8 @@ export async function matchTransactionsToSubscription(
 
     return {
       success: true,
-      matchedCount: backendResponse.matched_count,
-      transactionIds: backendResponse.transaction_ids,
+      matchedCount: matchedTransactionIds.length,
+      transactionIds: matchedTransactionIds,
     };
   } catch (error) {
     console.error("Failed to match transactions:", error);
