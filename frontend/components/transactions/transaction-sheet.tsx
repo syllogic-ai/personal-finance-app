@@ -40,6 +40,8 @@ import { RiDeleteBinLine, RiLoopRightLine } from "@remixicon/react";
 import { toast } from "sonner";
 import { SubscriptionDetectionDialog } from "./subscription-detection-dialog";
 import { SubscriptionLinkedDialog } from "./subscription-linked-dialog";
+import { LinkReimbursementsDialog } from "./link-reimbursements-dialog";
+import { LinkedTransactionsSection } from "./linked-transactions-section";
 
 interface TransactionSheetProps {
   transaction: TransactionWithRelations | null;
@@ -70,6 +72,7 @@ export function TransactionSheet({
   const [isTogglingAnalytics, setIsTogglingAnalytics] = useState(false);
   const [showSubscriptionDialog, setShowSubscriptionDialog] = useState(false);
   const [showLinkedSubscriptionDialog, setShowLinkedSubscriptionDialog] = useState(false);
+  const [showLinkReimbursementsDialog, setShowLinkReimbursementsDialog] = useState(false);
 
   const isBalancingTransfer = transaction?.category?.name === "Balancing Transfer";
   const isExpense = transaction?.amount ? parseFloat(String(transaction.amount)) < 0 : false;
@@ -183,8 +186,9 @@ export function TransactionSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="sm:max-w-md overflow-y-auto overflow-x-hidden px-2.5">
-        <SheetHeader className="space-y-1 p-0 pt-4">
+      <SheetContent side="right" className="sm:max-w-md flex flex-col h-full overflow-hidden px-2.5">
+        {/* Fixed Header */}
+        <SheetHeader className="space-y-1 p-0 pt-4 shrink-0">
           <SheetDescription className="text-muted-foreground">
             {formatDate(transaction.bookedAt)}
           </SheetDescription>
@@ -201,9 +205,10 @@ export function TransactionSheet({
           </div>
         </SheetHeader>
 
-        <Separator className="my-6" />
+        <Separator className="my-4 shrink-0" />
 
-        <div className="space-y-6">
+        {/* Scrollable Content */}
+        <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 space-y-6 pr-1">
           {/* Category Section */}
           <div className="space-y-3">
             <Label htmlFor="category">Category</Label>
@@ -274,6 +279,16 @@ export function TransactionSheet({
               )}
           </div>
 
+          {/* Linked Transactions Section */}
+          {!isBalancingTransfer && (
+            <LinkedTransactionsSection
+              transactionId={transaction.id}
+              currency={transaction.currency || "EUR"}
+              onLinkClick={() => setShowLinkReimbursementsDialog(true)}
+              onUpdate={handleSubscriptionSuccess}
+            />
+          )}
+
           {/* Categorization Instructions */}
           <div className="space-y-3">
             <Label htmlFor="instructions">Categorization Instructions</Label>
@@ -305,7 +320,7 @@ export function TransactionSheet({
           <Separator />
 
           {/* Transaction Details */}
-          <div className="space-y-4">
+          <div className="space-y-4 pb-2">
             <h3 className="text-sm font-medium">Details</h3>
 
             <div className="grid gap-3 text-sm">
@@ -329,8 +344,8 @@ export function TransactionSheet({
           </div>
         </div>
 
-        {/* Footer with Save Button, Subscription Button and Revert Option */}
-        <div className="mt-6 pt-4 border-t space-y-3">
+        {/* Fixed Footer with Save Button, Subscription Button and Revert Option */}
+        <div className="pt-4 pb-4 border-t space-y-3 shrink-0 mt-auto">
           {/* Subscription button - only show for expenses and not balancing transfers */}
           {isExpense && !isBalancingTransfer && (
             <Button
@@ -406,6 +421,14 @@ export function TransactionSheet({
         transaction={transaction}
         open={showLinkedSubscriptionDialog}
         onOpenChange={setShowLinkedSubscriptionDialog}
+        onSuccess={handleSubscriptionSuccess}
+      />
+
+      {/* Link Reimbursements Dialog */}
+      <LinkReimbursementsDialog
+        transaction={transaction}
+        open={showLinkReimbursementsDialog}
+        onOpenChange={setShowLinkReimbursementsDialog}
         onSuccess={handleSubscriptionSuccess}
       />
     </Sheet>

@@ -354,6 +354,10 @@ export interface TransactionWithRelations {
     merchant: string | null;
     frequency: string;
   } | null;
+  transactionLink: {
+    groupId: string;
+    linkRole: string;
+  } | null;
   bookedAt: Date;
   pending: boolean | null;
   transactionType: string | null;
@@ -375,6 +379,7 @@ export async function getTransactions(): Promise<TransactionWithRelations[]> {
       category: true,
       categorySystem: true,
       recurringTransaction: true,
+      transactionLink: true,
     },
   });
 
@@ -416,6 +421,12 @@ export async function getTransactions(): Promise<TransactionWithRelations[]> {
           name: tx.recurringTransaction.name,
           merchant: tx.recurringTransaction.merchant,
           frequency: tx.recurringTransaction.frequency,
+        }
+      : null,
+    transactionLink: tx.transactionLink
+      ? {
+          groupId: tx.transactionLink.groupId,
+          linkRole: tx.transactionLink.linkRole,
         }
       : null,
     bookedAt: tx.bookedAt,
@@ -457,6 +468,7 @@ export async function getTransactionsForAccount(
       category: true,
       categorySystem: true,
       recurringTransaction: true,
+      transactionLink: true,
     },
   });
 
@@ -498,6 +510,12 @@ export async function getTransactionsForAccount(
           name: tx.recurringTransaction.name,
           merchant: tx.recurringTransaction.merchant,
           frequency: tx.recurringTransaction.frequency,
+        }
+      : null,
+    transactionLink: tx.transactionLink
+      ? {
+          groupId: tx.transactionLink.groupId,
+          linkRole: tx.transactionLink.linkRole,
         }
       : null,
     bookedAt: tx.bookedAt,

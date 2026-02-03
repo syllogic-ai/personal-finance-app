@@ -127,6 +127,7 @@ class Transaction(Base):
     category = relationship("Category", foreign_keys=[category_id], back_populates="transactions")
     category_system = relationship("Category", foreign_keys=[category_system_id], back_populates="system_transactions")
     recurring_transaction = relationship("RecurringTransaction", back_populates="linked_transactions")
+    transaction_link = relationship("TransactionLink", back_populates="transaction", uselist=False)
 
     # Indexes and constraints
     __table_args__ = (
@@ -404,6 +405,32 @@ class SubscriptionSuggestion(Base):
     )
 
 
+class TransactionLink(Base):
+    """
+    Transaction link model matching Drizzle schema.
+    Links transactions together for reimbursement/expense tracking.
+    """
+    __tablename__ = "transaction_links"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    group_id = Column(UUID(as_uuid=True), nullable=False, index=True)  # Groups linked transactions together
+    transaction_id = Column(UUID(as_uuid=True), ForeignKey("transactions.id", ondelete="CASCADE"), nullable=False)
+    link_role = Column(String(20), nullable=False)  # "primary" | "reimbursement" | "expense"
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    user = relationship("User", back_populates="transaction_links")
+    transaction = relationship("Transaction", back_populates="transaction_link")
+
+    # Indexes and constraints
+    __table_args__ = (
+        Index("idx_transaction_links_user", "user_id"),
+        Index("idx_transaction_links_group", "group_id"),
+        UniqueConstraint("transaction_id", name="transaction_links_transaction_unique"),
+    )
+
+
 # ============================================================================
 # BetterAuth Tables (minimal models for foreign key relationships)
 # ============================================================================
@@ -505,6 +532,7 @@ class User(Base):
     vehicles = relationship("Vehicle", back_populates="user", cascade="all, delete-orphan")
     subscription_suggestions = relationship("SubscriptionSuggestion", back_populates="user", cascade="all, delete-orphan")
     api_keys = relationship("ApiKey", back_populates="user", cascade="all, delete-orphan")
+    transaction_links = relationship("TransactionLink", back_populates="user", cascade="all, delete-orphan")
 
 
 class ApiKey(Base):

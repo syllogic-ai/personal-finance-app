@@ -69,6 +69,9 @@ export function AccountTransactions({
               onBulkUpdate={(categoryId) => {
                 onBulkUpdate?.(selectedIds, categoryId);
               }}
+              onLinkSuccess={() => {
+                window.location.reload();
+              }}
             />
           );
         }}

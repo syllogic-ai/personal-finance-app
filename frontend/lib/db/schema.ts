@@ -402,6 +402,27 @@ export const accountBalances = pgTable(
   ]
 );
 
+export const transactionLinks = pgTable(
+  "transaction_links",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: text("user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    groupId: uuid("group_id").notNull(), // Groups linked transactions together
+    transactionId: uuid("transaction_id")
+      .references(() => transactions.id, { onDelete: "cascade" })
+      .notNull(),
+    linkRole: varchar("link_role", { length: 20 }).notNull(), // "primary" | "reimbursement" | "expense"
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => [
+    index("idx_transaction_links_user").on(table.userId),
+    index("idx_transaction_links_group").on(table.groupId),
+    unique("transaction_links_transaction_unique").on(table.transactionId),
+  ]
+);
+
 // ============================================================================
 // Relations
 // ============================================================================
@@ -419,6 +440,7 @@ export const usersRelations = relations(users, ({ many }) => ({
   vehicles: many(vehicles),
   subscriptionSuggestions: many(subscriptionSuggestions),
   apiKeys: many(apiKeys),
+  transactionLinks: many(transactionLinks),
 }));
 
 export const apiKeysRelations = relations(apiKeys, ({ one }) => ({
@@ -498,6 +520,10 @@ export const transactionsRelations = relations(transactions, ({ one }) => ({
     references: [recurringTransactions.id],
     relationName: "recurringTransactionLink",
   }),
+  transactionLink: one(transactionLinks, {
+    fields: [transactions.id],
+    references: [transactionLinks.transactionId],
+  }),
 }));
 
 export const recurringTransactionsRelations = relations(recurringTransactions, ({ one, many }) => ({
@@ -564,6 +590,17 @@ export const subscriptionSuggestionsRelations = relations(subscriptionSuggestion
   }),
 }));
 
+export const transactionLinksRelations = relations(transactionLinks, ({ one }) => ({
+  user: one(users, {
+    fields: [transactionLinks.userId],
+    references: [users.id],
+  }),
+  transaction: one(transactions, {
+    fields: [transactionLinks.transactionId],
+    references: [transactions.id],
+  }),
+}));
+
 // ============================================================================
 // Type Exports
 // ============================================================================
@@ -612,3 +649,6 @@ export type NewSubscriptionSuggestion = typeof subscriptionSuggestions.$inferIns
 
 export type ApiKey = typeof apiKeys.$inferSelect;
 export type NewApiKey = typeof apiKeys.$inferInsert;
+
+export type TransactionLink = typeof transactionLinks.$inferSelect;
+export type NewTransactionLink = typeof transactionLinks.$inferInsert;

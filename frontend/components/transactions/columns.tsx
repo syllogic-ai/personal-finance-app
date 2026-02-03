@@ -5,7 +5,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import type { TransactionWithRelations } from "@/lib/actions/transactions";
-import { RiArrowUpDownLine, RiArrowUpLine, RiArrowDownLine, RiSubtractLine, RiCheckLine } from "@remixicon/react";
+import { RiArrowUpDownLine, RiArrowUpLine, RiArrowDownLine, RiSubtractLine, RiCheckLine, RiLink } from "@remixicon/react";
 import {
   Tooltip,
   TooltipContent,
@@ -291,6 +291,36 @@ export const transactionColumns: ColumnDef<TransactionWithRelations>[] = [
       if (row.original.recurringTransaction) {
         return filterValue.includes(row.original.recurringTransaction.id);
       }
+      return false;
+    },
+  },
+  {
+    accessorKey: "transactionLink",
+    header: () => <div className="text-center">Link</div>,
+    cell: ({ row }) => {
+      const link = row.original.transactionLink;
+      if (!link) {
+        return <div className="text-center text-muted-foreground">-</div>;
+      }
+      const roleLabel = link.linkRole === "primary" ? "Primary" : link.linkRole === "reimbursement" ? "Reimbursement" : "Expense";
+      return (
+        <div className="flex justify-center">
+          <Tooltip>
+            <TooltipTrigger render={<span />}>
+              <RiLink className="h-4 w-4 text-blue-600" />
+            </TooltipTrigger>
+            <TooltipContent side="top">
+              <p>Linked ({roleLabel})</p>
+            </TooltipContent>
+          </Tooltip>
+        </div>
+      );
+    },
+    size: 60,
+    filterFn: (row, id, filterValue) => {
+      if (!filterValue || !Array.isArray(filterValue) || filterValue.length === 0) return true;
+      if (filterValue.includes("not_linked") && !row.original.transactionLink) return true;
+      if (filterValue.includes("linked") && row.original.transactionLink) return true;
       return false;
     },
   },

@@ -1,9 +1,9 @@
 "use server";
 
 import { db } from "@/lib/db";
-import { accounts, transactions, categories, users, properties, vehicles, accountBalances } from "@/lib/db/schema";
+import { accounts, transactions, categories, users, properties, vehicles, accountBalances, transactionLinks } from "@/lib/db/schema";
 import { getAuthenticatedSession } from "@/lib/auth-helpers";
-import { eq, sql, gte, lte, and, desc, inArray } from "drizzle-orm";
+import { eq, sql, gte, lte, and, desc, inArray, isNull, or } from "drizzle-orm";
 
 async function getUserCurrency(userId: string): Promise<string> {
   const result = await db
@@ -215,15 +215,25 @@ export async function getPeriodSpending(referenceDate?: Date, accountId?: string
   }
 
   // Only count transactions categorized as 'expense' (excludes transfers)
+  // For linked transactions: exclude non-primary (they're counted via primary's net)
   const [result, currency] = await Promise.all([
     db
       .select({
-        total: sql<string>`COALESCE(SUM(ABS(${transactions.amount})), 0)`,
+        total: sql<string>`COALESCE(SUM(
+          CASE
+            WHEN ${transactionLinks.linkRole} IS NOT NULL AND ${transactionLinks.linkRole} != 'primary' THEN 0
+            ELSE ABS(${transactions.amount})
+          END
+        ), 0)`,
       })
       .from(transactions)
       .innerJoin(
         categories,
         sql`${categories.id} = COALESCE(${transactions.categoryId}, ${transactions.categorySystemId})`
+      )
+      .leftJoin(
+        transactionLinks,
+        eq(transactions.id, transactionLinks.transactionId)
       )
       .where(and(...conditions, eq(categories.categoryType, "expense"))),
     getUserCurrency(session.user.id),
@@ -263,15 +273,25 @@ export async function getPeriodIncome(referenceDate?: Date, accountId?: string, 
   }
 
   // Only count transactions categorized as 'income' (excludes transfers)
+  // For linked transactions: exclude non-primary (they're counted via primary's net)
   const [result, currency] = await Promise.all([
     db
       .select({
-        total: sql<string>`COALESCE(SUM(${transactions.amount}), 0)`,
+        total: sql<string>`COALESCE(SUM(
+          CASE
+            WHEN ${transactionLinks.linkRole} IS NOT NULL AND ${transactionLinks.linkRole} != 'primary' THEN 0
+            ELSE ${transactions.amount}
+          END
+        ), 0)`,
       })
       .from(transactions)
       .innerJoin(
         categories,
         sql`${categories.id} = COALESCE(${transactions.categoryId}, ${transactions.categorySystemId})`
+      )
+      .leftJoin(
+        transactionLinks,
+        eq(transactions.id, transactionLinks.transactionId)
       )
       .where(and(...conditions, eq(categories.categoryType, "income"))),
     getUserCurrency(session.user.id),
@@ -524,18 +544,28 @@ export async function getSpendingByCategory(limit: number = 5, referenceDate?: D
 
   // Get spending by category (only expense categories, excludes transfers)
   // Use COALESCE to fall back to categorySystemId when categoryId is null
+  // For linked transactions: exclude non-primary linked transactions
   const categorizedResult = await db
     .select({
       id: categories.id,
       name: categories.name,
       icon: categories.icon,
       color: categories.color,
-      amount: sql<string>`COALESCE(SUM(ABS(${transactions.amount})), 0)`,
+      amount: sql<string>`COALESCE(SUM(
+        CASE
+          WHEN ${transactionLinks.linkRole} IS NOT NULL AND ${transactionLinks.linkRole} != 'primary' THEN 0
+          ELSE ABS(${transactions.amount})
+        END
+      ), 0)`,
     })
     .from(transactions)
     .innerJoin(
       categories,
       sql`${categories.id} = COALESCE(${transactions.categoryId}, ${transactions.categorySystemId})`
+    )
+    .leftJoin(
+      transactionLinks,
+      eq(transactions.id, transactionLinks.transactionId)
     )
     .where(
       and(
@@ -544,7 +574,12 @@ export async function getSpendingByCategory(limit: number = 5, referenceDate?: D
       )
     )
     .groupBy(categories.id, categories.name, categories.icon, categories.color)
-    .orderBy(desc(sql`SUM(ABS(${transactions.amount}))`))
+    .orderBy(desc(sql`SUM(
+      CASE
+        WHEN ${transactionLinks.linkRole} IS NOT NULL AND ${transactionLinks.linkRole} != 'primary' THEN 0
+        ELSE ABS(${transactions.amount})
+      END
+    )`))
     .limit(limit);
 
   // Get uncategorized spending
@@ -561,14 +596,24 @@ export async function getSpendingByCategory(limit: number = 5, referenceDate?: D
     );
 
   // Get total spending for the month (only expense categories)
+  // Exclude non-primary linked transactions
   const totalResult = await db
     .select({
-      total: sql<string>`COALESCE(SUM(ABS(${transactions.amount})), 0)`,
+      total: sql<string>`COALESCE(SUM(
+        CASE
+          WHEN ${transactionLinks.linkRole} IS NOT NULL AND ${transactionLinks.linkRole} != 'primary' THEN 0
+          ELSE ABS(${transactions.amount})
+        END
+      ), 0)`,
     })
     .from(transactions)
     .innerJoin(
       categories,
       sql`${categories.id} = COALESCE(${transactions.categoryId}, ${transactions.categorySystemId})`
+    )
+    .leftJoin(
+      transactionLinks,
+      eq(transactions.id, transactionLinks.transactionId)
     )
     .where(and(...baseConditions, eq(categories.categoryType, "expense")));
 

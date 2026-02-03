@@ -89,6 +89,9 @@ export function TransactionTable({
               onBulkUpdate={(categoryId) => {
                 onBulkUpdate?.(selectedIds, categoryId);
               }}
+              onLinkSuccess={() => {
+                window.location.reload();
+              }}
             />
           );
         }}

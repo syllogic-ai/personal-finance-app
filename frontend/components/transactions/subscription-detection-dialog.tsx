@@ -161,7 +161,7 @@ export function SubscriptionDetectionDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto overflow-x-hidden">
         <DialogHeader>
           <DialogTitle>Mark as Subscription</DialogTitle>
           <DialogDescription>
@@ -207,14 +207,14 @@ export function SubscriptionDetectionDialog({
               </div>
 
               {/* Frequency & Category on same row */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-4">
                 {/* Frequency */}
-                <div className="space-y-2">
+                <div className="space-y-2 col-span-1">
                   <Label htmlFor="sub-frequency">
                     Frequency <span className="text-destructive">*</span>
                   </Label>
                   <Select value={frequency} onValueChange={(v) => setFrequency(v as SubscriptionFrequency)}>
-                    <SelectTrigger>
+                    <SelectTrigger className="w-full">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -229,11 +229,23 @@ export function SubscriptionDetectionDialog({
                 </div>
 
                 {/* Category */}
-                <div className="space-y-2">
+                <div className="space-y-2 col-span-2">
                   <Label htmlFor="sub-category">Category</Label>
                   <Select value={categoryId || "uncategorized"} onValueChange={(v) => setCategoryId(v === "uncategorized" || v === null ? "" : v)}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select category" />
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select category">
+                        {categoryId ? (
+                          <div className="flex items-center gap-2">
+                            <div
+                              className="h-3 w-3 shrink-0"
+                              style={{ backgroundColor: categories.find((c) => c.id === categoryId)?.color || "#A1A1AA" }}
+                            />
+                            <span>{categories.find((c) => c.id === categoryId)?.name || "Unknown"}</span>
+                          </div>
+                        ) : (
+                          <span>Uncategorized</span>
+                        )}
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="uncategorized">Uncategorized</SelectItem>
@@ -256,7 +268,7 @@ export function SubscriptionDetectionDialog({
               {/* Importance - 3 blocks */}
               <div className="space-y-2">
                 <Label>Importance</Label>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1">
                   {Array.from({ length: 3 }).map((_, i) => {
                     const blockValue = i + 1;
                     const isSelected = blockValue <= importance;
@@ -265,7 +277,7 @@ export function SubscriptionDetectionDialog({
                         key={i}
                         type="button"
                         onClick={() => setImportance(blockValue)}
-                        className={`h-6 w-8 border transition-colors cursor-pointer hover:border-foreground ${
+                        className={`h-3 w-5 border transition-colors cursor-pointer hover:border-foreground ${
                           isSelected
                             ? "bg-foreground border-foreground"
                             : "bg-background border-border"
@@ -303,7 +315,7 @@ export function SubscriptionDetectionDialog({
                   </div>
                 </div>
 
-                <div className="max-h-[200px] overflow-y-auto border divide-y">
+                <div className="max-h-[200px] overflow-y-auto overflow-x-hidden border divide-y">
                   {detectionResult.matchedTransactions.map((txn) => (
                     <label
                       key={txn.id}
@@ -313,13 +325,13 @@ export function SubscriptionDetectionDialog({
                         type="checkbox"
                         checked={selectedTransactionIds.has(txn.id)}
                         onChange={() => toggleTransaction(txn.id)}
-                        className="h-4 w-4"
+                        className="h-4 w-4 shrink-0"
                       />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-sm truncate">
+                      <div className="flex-1 min-w-0 w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm truncate flex-1">
                             {txn.merchant || txn.description || "Transaction"}
-                          </span>
+                          </p>
                           <span className="text-sm font-mono shrink-0">
                             {Math.abs(txn.amount).toFixed(2)}
                           </span>

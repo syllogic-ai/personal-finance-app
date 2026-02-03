@@ -9,6 +9,7 @@ import {
   RiDeleteBinLine,
   RiSearchLine,
   RiLineChartLine,
+  RiLink,
 } from "@remixicon/react";
 import { Dock, DockIcon } from "@/components/ui/dock";
 import {
@@ -25,6 +26,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
 import { bulkUpdateTransactionCategory, bulkUpdateTransactionIncludeInAnalytics } from "@/lib/actions/transactions";
+import { createLinkGroupFromSelection } from "@/lib/actions/transaction-links";
 import { exportTransactionsToCSV } from "@/lib/utils/csv-export";
 import type { CategoryDisplay } from "@/types";
 import type { TransactionWithRelations } from "@/lib/actions/transactions";
@@ -38,6 +40,7 @@ interface BulkActionsDockProps {
   onClearSelection: () => void;
   onBulkUpdate: (categoryId: string | null) => void;
   onBulkAnalyticsUpdate?: (includeInAnalytics: boolean) => void;
+  onLinkSuccess?: () => void;
 }
 
 export function BulkActionsDock({
@@ -48,12 +51,17 @@ export function BulkActionsDock({
   onClearSelection,
   onBulkUpdate,
   onBulkAnalyticsUpdate,
+  onLinkSuccess,
 }: BulkActionsDockProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [isAnalyticsLoading, setIsAnalyticsLoading] = useState(false);
+  const [isLinking, setIsLinking] = useState(false);
   const [categoryPopoverOpen, setCategoryPopoverOpen] = useState(false);
   const [analyticsPopoverOpen, setAnalyticsPopoverOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+
+  // Check if any selected transaction is already linked
+  const hasLinkedTransactions = selectedTransactions.some((t) => t.transactionLink !== null);
 
   // Filter out categories hidden from selection, then apply search filter
   const selectableCategories = useMemo(() => filterSelectableCategories(categories), [categories]);
@@ -124,6 +132,35 @@ export function BulkActionsDock({
       toast.error("An error occurred. Please try again.");
     } finally {
       setIsAnalyticsLoading(false);
+    }
+  };
+
+  const handleLinkTransactions = async () => {
+    if (selectedIds.length < 2) {
+      toast.error("Select at least 2 transactions to link");
+      return;
+    }
+
+    if (hasLinkedTransactions) {
+      toast.error("One or more transactions are already linked");
+      return;
+    }
+
+    setIsLinking(true);
+    try {
+      const result = await createLinkGroupFromSelection(selectedIds);
+
+      if (result.success) {
+        toast.success(`Linked ${selectedIds.length} transactions`);
+        onLinkSuccess?.();
+        onClearSelection();
+      } else {
+        toast.error(result.error || "Failed to link transactions");
+      }
+    } catch {
+      toast.error("An error occurred. Please try again.");
+    } finally {
+      setIsLinking(false);
     }
   };
 
@@ -245,6 +282,37 @@ export function BulkActionsDock({
             </div>
           </PopoverContent>
         </Popover>
+
+        {/* Link Transactions */}
+        {selectedCount >= 2 && (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <DockIcon
+                  className={`bg-muted ${
+                    hasLinkedTransactions
+                      ? "opacity-50 cursor-not-allowed"
+                      : "hover:bg-muted/80"
+                  }`}
+                  onClick={hasLinkedTransactions ? undefined : handleLinkTransactions}
+                />
+              }
+            >
+              {isLinking ? (
+                <span className="size-5 animate-pulse">...</span>
+              ) : (
+                <RiLink className="size-5" />
+              )}
+            </TooltipTrigger>
+            <TooltipContent side="top" sideOffset={8}>
+              <p>
+                {hasLinkedTransactions
+                  ? "Some transactions already linked"
+                  : "Link as reimbursement group"}
+              </p>
+            </TooltipContent>
+          </Tooltip>
+        )}
 
         {/* Export */}
         <Tooltip>
