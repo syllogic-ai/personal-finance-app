@@ -32,7 +32,7 @@ export function exportTransactionsToCSV(
     const amount = tx.amount.toFixed(2);
     const currency = tx.currency || "EUR";
     const category = escapeCsvField(tx.category?.name || "Uncategorized");
-    const account = escapeCsvField(tx.account.name);
+    const account = escapeCsvField(tx.account?.name || "Unknown");
     const type = tx.transactionType || (tx.amount < 0 ? "debit" : "credit");
     const status = tx.pending ? "Pending" : "Completed";
 

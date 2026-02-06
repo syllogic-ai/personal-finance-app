@@ -721,6 +721,9 @@ export async function deleteBalancingTransaction(
 
     // Get the account's starting balance for recalculation
     const account = transaction.account;
+    if (!account) {
+      return { success: false, error: "Transaction account not found" };
+    }
     const startingBalance = parseFloat(account.startingBalance || "0");
 
     // Delete the transaction
