@@ -387,17 +387,19 @@ export async function getTransactions(): Promise<TransactionWithRelations[]> {
 
     // Transactions should always have an account (FK w/ cascade), but Drizzle's
     // relation typing can still be nullable. Enforce non-null at runtime.
-    return result
-      .map((tx) => {
-        if (!tx.account) {
-          console.warn("[getTransactions] Transaction missing account relation", {
-            transactionId: tx.id,
-            accountId: tx.accountId,
-          });
-          return null;
-        }
+    //
+    // Use `flatMap` instead of `map+filter` so TS never infers `null[]`.
+    return result.flatMap((tx) => {
+      if (!tx.account) {
+        console.warn("[getTransactions] Transaction missing account relation", {
+          transactionId: tx.id,
+          accountId: tx.accountId,
+        });
+        return [];
+      }
 
-        return {
+      return [
+        {
           id: tx.id,
           accountId: tx.accountId,
           account: {
@@ -447,9 +449,9 @@ export async function getTransactions(): Promise<TransactionWithRelations[]> {
           pending: tx.pending,
           transactionType: tx.transactionType,
           includeInAnalytics: tx.includeInAnalytics,
-        };
-      })
-      .filter((tx): tx is TransactionWithRelations => tx !== null);
+        },
+      ];
+    });
   } catch (error: any) {
     console.error("[getTransactions] Query failed:", {
       error: error?.message || String(error),
@@ -499,17 +501,17 @@ export async function getTransactionsForAccount(
       },
     });
 
-    return result
-      .map((tx) => {
-        if (!tx.account) {
-          console.warn("[getTransactionsForAccount] Transaction missing account relation", {
-            transactionId: tx.id,
-            accountId: tx.accountId,
-          });
-          return null;
-        }
+    return result.flatMap((tx) => {
+      if (!tx.account) {
+        console.warn("[getTransactionsForAccount] Transaction missing account relation", {
+          transactionId: tx.id,
+          accountId: tx.accountId,
+        });
+        return [];
+      }
 
-        return {
+      return [
+        {
           id: tx.id,
           accountId: tx.accountId,
           account: {
@@ -559,9 +561,9 @@ export async function getTransactionsForAccount(
           pending: tx.pending,
           transactionType: tx.transactionType,
           includeInAnalytics: tx.includeInAnalytics,
-        };
-      })
-      .filter((tx): tx is TransactionWithRelations => tx !== null);
+        },
+      ];
+    });
   } catch (error: any) {
     console.error("[getTransactionsForAccount] Query failed:", {
       error: error?.message || String(error),
