@@ -18,17 +18,14 @@ export default async function DashboardLayout({
     redirect("/login");
   }
 
-  // Check onboarding status and redirect if not completed
-  try {
-    const onboardingStatus = await getOnboardingStatus();
-    if (onboardingStatus && !onboardingStatus.isCompleted) {
-      const redirectPath = await getOnboardingRedirectPath(onboardingStatus.status);
-      redirect(redirectPath);
-    }
-  } catch (error) {
-    // If onboarding check fails, log error but allow access to dashboard
-    // This prevents the app from crashing if there's a database issue
-    console.error("Failed to check onboarding status:", error);
+  // Check onboarding status and redirect if not completed.
+  //
+  // Note: `redirect()` throws a special Next.js error to trigger navigation.
+  // Do NOT wrap this in a broad try/catch, or the redirect will be swallowed.
+  const onboardingStatus = await getOnboardingStatus();
+  if (onboardingStatus && !onboardingStatus.isCompleted) {
+    const redirectPath = await getOnboardingRedirectPath(onboardingStatus.status);
+    redirect(redirectPath);
   }
 
   return (
