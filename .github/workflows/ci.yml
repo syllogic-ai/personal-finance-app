@@ -1,4 +1,4 @@
-name: CI/CD Pipeline
+name: CI
 
 on:
   push:
@@ -12,7 +12,7 @@ jobs:
     
     services:
       postgres:
-        image: postgres:15-alpine
+        image: postgres:16-alpine
         env:
           POSTGRES_USER: financeuser
           POSTGRES_PASSWORD: financepass
@@ -48,6 +48,8 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: '20'
+        cache: 'pnpm'
+        cache-dependency-path: frontend/pnpm-lock.yaml
 
     - name: Install backend dependencies
       working-directory: ./backend
@@ -56,34 +58,27 @@ jobs:
         pip install -r requirements.txt
         pip install httpx  # For API testing
 
-    - name: Cache frontend dependencies
-      uses: actions/cache@v4
-      with:
-        path: frontend/node_modules
-        key: ${{ runner.os }}-node-${{ hashFiles('frontend/package.json') }}
-        restore-keys: |
-          ${{ runner.os }}-node-
-
-    - name: Cache Next.js build
-      uses: actions/cache@v4
-      with:
-        path: |
-          frontend/.next/cache
-        key: ${{ runner.os }}-nextjs-${{ hashFiles('frontend/package.json') }}
-        restore-keys: |
-          ${{ runner.os }}-nextjs-
+    - name: Enable corepack (pnpm)
+      run: corepack enable
 
     - name: Install frontend dependencies
       working-directory: ./frontend
-      run: npm install
+      run: pnpm install --frozen-lockfile
+
+    - name: Run DB migrations (Drizzle)
+      working-directory: ./frontend
+      env:
+        DATABASE_URL: postgresql://financeuser:financepass@localhost:5432/finance_db
+      run: node scripts/migrate.js
 
     - name: Build frontend
       working-directory: ./frontend
       env:
         DATABASE_URL: postgresql://financeuser:financepass@localhost:5432/finance_db
         NODE_ENV: production
+        BETTER_AUTH_SECRET: 0123456789abcdef0123456789abcdef
         NEXT_TELEMETRY_DISABLED: 1  # Disable telemetry in CI
-      run: npm run build
+      run: pnpm run build
       continue-on-error: false
 
     - name: Start backend server
@@ -93,8 +88,6 @@ jobs:
         REDIS_URL: redis://localhost:6379/0
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY || 'test-key' }}
       run: |
-        # Create database tables
-        python -c "from app.database import engine, Base; Base.metadata.create_all(bind=engine)"
         # Start server in background
         uvicorn app.main:app --host 0.0.0.0 --port 8000 &
         echo $! > server.pid
@@ -102,9 +95,7 @@ jobs:
 
     - name: Wait for backend to be ready
       run: |
-        timeout 30 bash -c 'until curl -f http://localhost:8000/health; do sleep 1; done' || true
-        # Give it a bit more time to fully initialize
-        sleep 3
+        timeout 60 bash -c 'until curl -f http://localhost:8000/health; do sleep 1; done'
 
     - name: Test Transaction Import API
       working-directory: ./backend
@@ -152,3 +143,78 @@ jobs:
         fi
         # Also try to kill any uvicorn processes
         pkill -f "uvicorn app.main:app" || true
+
+  compose-smoke:
+    name: Compose Smoke Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create Compose env file
+      # Keep this minimal + HTTP-only for CI
+        run: |
+          cat > deploy/compose/.env.ci <<EOF
+          APP_VERSION=edge
+
+          APP_URL=http://localhost:8080
+          BETTER_AUTH_SECRET=0123456789abcdef0123456789abcdef
+          CADDY_ADDRESS=:80
+          ACME_EMAIL=
+          HTTP_PORT=8080
+          HTTPS_PORT=8443
+
+          POSTGRES_IMAGE=postgres:16-alpine
+          POSTGRES_USER=financeuser
+          POSTGRES_PASSWORD=financepass
+          POSTGRES_DB=finance_db
+          DATABASE_URL=postgresql://financeuser:financepass@postgres:5432/finance_db
+
+          REDIS_URL=redis://redis:6379/0
+
+          BACKEND_URL=http://backend:8000
+          CORS_ALLOW_ORIGINS=http://localhost:8080
+          API_DOCS_ENABLED=false
+
+          STORAGE_PROVIDER=local
+          LOCAL_STORAGE_PATH=uploads
+          EOF
+
+      - name: Start stack (build from source)
+        run: |
+          docker compose \
+            --env-file deploy/compose/.env.ci \
+            -f deploy/compose/docker-compose.yml \
+            -f deploy/compose/docker-compose.local.yml \
+            up -d --build
+
+      - name: Wait for app + backend
+        run: |
+          timeout 120 bash -c 'until curl -fsS http://localhost:8080/api/health >/dev/null; do sleep 2; done'
+          timeout 120 bash -c 'until curl -fsS http://localhost:8080/ >/dev/null; do sleep 2; done'
+
+      - name: Print container status
+        if: always()
+        run: |
+          docker compose \
+            --env-file deploy/compose/.env.ci \
+            -f deploy/compose/docker-compose.yml \
+            -f deploy/compose/docker-compose.local.yml \
+            ps
+
+      - name: Show logs on failure
+        if: failure()
+        run: |
+          docker compose \
+            --env-file deploy/compose/.env.ci \
+            -f deploy/compose/docker-compose.yml \
+            -f deploy/compose/docker-compose.local.yml \
+            logs --no-color --tail=200
+
+      - name: Shutdown
+        if: always()
+        run: |
+          docker compose \
+            --env-file deploy/compose/.env.ci \
+            -f deploy/compose/docker-compose.yml \
+            -f deploy/compose/docker-compose.local.yml \
+            down --remove-orphans -v
