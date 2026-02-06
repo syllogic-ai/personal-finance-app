@@ -32,6 +32,7 @@ out/
 
 # Package managers
 package-lock.json
+.pnpm-store/
 
 # IDEs
 .idea/
