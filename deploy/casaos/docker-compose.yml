@@ -24,7 +24,7 @@ services:
     image: ghcr.io/syllogic-ai/personal-finance-frontend:${APP_VERSION:-edge}
     container_name: syllogic-migrate
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql://financeuser:financepass@postgres:5432/finance_db}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-financeuser}:${POSTGRES_PASSWORD:-financepass}@postgres:5432/${POSTGRES_DB:-finance_db}
     depends_on:
       - postgres
     command: ["node", "scripts/migrate.js"]
@@ -34,7 +34,7 @@ services:
     image: ghcr.io/syllogic-ai/personal-finance-backend:${APP_VERSION:-edge}
     container_name: syllogic-backend
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql://financeuser:financepass@postgres:5432/finance_db}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-financeuser}:${POSTGRES_PASSWORD:-financepass}@postgres:5432/${POSTGRES_DB:-finance_db}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       FRONTEND_URL: ${APP_URL:-http://localhost:8080}
       CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-http://localhost:8080}
@@ -59,7 +59,7 @@ services:
     container_name: syllogic-worker
     command: celery -A celery_app worker --loglevel=info --concurrency=4
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql://financeuser:financepass@postgres:5432/finance_db}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-financeuser}:${POSTGRES_PASSWORD:-financepass}@postgres:5432/${POSTGRES_DB:-finance_db}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       # Optional integrations / features
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
@@ -81,7 +81,7 @@ services:
     container_name: syllogic-beat
     command: celery -A celery_app beat --loglevel=info
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql://financeuser:financepass@postgres:5432/finance_db}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-financeuser}:${POSTGRES_PASSWORD:-financepass}@postgres:5432/${POSTGRES_DB:-finance_db}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       # Optional integrations / features
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
@@ -103,7 +103,7 @@ services:
     container_name: syllogic-app
     environment:
       NODE_ENV: production
-      DATABASE_URL: ${DATABASE_URL:-postgresql://financeuser:financepass@postgres:5432/finance_db}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-financeuser}:${POSTGRES_PASSWORD:-financepass}@postgres:5432/${POSTGRES_DB:-finance_db}
       BETTER_AUTH_URL: ${APP_URL:-http://localhost:8080}
       NEXT_PUBLIC_BETTER_AUTH_URL: ${APP_URL:-http://localhost:8080}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-change-me}
