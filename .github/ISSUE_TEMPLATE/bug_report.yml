@@ -2,7 +2,6 @@ name: 🐛 Bug Report
 description: Create a report to help us improve
 title: "[BUG] "
 labels: bug
-assignees: ''
 
 body:
   - type: markdown
@@ -15,7 +14,6 @@ body:
     attributes:
       label: Describe the bug
       placeholder: A clear and concise description of what the bug is.
-      required: true
 
   - type: textarea
     id: steps
@@ -26,14 +24,12 @@ body:
         1. Go to '...'
         2. Click on '....'
         3. See error
-      required: true
 
   - type: input
     id: expected
     attributes:
       label: Expected behavior
       placeholder: What you expected to happen
-      required: true
 
   - type: input
     id: environment
@@ -41,11 +37,9 @@ body:
       label: Environment
       description: OS, browser, Node/Python version, etc.
       placeholder: e.g. Windows 11, Chrome 109, Node v18
-      required: false
 
   - type: textarea
     id: additional
     attributes:
       label: Additional context
       placeholder: Add any other context about the problem here.
-      required: false
