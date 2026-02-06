@@ -3,27 +3,63 @@ name: syllogic
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: syllogic-postgres
     environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-UTC}
       POSTGRES_USER: ${POSTGRES_USER:-financeuser}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-financepass}
       POSTGRES_DB: ${POSTGRES_DB:-finance_db}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - type: bind
+        source: /DATA/AppData/$AppID/postgres
+        target: /var/lib/postgresql/data
     restart: unless-stopped
+    x-casaos:
+      envs:
+        - container: POSTGRES_USER
+          description:
+            en_US: Database username.
+        - container: POSTGRES_PASSWORD
+          description:
+            en_US: Database password (required).
+        - container: POSTGRES_DB
+          description:
+            en_US: Database name.
+        - container: PUID
+          description:
+            en_US: Run the app as this user ID.
+        - container: PGID
+          description:
+            en_US: Run the app as this group ID.
+        - container: TZ
+          description:
+            en_US: Timezone (e.g. Europe/Athens).
+      volumes:
+        - container: /var/lib/postgresql/data
+          description:
+            en_US: Postgres database data.
 
   redis:
     image: redis:7-alpine
-    container_name: syllogic-redis
     command: redis-server --appendonly yes
     volumes:
-      - redis_data:/data
+      - type: bind
+        source: /DATA/AppData/$AppID/redis
+        target: /data
     restart: unless-stopped
+    x-casaos:
+      volumes:
+        - container: /data
+          description:
+            en_US: Redis data.
 
   migrate:
     image: ghcr.io/syllogic-ai/personal-finance-frontend:${APP_VERSION:-edge}
-    container_name: syllogic-migrate
     environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-UTC}
       DATABASE_URL: postgresql://${POSTGRES_USER:-financeuser}:${POSTGRES_PASSWORD:-financepass}@postgres:5432/${POSTGRES_DB:-finance_db}
     depends_on:
       - postgres
@@ -32,8 +68,10 @@ services:
 
   backend:
     image: ghcr.io/syllogic-ai/personal-finance-backend:${APP_VERSION:-edge}
-    container_name: syllogic-backend
     environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-UTC}
       DATABASE_URL: postgresql://${POSTGRES_USER:-financeuser}:${POSTGRES_PASSWORD:-financepass}@postgres:5432/${POSTGRES_DB:-finance_db}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       FRONTEND_URL: ${APP_URL:-http://localhost:8080}
@@ -53,12 +91,31 @@ services:
       - redis
       - migrate
     restart: unless-stopped
+    x-casaos:
+      envs:
+        - container: FRONTEND_URL
+          description:
+            en_US: Frontend URL for CORS and SSE.
+        - container: CORS_ALLOW_ORIGINS
+          description:
+            en_US: Comma-separated allowed origins.
+        - container: API_DOCS_ENABLED
+          description:
+            en_US: Enable FastAPI docs (true/false).
+        - container: OPENAI_API_KEY
+          description:
+            en_US: OpenAI API key (optional).
+        - container: TOKEN_ENCRYPTION_KEY
+          description:
+            en_US: Token encryption key (optional).
 
   worker:
     image: ghcr.io/syllogic-ai/personal-finance-backend:${APP_VERSION:-edge}
-    container_name: syllogic-worker
     command: celery -A celery_app worker --loglevel=info --concurrency=4
     environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-UTC}
       DATABASE_URL: postgresql://${POSTGRES_USER:-financeuser}:${POSTGRES_PASSWORD:-financepass}@postgres:5432/${POSTGRES_DB:-finance_db}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       # Optional integrations / features
@@ -78,9 +135,11 @@ services:
 
   beat:
     image: ghcr.io/syllogic-ai/personal-finance-backend:${APP_VERSION:-edge}
-    container_name: syllogic-beat
     command: celery -A celery_app beat --loglevel=info
     environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-UTC}
       DATABASE_URL: postgresql://${POSTGRES_USER:-financeuser}:${POSTGRES_PASSWORD:-financepass}@postgres:5432/${POSTGRES_DB:-finance_db}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       # Optional integrations / features
@@ -100,9 +159,12 @@ services:
 
   app:
     image: ghcr.io/syllogic-ai/personal-finance-frontend:${APP_VERSION:-edge}
-    container_name: syllogic-app
     environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-UTC}
       NODE_ENV: production
+      APP_URL: ${APP_URL:-http://localhost:8080}
       DATABASE_URL: postgresql://${POSTGRES_USER:-financeuser}:${POSTGRES_PASSWORD:-financepass}@postgres:5432/${POSTGRES_DB:-finance_db}
       BETTER_AUTH_URL: ${APP_URL:-http://localhost:8080}
       NEXT_PUBLIC_BETTER_AUTH_URL: ${APP_URL:-http://localhost:8080}
@@ -114,23 +176,88 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       LOGO_DEV_API_KEY: ${LOGO_DEV_API_KEY:-}
     volumes:
-      - uploads_data:/app/public/uploads
+      - type: bind
+        source: /DATA/AppData/$AppID/uploads
+        target: /app/public/uploads
     depends_on:
       - migrate
     restart: unless-stopped
+    x-casaos:
+      envs:
+        - container: APP_URL
+          description:
+            en_US: Public URL where you access Syllogic.
+        - container: BETTER_AUTH_SECRET
+          description:
+            en_US: Secret used to sign auth sessions (required).
+        - container: BACKEND_URL
+          description:
+            en_US: Backend internal URL (default uses Docker network).
+        - container: STORAGE_PROVIDER
+          description:
+            en_US: Storage provider (local).
+        - container: LOCAL_STORAGE_PATH
+          description:
+            en_US: Local uploads directory in container.
+        - container: OPENAI_API_KEY
+          description:
+            en_US: OpenAI API key (optional).
+        - container: LOGO_DEV_API_KEY
+          description:
+            en_US: Logo.dev API key (optional).
+        - container: PUID
+          description:
+            en_US: Run the app as this user ID.
+        - container: PGID
+          description:
+            en_US: Run the app as this group ID.
+        - container: TZ
+          description:
+            en_US: Timezone (e.g. Europe/Athens).
+      volumes:
+        - container: /app/public/uploads
+          description:
+            en_US: User uploads and CSV storage.
 
   # CasaOS typically runs on a local network; default to HTTP-only via Caddy.
   caddy:
     image: caddy:2-alpine
-    container_name: syllogic-caddy
     ports:
-      - "8080:80"
+      - target: 80
+        published: ${WEBUI_PORT:-8080}
+        protocol: tcp
     environment:
       CADDY_ADDRESS: ":80"
+    command:
+      - sh
+      - -c
+      - |
+          if [ ! -s /etc/caddy/Caddyfile ]; then
+            cat > /etc/caddy/Caddyfile <<'EOF'
+          {$CADDY_ADDRESS} {
+          	encode zstd gzip
+
+          	@auth path /api/auth/*
+          	reverse_proxy @auth app:3000
+
+          	@api path /api/*
+          	reverse_proxy @api backend:8000
+
+          	reverse_proxy app:3000
+          }
+          EOF
+          fi
+          caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
+      - type: bind
+        source: /DATA/AppData/$AppID/caddy
+        target: /etc/caddy
+      - type: bind
+        source: /DATA/AppData/$AppID/caddy/data
+        target: /data
+      - type: bind
+        source: /DATA/AppData/$AppID/caddy/config
+        target: /config
     depends_on:
       - app
       - backend
@@ -139,28 +266,37 @@ services:
       ports:
         - container: "80"
           description:
-            en_us: Web UI
-
-volumes:
-  postgres_data:
-  redis_data:
-  uploads_data:
-  caddy_data:
-  caddy_config:
+            en_US: Web UI HTTP port.
+      volumes:
+        - container: /etc/caddy
+          description:
+            en_US: Caddy configuration (Caddyfile).
+        - container: /data
+          description:
+            en_US: Caddy TLS data.
+        - container: /config
+          description:
+            en_US: Caddy config data.
 
 x-casaos:
   architectures:
     - amd64
     - arm64
   main: caddy
-  port_map: "8080"
+  port_map: "${WEBUI_PORT:-8080}"
   title:
-    en_us: Syllogic
+    en_US: Syllogic
   description:
-    en_us: Self-hosted personal finance management with a Next.js UI, FastAPI backend, and Postgres.
+    en_US: Self-hosted personal finance management with a Next.js UI, FastAPI backend, and Postgres.
   tagline:
-    en_us: Track spending, imports, balances, and analytics.
+    en_US: Track spending, imports, balances, and analytics.
   developer: syllogic-ai
   author: syllogic-ai
   category: Finance
   website: https://github.com/syllogic-ai/personal-finance-app
+  index: /
+  tips:
+    before_install:
+      en_US: |
+        Set BETTER_AUTH_SECRET and POSTGRES_PASSWORD before installing.
+        The app will be available on http://<CasaOS-IP>:${WEBUI_PORT:-8080}
