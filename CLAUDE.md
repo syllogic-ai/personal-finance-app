@@ -5,7 +5,7 @@
 A personal finance app with **two-service architecture**:
 
 - **Frontend (Next.js)**: UI, authentication, CRUD operations via Server Actions + Drizzle ORM
-- **Backend (Python)**: Data pipeline for bank sync, enrichment, categorization, cron jobs
+- **Backend (Python)**: Data pipeline for transaction enrichment, categorization, cron jobs
 
 Both services share a single **PostgreSQL** database. Drizzle schema is the source of truth.
 
@@ -27,7 +27,6 @@ Both services share a single **PostgreSQL** database. Drizzle schema is the sour
                           │
 ┌─────────────────────────▼───────────────────────────────────┐
 │  Backend (Python/FastAPI)                                   │
-│  - GoCardless integration (bank sync)                       │
 │  - Transaction enrichment & categorization                  │
 │  - Celery + Redis (cron jobs)                               │
 └─────────────────────────────────────────────────────────────┘
@@ -44,7 +43,6 @@ Use for **any library documentation, API references, or external service docs**:
 - TanStack Query/Table docs
 - Recharts docs
 - Any npm package documentation
-- GoCardless/Nordigen API docs
 
 **When to use**: Before implementing any feature that involves a library you're unsure about.
 
@@ -94,7 +92,6 @@ Use as **inspiration for UI/chart implementations**:
 | Framework | FastAPI | Data pipeline only |
 | ORM | SQLAlchemy 2.0 | Mirrors Drizzle schema |
 | Jobs | Celery + Redis | Scheduled tasks |
-| Bank API | GoCardless (Nordigen) | Open banking |
 
 ### Infrastructure
 
@@ -248,6 +245,4 @@ BETTER_AUTH_URL=http://localhost:3000
 # Backend (.env)
 DATABASE_URL=postgres://finance:finance_secret@localhost:5432/finance
 REDIS_URL=redis://localhost:6379/0
-GOCARDLESS_SECRET_ID=your-id
-GOCARDLESS_SECRET_KEY=your-key
 ```

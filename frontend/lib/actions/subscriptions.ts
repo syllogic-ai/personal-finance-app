@@ -669,7 +669,7 @@ export async function findPotentialMatches(): Promise<PotentialMatch[]> {
               amount: transaction.amount,
               description: transaction.description,
               bookedAt: transaction.bookedAt,
-              accountName: transaction.account.name,
+              accountName: transaction.account?.name || "Unknown",
             },
             subscription: {
               id: subscription.id,

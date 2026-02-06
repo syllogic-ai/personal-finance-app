@@ -330,11 +330,11 @@ export function TransactionSheet({
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Account</span>
-                <span>{transaction.account.name}</span>
+                <span>{transaction.account?.name || "Unknown"}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Institution</span>
-                <span>{transaction.account.institution}</span>
+                <span>{transaction.account?.institution || "—"}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Status</span>

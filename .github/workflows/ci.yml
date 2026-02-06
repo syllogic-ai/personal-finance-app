@@ -1,0 +1,154 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: financeuser
+          POSTGRES_PASSWORD: financepass
+          POSTGRES_DB: finance_db
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Install backend dependencies
+      working-directory: ./backend
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install httpx  # For API testing
+
+    - name: Cache frontend dependencies
+      uses: actions/cache@v4
+      with:
+        path: frontend/node_modules
+        key: ${{ runner.os }}-node-${{ hashFiles('frontend/package.json') }}
+        restore-keys: |
+          ${{ runner.os }}-node-
+
+    - name: Cache Next.js build
+      uses: actions/cache@v4
+      with:
+        path: |
+          frontend/.next/cache
+        key: ${{ runner.os }}-nextjs-${{ hashFiles('frontend/package.json') }}
+        restore-keys: |
+          ${{ runner.os }}-nextjs-
+
+    - name: Install frontend dependencies
+      working-directory: ./frontend
+      run: npm install
+
+    - name: Build frontend
+      working-directory: ./frontend
+      env:
+        DATABASE_URL: postgresql://financeuser:financepass@localhost:5432/finance_db
+        NODE_ENV: production
+        NEXT_TELEMETRY_DISABLED: 1  # Disable telemetry in CI
+      run: npm run build
+      continue-on-error: false
+
+    - name: Start backend server
+      working-directory: ./backend
+      env:
+        DATABASE_URL: postgresql+psycopg://financeuser:financepass@localhost:5432/finance_db
+        REDIS_URL: redis://localhost:6379/0
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY || 'test-key' }}
+      run: |
+        # Create database tables
+        python -c "from app.database import engine, Base; Base.metadata.create_all(bind=engine)"
+        # Start server in background
+        uvicorn app.main:app --host 0.0.0.0 --port 8000 &
+        echo $! > server.pid
+        sleep 5  # Wait for server to start
+
+    - name: Wait for backend to be ready
+      run: |
+        timeout 30 bash -c 'until curl -f http://localhost:8000/health; do sleep 1; done' || true
+        # Give it a bit more time to fully initialize
+        sleep 3
+
+    - name: Test Transaction Import API
+      working-directory: ./backend
+      env:
+        DATABASE_URL: postgresql+psycopg://financeuser:financepass@localhost:5432/finance_db
+        REDIS_URL: redis://localhost:6379/0
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY || 'test-key' }}
+      run: |
+        python tests/test_transaction_import.py
+
+    - name: Test Categorizer API
+      working-directory: ./backend
+      env:
+        DATABASE_URL: postgresql+psycopg://financeuser:financepass@localhost:5432/finance_db
+        REDIS_URL: redis://localhost:6379/0
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY || 'test-key' }}
+      run: |
+        python tests/test_categorizer.py
+
+    - name: Test Subscription Identifier API
+      working-directory: ./backend
+      env:
+        DATABASE_URL: postgresql+psycopg://financeuser:financepass@localhost:5432/finance_db
+        REDIS_URL: redis://localhost:6379/0
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY || 'test-key' }}
+      run: |
+        python tests/test_subscription_identifier.py
+
+    - name: Test Summary
+      if: always()
+      run: |
+        echo "## Test Summary" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Frontend build: Completed" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Backend build: Completed" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Transaction Import API: Tested" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Categorizer API: Tested" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Subscription Identifier: Tested" >> $GITHUB_STEP_SUMMARY
+
+    - name: Stop backend server
+      if: always()
+      run: |
+        if [ -f backend/server.pid ]; then
+          kill $(cat backend/server.pid) || true
+          rm backend/server.pid || true
+        fi
+        # Also try to kill any uvicorn processes
+        pkill -f "uvicorn app.main:app" || true

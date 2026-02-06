@@ -253,10 +253,14 @@ export const transactionColumns: ColumnDef<TransactionWithRelations>[] = [
     header: "Account",
     cell: ({ row, column }) => {
       const columnSize = column.getSize();
+      const account = row.original.account;
+      if (!account) {
+        return <span className="text-muted-foreground">Unknown</span>;
+      }
       return (
         <AccountCell
-          accountId={row.original.account.id}
-          accountName={row.original.account.name}
+          accountId={account.id}
+          accountName={account.name}
           maxWidth={columnSize}
         />
       );
@@ -264,7 +268,9 @@ export const transactionColumns: ColumnDef<TransactionWithRelations>[] = [
     size: 140,
     filterFn: (row, id, filterValue) => {
       if (!filterValue || !Array.isArray(filterValue) || filterValue.length === 0) return true;
-      return filterValue.includes(row.original.account.id);
+      const account = row.original.account;
+      if (!account) return false;
+      return filterValue.includes(account.id);
     },
   },
   {
