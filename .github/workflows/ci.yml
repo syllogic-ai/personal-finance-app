@@ -69,9 +69,8 @@ jobs:
       with:
         path: |
           frontend/.next/cache
-        key: ${{ runner.os }}-nextjs-${{ hashFiles('frontend/package.json', 'frontend/package-lock.json') }}-${{ hashFiles('frontend/**/*.ts', 'frontend/**/*.tsx', 'frontend/**/*.js', 'frontend/**/*.jsx') }}
+        key: ${{ runner.os }}-nextjs-${{ hashFiles('frontend/package.json') }}
         restore-keys: |
-          ${{ runner.os }}-nextjs-${{ hashFiles('frontend/package.json', 'frontend/package-lock.json') }}-
           ${{ runner.os }}-nextjs-
 
     - name: Install frontend dependencies
@@ -83,6 +82,7 @@ jobs:
       env:
         DATABASE_URL: postgresql://financeuser:financepass@localhost:5432/finance_db
         NODE_ENV: production
+        NEXT_TELEMETRY_DISABLED: 1  # Disable telemetry in CI
       run: npm run build
       continue-on-error: false
 
