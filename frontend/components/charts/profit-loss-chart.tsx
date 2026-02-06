@@ -18,9 +18,11 @@ import {
   ChartTooltip,
 } from "@/components/ui/chart";
 import { formatCurrency, cn } from "@/lib/utils";
+import { format, parseISO } from "date-fns";
 
 interface IncomeExpenseDataPoint {
   month: string;
+  monthDate: string;
   income: number;
   expenses: number;
 }
@@ -87,13 +89,14 @@ function CustomTooltip({ active, payload, label, currency }: CustomTooltipProps)
     return null;
   }
 
+  const monthLabel = label ? format(parseISO(label), "MMMM yy") : "";
   const income = payload.find((p) => p.dataKey === "income")?.value ?? 0;
   const expenses = payload.find((p) => p.dataKey === "expenses")?.value ?? 0;
   const net = income - expenses;
 
   return (
     <div className="border-border/50 bg-background min-w-[180px] border px-3 py-2.5 text-xs shadow-xl">
-      <div className="mb-2 font-medium">{label}</div>
+      <div className="mb-2 font-medium">{monthLabel}</div>
       <div className="space-y-1.5">
         <div className="flex items-center justify-between gap-8">
           <div className="flex items-center gap-2">
@@ -155,7 +158,7 @@ export function ProfitLossChart({
         <ChartContainer config={chartConfig} className="h-[300px] w-full">
           <ComposedChart
             data={data}
-            margin={{ top: 20, right: 20, left: 0, bottom: 0 }}
+            margin={{ top: 20, right: 20, left: 0, bottom: 24 }}
             barCategoryGap="20%"
           >
             <CartesianGrid
@@ -164,11 +167,29 @@ export function ProfitLossChart({
               vertical={false}
             />
             <XAxis
-              dataKey="month"
+              dataKey="monthDate"
               axisLine={false}
               tickLine={false}
-              tick={{ fontSize: 12, fill: "var(--muted-foreground)" }}
-              tickMargin={8}
+              tick={({ x, y, payload }) => {
+                const date = parseISO(payload.value);
+                const label = format(date, "MMM yy");
+                return (
+                  <g transform={`translate(${x},${y})`}>
+                    <text
+                      x={0}
+                      y={0}
+                      dy={18}
+                      textAnchor="middle"
+                      className="fill-muted-foreground"
+                      fontSize={12}
+                    >
+                      <tspan x="0">{label}</tspan>
+                    </text>
+                  </g>
+                );
+              }}
+              tickMargin={10}
+              minTickGap={20}
             />
             <YAxis
               axisLine={false}

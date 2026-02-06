@@ -16,6 +16,7 @@ import {
   ChartLegend,
   ChartLegendContent,
 } from "@/components/ui/chart";
+import { format, parseISO } from "date-fns";
 
 interface TransactionSummaryData {
   date: string;
@@ -39,15 +40,20 @@ const chartConfig = {
 } satisfies ChartConfig;
 
 export function TransactionSummaryChart({ data }: TransactionSummaryChartProps) {
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-  };
-
   const chartData = data.map((item) => ({
     ...item,
-    date: formatDate(item.date),
+    date: item.date,
   }));
+
+  const yearChangeDates = new Set<string>();
+  const seenYears = new Set<string>();
+  for (const item of chartData) {
+    const currentYear = format(parseISO(item.date), "yyyy");
+    if (!seenYears.has(currentYear)) {
+      seenYears.add(currentYear);
+      yearChangeDates.add(item.date);
+    }
+  }
 
   const hasData = data.length > 0 && data.some((d) => d.income > 0 || d.expenses > 0);
 
@@ -67,7 +73,26 @@ export function TransactionSummaryChart({ data }: TransactionSummaryChartProps) 
                 tickLine={false}
                 tickMargin={10}
                 axisLine={false}
-                tickFormatter={(value) => value}
+                tick={({ x, y, payload }) => {
+                  const date = parseISO(payload.value);
+                  const monthDay = format(date, "MMM d");
+                  const year = format(date, "yyyy");
+                  const showYear = yearChangeDates.has(payload.value);
+                  return (
+                    <g transform={`translate(${x},${y})`}>
+                      <text
+                        x={0}
+                        y={0}
+                        dy={16}
+                        textAnchor="middle"
+                        className="fill-muted-foreground"
+                      >
+                        <tspan x="0">{monthDay}</tspan>
+                        {showYear && <tspan x="0" dy="12">{year}</tspan>}
+                      </text>
+                    </g>
+                  );
+                }}
               />
               <YAxis
                 tickLine={false}
@@ -76,7 +101,15 @@ export function TransactionSummaryChart({ data }: TransactionSummaryChartProps) 
               />
               <ChartTooltip
                 cursor={false}
-                content={<ChartTooltipContent indicator="dashed" />}
+                content={
+                  <ChartTooltipContent
+                    indicator="dashed"
+                    labelFormatter={(_, payload) => {
+                      const rawDate = payload?.[0]?.payload?.date;
+                      return rawDate ? format(parseISO(rawDate), "MMMM d, yyyy") : "";
+                    }}
+                  />
+                }
               />
               <ChartLegend content={<ChartLegendContent />} />
               <Bar dataKey="income" fill="var(--color-income)" radius={0} />

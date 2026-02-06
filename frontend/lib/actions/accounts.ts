@@ -291,7 +291,7 @@ export interface BalanceHistoryPoint {
 
 export async function getAccountBalanceHistory(
   accountId: string,
-  days: number = 90
+  days: number | null = 90
 ): Promise<BalanceHistoryPoint[]> {
   const userId = await requireAuth();
 
@@ -311,16 +311,33 @@ export async function getAccountBalanceHistory(
     return [];
   }
 
-  const startDate = new Date();
-  startDate.setDate(startDate.getDate() - days);
-  startDate.setHours(0, 0, 0, 0);
+  let startDate: Date | null = null;
+  if (typeof days === "number") {
+    startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+    startDate.setHours(0, 0, 0, 0);
+  } else {
+    const earliestTx = await db
+      .select({
+        minBookedAt: sql<Date | null>`MIN(${transactions.bookedAt})`,
+      })
+      .from(transactions)
+      .where(eq(transactions.accountId, accountId));
+
+    if (earliestTx[0]?.minBookedAt) {
+      startDate = new Date(earliestTx[0].minBookedAt);
+      startDate.setHours(0, 0, 0, 0);
+    }
+  }
 
   // Try to get balance history from accountBalances table
   const balanceHistory = await db.query.accountBalances.findMany({
-    where: and(
-      eq(accountBalances.accountId, accountId),
-      gte(accountBalances.date, startDate)
-    ),
+    where: startDate
+      ? and(
+          eq(accountBalances.accountId, accountId),
+          gte(accountBalances.date, startDate)
+        )
+      : eq(accountBalances.accountId, accountId),
     orderBy: [desc(accountBalances.date)],
   });
 
@@ -334,6 +351,8 @@ export async function getAccountBalanceHistory(
 
   // Fallback: Calculate running balance from transactions
   const startingBalance = parseFloat(account.startingBalance || "0");
+  const effectiveStartDate = startDate || new Date();
+  effectiveStartDate.setHours(0, 0, 0, 0);
   const txResults = await db
     .select({
       date: sql<string>`DATE(${transactions.bookedAt})`,
@@ -343,7 +362,7 @@ export async function getAccountBalanceHistory(
     .where(
       and(
         eq(transactions.accountId, accountId),
-        gte(transactions.bookedAt, startDate)
+        gte(transactions.bookedAt, effectiveStartDate)
       )
     )
     .groupBy(sql`DATE(${transactions.bookedAt})`)
@@ -362,7 +381,7 @@ export async function getAccountBalanceHistory(
     .where(
       and(
         eq(transactions.accountId, accountId),
-        lt(transactions.bookedAt, startDate)
+        lt(transactions.bookedAt, effectiveStartDate)
       )
     );
 
@@ -375,7 +394,7 @@ export async function getAccountBalanceHistory(
   }
 
   // Fill in all dates from startDate to today
-  const currentDate = new Date(startDate);
+  const currentDate = new Date(effectiveStartDate);
   const today = new Date();
   today.setHours(23, 59, 59, 999);
 

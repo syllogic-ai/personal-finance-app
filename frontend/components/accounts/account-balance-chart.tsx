@@ -28,14 +28,15 @@ import {
 } from "date-fns";
 import type { BalanceHistoryPoint } from "@/lib/actions/accounts";
 
-type Horizon = "7D" | "LM" | "30D" | "90D" | "1Y" | "5Y" | "ALL";
+type Horizon = "7D" | "LM" | "30D" | "90D" | "6M" | "1Y" | "5Y" | "ALL";
 
 const horizonOptions: { value: Horizon; label: string; description: string }[] = [
   { value: "7D", label: "7D", description: "Last 7 days" },
   { value: "LM", label: "LM", description: "Last month" },
   { value: "30D", label: "30D", description: "Last 30 days" },
   { value: "90D", label: "90D", description: "Last 90 days" },
-  { value: "1Y", label: "1Y", description: "Year to date" },
+  { value: "6M", label: "6M", description: "Last 6 months" },
+  { value: "1Y", label: "1Y", description: "Last 1 year" },
   { value: "5Y", label: "5Y", description: "5 years" },
   { value: "ALL", label: "ALL", description: "All time" },
 ];
@@ -82,6 +83,8 @@ function getHorizonCutoffDate(horizon: Horizon): Date | null {
       return subDays(now, 30);
     case "90D":
       return subDays(now, 90);
+    case "6M":
+      return subMonths(now, 6);
     case "1Y":
       return subYears(now, 1);
     case "5Y":
@@ -121,8 +124,8 @@ export function AccountBalanceChart({
     if (horizon === "ALL") {
       chartStartDate = earliestDataDate;
     } else if (horizonStart && isBefore(horizonStart, earliestDataDate)) {
-      // Horizon extends before our data - use horizon start
-      chartStartDate = horizonStart;
+      // Horizon extends before our data - clamp to earliest data
+      chartStartDate = earliestDataDate;
     } else {
       // Use horizon start or earliest data, whichever is later
       chartStartDate = horizonStart || earliestDataDate;

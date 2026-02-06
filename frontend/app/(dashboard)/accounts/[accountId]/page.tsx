@@ -20,7 +20,7 @@ export default async function AccountPage({ params }: AccountPageProps) {
 
   // Then fetch remaining data in parallel
   const [balanceHistory, transactions, categories] = await Promise.all([
-    getAccountBalanceHistory(accountId, 90),
+    getAccountBalanceHistory(accountId, null),
     getTransactionsForAccount(accountId),
     getUserCategories(),
   ]);

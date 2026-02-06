@@ -553,12 +553,14 @@ export async function getIncomeExpenseData(referenceDate?: Date, accountId?: str
     ];
 
     // Create array of last 12 months with proper labels (ending at reference month)
-    const months: { month: string; income: number; expenses: number }[] = [];
+    const months: { month: string; monthDate: string; income: number; expenses: number }[] = [];
     for (let i = 0; i < 12; i++) {
       const date = new Date(refDate.getFullYear(), refDate.getMonth() - 11 + i, 1);
       const monthLabel = monthNames[date.getMonth()];
+      const monthDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-01`;
       months.push({
         month: monthLabel,
+        monthDate,
         income: 0,
         expenses: 0,
       });
