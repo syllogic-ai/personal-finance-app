@@ -11,6 +11,7 @@ import { groupCategoriesByType, type CategoryType } from "@/lib/utils/category-u
 interface CategoryListEditorProps {
   categories: CategoryInput[];
   onChange: (categories: CategoryInput[]) => void;
+  activeType?: CategoryType;
 }
 
 interface CategoryGroup {
@@ -19,7 +20,11 @@ interface CategoryGroup {
   categories: CategoryInput[];
 }
 
-export function CategoryListEditor({ categories, onChange }: CategoryListEditorProps) {
+export function CategoryListEditor({
+  categories,
+  onChange,
+  activeType,
+}: CategoryListEditorProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<CategoryInput | null>(null);
   const [editingIndex, setEditingIndex] = useState<number>(-1);
@@ -66,10 +71,13 @@ export function CategoryListEditor({ categories, onChange }: CategoryListEditorP
     }
   };
 
+  const visibleGroups = activeType ? groups.filter((group) => group.type === activeType) : groups;
+
   return (
     <>
-      <div className="space-y-6 overflow-y-auto max-h-[500px] pr-2">
-        {groups.map((group) => (
+      <div className="flex-1 min-h-0 h-full overflow-y-auto pr-2">
+        <div className="space-y-6">
+        {visibleGroups.map((group) => (
           <div key={group.type}>
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-medium text-muted-foreground">
@@ -107,6 +115,7 @@ export function CategoryListEditor({ categories, onChange }: CategoryListEditorP
             </div>
           </div>
         ))}
+        </div>
       </div>
 
       <CategoryFormDialog

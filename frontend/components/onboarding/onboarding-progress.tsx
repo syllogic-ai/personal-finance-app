@@ -21,8 +21,13 @@ const steps: Step[] = [
   },
   {
     number: 3,
-    title: "Bank",
-    description: "Connect your accounts",
+    title: "Bank Accounts",
+    description: "Create your first account",
+  },
+  {
+    number: 4,
+    title: "Add Transactions",
+    description: "Import your data",
   },
 ];
 

@@ -18,7 +18,14 @@ export const DEFAULT_EXPENSE_CATEGORIES: DefaultCategory[] = [
     categoryType: "expense",
     color: CATEGORY_COLORS[0].value, // Amber
     icon: "RiRestaurantLine",
-    description: "Restaurants, groceries, food delivery",
+    description: "Restaurants, food delivery, cafes",
+  },
+  {
+    name: "Groceries",
+    categoryType: "expense",
+    color: CATEGORY_COLORS[8].value, // Emerald
+    icon: "RiShoppingCartLine",
+    description: "Supermarkets, grocery stores, household essentials",
   },
   {
     name: "Transportation",
@@ -108,25 +115,25 @@ export const DEFAULT_INCOME_CATEGORIES: DefaultCategory[] = [
     description: "Regular employment income",
   },
   {
+    name: "Other Income",
+    categoryType: "income",
+    color: CATEGORY_COLORS[9].value, // Slate
+    icon: "RiAddCircleLine",
+    description: "Miscellaneous income",
+  },
+  {
+    name: "Refunds",
+    categoryType: "income",
+    color: CATEGORY_COLORS[1].value, // Blue
+    icon: "RiArrowGoBackLine",
+    description: "Refunds, reimbursements, chargebacks",
+  },
+  {
     name: "Freelance",
     categoryType: "income",
     color: CATEGORY_COLORS[5].value, // Teal
     icon: "RiComputerLine",
     description: "Freelance and contract work",
-  },
-  {
-    name: "Investment",
-    categoryType: "income",
-    color: CATEGORY_COLORS[1].value, // Blue
-    icon: "RiLineChartLine",
-    description: "Dividends, interest, capital gains",
-  },
-  {
-    name: "Other Income",
-    categoryType: "income",
-    color: CATEGORY_COLORS[8].value, // Emerald
-    icon: "RiAddCircleLine",
-    description: "Miscellaneous income",
   },
 ];
 
@@ -136,7 +143,15 @@ export const DEFAULT_TRANSFER_CATEGORIES: DefaultCategory[] = [
     categoryType: "transfer",
     color: CATEGORY_COLORS[9].value, // Slate
     icon: "RiExchangeLine",
-    description: "Transfers between your own accounts",
+    description: "Transfers between your own accounts to move money internally",
+    isSystem: true,
+  },
+  {
+    name: "External Transfer",
+    categoryType: "transfer",
+    color: CATEGORY_COLORS[10].value, // Stone
+    icon: "RiArrowLeftRightLine",
+    description: "Money moved to or from external accounts not tracked here",
     isSystem: true,
   },
   {

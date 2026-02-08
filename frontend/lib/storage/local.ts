@@ -1,16 +1,49 @@
-import { promises as fs } from "fs";
+import { promises as fs, existsSync } from "fs";
 import path from "path";
 import type { StorageProvider, StorageFile, UploadOptions } from "./types";
 
-const STORAGE_ROOT = process.env.LOCAL_STORAGE_PATH || "uploads";
+const DEFAULT_STORAGE_ROOT = "uploads";
+const STORAGE_ROOT = process.env.LOCAL_STORAGE_PATH || DEFAULT_STORAGE_ROOT;
+
+function normalizeStorageRoot(root: string): string {
+  let normalized = root.trim();
+  if (normalized.startsWith("/")) {
+    normalized = normalized.slice(1);
+  }
+  if (normalized.startsWith("public/")) {
+    normalized = normalized.slice("public/".length);
+  }
+  if (!normalized) {
+    normalized = DEFAULT_STORAGE_ROOT;
+  }
+  return normalized;
+}
+
+function resolvePublicDir(): string {
+  const cwd = process.cwd();
+  const directPublic = path.join(cwd, "public");
+  const nestedPublic = path.join(cwd, "frontend", "public");
+
+  if (existsSync(directPublic)) {
+    return directPublic;
+  }
+
+  if (existsSync(nestedPublic)) {
+    return nestedPublic;
+  }
+
+  return directPublic;
+}
 
 export class LocalStorageProvider implements StorageProvider {
   private storageRoot: string;
   private baseUrl: string;
 
   constructor() {
-    this.storageRoot = path.resolve(process.cwd(), "public", STORAGE_ROOT);
-    this.baseUrl = `/${STORAGE_ROOT}`;
+    const publicDir = resolvePublicDir();
+    const normalizedRoot = normalizeStorageRoot(STORAGE_ROOT);
+    this.storageRoot = path.resolve(publicDir, normalizedRoot);
+    this.baseUrl = `/${normalizedRoot}`;
   }
 
   private getFullPath(filePath: string): string {

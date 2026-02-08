@@ -114,7 +114,7 @@ export const accounts = pgTable(
     accountType: varchar("account_type", { length: 50 }).notNull(), // checking, savings, credit
     institution: varchar("institution", { length: 255 }),
     currency: char("currency", { length: 3 }).default("EUR"),
-    provider: varchar("provider", { length: 50 }), // gocardless, manual
+    provider: varchar("provider", { length: 50 }), // ponto, gocardless, manual
     externalId: varchar("external_id", { length: 255 }), // Provider's account ID
     bankConnectionId: uuid("bank_connection_id").references(() => bankConnections.id, { onDelete: "set null" }),
     balanceAvailable: decimal("balance_available", { precision: 15, scale: 2 }),
@@ -501,6 +501,10 @@ export const accountsRelations = relations(accounts, ({ one, many }) => ({
     fields: [accounts.userId],
     references: [users.id],
   }),
+  bankConnection: one(bankConnections, {
+    fields: [accounts.bankConnectionId],
+    references: [bankConnections.id],
+  }),
   transactions: many(transactions),
   csvImports: many(csvImports),
   balances: many(accountBalances),
@@ -585,11 +589,12 @@ export const categorizationRulesRelations = relations(categorizationRules, ({ on
   }),
 }));
 
-export const bankConnectionsRelations = relations(bankConnections, ({ one }) => ({
+export const bankConnectionsRelations = relations(bankConnections, ({ one, many }) => ({
   user: one(users, {
     fields: [bankConnections.userId],
     references: [users.id],
   }),
+  accounts: many(accounts),
 }));
 
 export const csvImportsRelations = relations(csvImports, ({ one }) => ({
