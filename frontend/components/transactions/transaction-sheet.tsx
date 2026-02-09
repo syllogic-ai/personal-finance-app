@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import {
   Sheet,
   SheetContent,
@@ -60,6 +61,7 @@ export function TransactionSheet({
   onDeleteTransaction,
   categories = [],
 }: TransactionSheetProps) {
+  const router = useRouter();
   // Filter out categories hidden from manual selection (e.g., Balancing Transfer)
   const selectableCategories = filterSelectableCategories(categories);
 
@@ -170,8 +172,7 @@ export function TransactionSheet({
   const handleSubscriptionSuccess = () => {
     // Refresh the transaction to show updated subscription link
     onOpenChange(false);
-    // Force a page refresh to reload transaction data
-    window.location.reload();
+    router.refresh();
   };
 
   const handleSubscriptionButtonClick = () => {

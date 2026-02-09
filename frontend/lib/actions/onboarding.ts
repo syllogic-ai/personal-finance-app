@@ -120,7 +120,7 @@ export async function updatePersonalDetails(
       .set({
         name: name.trim(),
         functionalCurrency: currency || "EUR",
-        ...(profilePhotoPath && { profilePhotoPath }),
+        ...(profilePhotoPath && { profilePhotoPath, image: profilePhotoPath }),
         onboardingStatus: "step_1",
         updatedAt: new Date(),
       })

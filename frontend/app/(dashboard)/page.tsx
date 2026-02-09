@@ -24,6 +24,13 @@ interface PageProps {
 
 export default async function HomePage({ searchParams }: PageProps) {
   const params = await searchParams;
+  const accountParam = params.account;
+  const accountId = accountParam && accountParam !== "all" ? accountParam : undefined;
+  const dateFromParam = params.from;
+  const dateToParam = params.to;
+  const horizonParam = params.horizon;
+  const parsedHorizon = horizonParam ? parseInt(horizonParam, 10) : undefined;
+  const horizonValue = Number.isNaN(parsedHorizon) ? undefined : parsedHorizon;
 
   // Parse filters from URL search params
   const filters: DashboardFiltersType = {};
@@ -50,7 +57,7 @@ export default async function HomePage({ searchParams }: PageProps) {
     getUserAccounts(),
   ]);
 
-  // Build Sankey subtitle based on date range
+  // Build Sankey subtitle based on date range or horizon
   const formatDateShort = (date: Date) => {
     return date.toLocaleDateString("en-US", { month: "short", year: "numeric" });
   };
@@ -63,7 +70,7 @@ export default async function HomePage({ searchParams }: PageProps) {
   } else if (filters.dateTo) {
     sankeySubtitle = `Until ${formatDateShort(filters.dateTo)}`;
   } else {
-    sankeySubtitle = "Last 3 months";
+    sankeySubtitle = data.periodLabel.subtitle;
   }
 
   return (
@@ -128,6 +135,10 @@ export default async function HomePage({ searchParams }: PageProps) {
             total={data.spendingByCategory.total}
             currency={data.balance.currency}
             periodTitle={data.periodLabel.title}
+            accountId={accountId}
+            dateFrom={dateFromParam}
+            dateTo={dateToParam}
+            horizon={horizonValue}
           />
         </div>
 
@@ -137,6 +148,10 @@ export default async function HomePage({ searchParams }: PageProps) {
             data={data.sankeyData}
             currency={data.balance.currency}
             subtitle={sankeySubtitle}
+            accountId={accountId}
+            dateFrom={dateFromParam}
+            dateTo={dateToParam}
+            horizon={horizonValue}
           />
         </div>
 

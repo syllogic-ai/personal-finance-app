@@ -1009,7 +1009,12 @@ export async function getAssetsOverview(): Promise<AssetsOverviewData> {
 }
 
 export interface SankeyData {
-  nodes: { name: string }[];
+  nodes: {
+    name: string;
+    categoryId?: string | null;
+    categoryType?: "income" | "expense";
+    total?: number;
+  }[];
   links: { source: number; target: number; value: number }[];
 }
 
@@ -1097,7 +1102,12 @@ export async function getSankeyData(
 
   // Build nodes and links for Sankey diagram
   // Structure: [Income Categories] → [Expense Categories]
-  const nodes: { name: string }[] = [];
+  const nodes: {
+    name: string;
+    categoryId?: string | null;
+    categoryType?: "income" | "expense";
+    total?: number;
+  }[] = [];
   const links: { source: number; target: number; value: number }[] = [];
 
   // Filter and limit categories
@@ -1114,21 +1124,28 @@ export async function getSankeyData(
   }
 
   // Calculate totals
-  const totalIncome = incomeCategories.reduce((sum, c) => sum + parseFloat(c.total), 0);
-  const totalExpenses = expenseCategories.reduce((sum, c) => sum + parseFloat(c.total), 0);
-
   // Add income category nodes (left side)
   const incomeNodeIndices: number[] = [];
   for (const cat of incomeCategories) {
     incomeNodeIndices.push(nodes.length);
-    nodes.push({ name: cat.categoryName || "Other Income" });
+    nodes.push({
+      name: cat.categoryName || "Other Income",
+      categoryId: cat.categoryId,
+      categoryType: "income",
+      total: Number(cat.total),
+    });
   }
 
   // Add expense category nodes (right side)
   const expenseNodeIndices: number[] = [];
   for (const cat of expenseCategories) {
     expenseNodeIndices.push(nodes.length);
-    nodes.push({ name: cat.categoryName || "Other Expenses" });
+    nodes.push({
+      name: cat.categoryName || "Other Expenses",
+      categoryId: cat.categoryId,
+      categoryType: "expense",
+      total: Number(cat.total),
+    });
   }
 
   // Create links from each income category to expense categories

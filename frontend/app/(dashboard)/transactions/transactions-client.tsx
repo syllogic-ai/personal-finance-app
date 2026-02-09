@@ -33,6 +33,11 @@ export function TransactionsClient({
   const { data: session } = useSession();
   const [transactions, setTransactions] = useState(initialTransactions);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [importStatus, setImportStatus] = useState<"importing" | "completed" | "failed" | null>(null);
+
+  useEffect(() => {
+    setTransactions(initialTransactions);
+  }, [initialTransactions]);
 
   // Check for pending import from URL or sessionStorage
   const importingId = searchParams.get("importing");
@@ -46,25 +51,149 @@ export function TransactionsClient({
     if (importingId && session?.user?.id) {
       setPendingImportState({ importId: importingId, userId: session.user.id });
     } else {
+      if (!session?.user?.id) {
+        return;
+      }
+
       const stored = getPendingImport();
       if (stored) {
+        if (stored.userId !== session.user.id) {
+          clearPendingImport();
+          setPendingImportState(null);
+          setImportStatus(null);
+          return;
+        }
         setPendingImportState(stored);
       }
     }
   }, [importingId, session?.user?.id]);
 
+  useEffect(() => {
+    if (!session?.user?.id && pendingImport?.importId) {
+      clearPendingImport();
+      setPendingImportState(null);
+      setImportStatus(null);
+      return;
+    }
+
+    if (
+      session?.user?.id &&
+      pendingImport?.userId &&
+      pendingImport.userId !== session.user.id
+    ) {
+      clearPendingImport();
+      setPendingImportState(null);
+      setImportStatus(null);
+    }
+  }, [session?.user?.id, pendingImport?.importId, pendingImport?.userId]);
+
+  const checkImportStatus = useCallback(async () => {
+    if (!pendingImport?.importId || !pendingImport.userId) {
+      return;
+    }
+
+    try {
+      const backendBase =
+        process.env.NODE_ENV === "development"
+          ? process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000"
+          : process.env.NEXT_PUBLIC_BACKEND_URL || "";
+
+      const base = backendBase
+        ? `${backendBase}/api/csv-import/status/${pendingImport.importId}`
+        : `/api/csv-import/status/${pendingImport.importId}`;
+
+      const response = await fetch(`${base}?user_id=${pendingImport.userId}`);
+      if (response.status === 404 || response.status === 403) {
+        clearPendingImport();
+        setPendingImportState(null);
+        setImportStatus(null);
+        if (importingId) {
+          router.replace("/transactions");
+        }
+        return;
+      }
+      if (!response.ok) return;
+
+      const status = await response.json();
+      const importStatusValue = status?.status as
+        | "pending"
+        | "mapping"
+        | "previewing"
+        | "importing"
+        | "completed"
+        | "failed"
+        | undefined;
+
+      const totalRows = typeof status?.total_rows === "number"
+        ? status.total_rows
+        : typeof status?.totalRows === "number"
+          ? status.totalRows
+          : null;
+      const progressCount = typeof status?.progress_count === "number"
+        ? status.progress_count
+        : typeof status?.progressCount === "number"
+          ? status.progressCount
+          : null;
+      const importedRows = typeof status?.imported_rows === "number"
+        ? status.imported_rows
+        : typeof status?.importedRows === "number"
+          ? status.importedRows
+          : null;
+
+      const completedByCounts = totalRows !== null && totalRows > 0 && (
+        (progressCount !== null && progressCount >= totalRows) ||
+        (importedRows !== null && importedRows >= totalRows)
+      );
+
+      if (importStatusValue === "importing") {
+        setImportStatus("importing");
+      } else if (importStatusValue === "completed") {
+        setImportStatus("completed");
+      } else if (importStatusValue === "failed") {
+        setImportStatus("failed");
+      } else if (importStatusValue) {
+        setImportStatus(null);
+      }
+
+      if (importStatusValue === "completed" || importStatusValue === "failed" || (importStatusValue === "importing" && completedByCounts)) {
+        clearPendingImport();
+        setPendingImportState(null);
+        if (!importStatusValue) {
+          setImportStatus(null);
+        }
+        if (importStatusValue === "importing" && completedByCounts) {
+          setImportStatus("completed");
+        }
+        router.refresh();
+        if (importingId) {
+          router.replace("/transactions");
+        }
+      }
+    } catch {
+      // Status check failed; rely on SSE updates
+    }
+  }, [pendingImport?.importId, pendingImport?.userId, importingId, router]);
+
+  useEffect(() => {
+    checkImportStatus();
+  }, [checkImportStatus]);
+
   // Subscribe to import status updates
-  const {
-    progress,
-    isImporting,
-  } = useImportStatus(
+  const { isImporting } = useImportStatus(
     pendingImport?.userId,
     pendingImport?.importId,
     {
+      onStarted: () => {
+        setImportStatus("importing");
+      },
+      onProgress: () => {
+        setImportStatus("importing");
+      },
       onCompleted: () => {
         // Clear pending import and refresh data
         clearPendingImport();
         setPendingImportState(null);
+        setImportStatus("completed");
         router.refresh();
         // Remove importing param from URL
         if (importingId) {
@@ -74,6 +203,7 @@ export function TransactionsClient({
       onFailed: () => {
         clearPendingImport();
         setPendingImportState(null);
+        setImportStatus("failed");
         if (importingId) {
           router.replace("/transactions");
         }
@@ -81,6 +211,19 @@ export function TransactionsClient({
       showToasts: true,
     }
   );
+
+  useEffect(() => {
+    if (!pendingImport?.importId || !pendingImport.userId) {
+      return;
+    }
+
+    if (importStatus !== "importing" && !isImporting) {
+      return;
+    }
+
+    const interval = setInterval(checkImportStatus, 15000);
+    return () => clearInterval(interval);
+  }, [importStatus, isImporting, pendingImport?.importId, pendingImport?.userId, checkImportStatus]);
 
   const handleUpdateTransaction = (
     id: string,
@@ -128,29 +271,6 @@ export function TransactionsClient({
 
   return (
     <>
-      {/* Import Progress Banner */}
-      {isImporting && progress !== null && (
-        <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-800 dark:bg-blue-950">
-          <div className="flex items-center gap-3">
-            <RiLoader4Line className="h-5 w-5 animate-spin text-blue-600 dark:text-blue-400" />
-            <div className="flex-1">
-              <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
-                Importing transactions...
-              </p>
-              <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-blue-200 dark:bg-blue-800">
-                <div
-                  className="h-full bg-blue-600 transition-all duration-300 dark:bg-blue-400"
-                  style={{ width: `${progress}%` }}
-                />
-              </div>
-              <p className="mt-1 text-xs text-blue-700 dark:text-blue-300">
-                {progress}% complete
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
       <div className="min-h-0 flex-1 flex flex-col">
         <TransactionTable
           transactions={transactions}
@@ -159,7 +279,17 @@ export function TransactionsClient({
           onUpdateTransaction={handleUpdateTransaction}
           onDeleteTransaction={handleDeleteTransaction}
           onBulkUpdate={handleBulkUpdate}
-          action={<AddTransactionButton onAddManual={handleAddManual} />}
+          action={
+            <div className="flex flex-row items-center gap-3">
+              {importStatus === "importing" && (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <RiLoader4Line className="h-4 w-4 animate-spin" />
+                  <span>Importing transactions</span>
+                </div>
+              )}
+              <AddTransactionButton onAddManual={handleAddManual} />
+            </div>
+          }
         />
       </div>
       <AddTransactionDialog

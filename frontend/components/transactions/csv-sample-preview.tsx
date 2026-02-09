@@ -14,8 +14,6 @@ const MAPPED_FIELDS = [
   { key: "date", label: "Date" },
   { key: "amount", label: "Amount" },
   { key: "description", label: "Description" },
-  { key: "merchant", label: "Merchant" },
-  { key: "transactionType", label: "Type" },
 ] as const;
 
 export function CsvSamplePreview({

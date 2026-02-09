@@ -22,8 +22,6 @@ const FIELD_MAPPINGS = [
   { key: "date", label: "Date", description: "Transaction date", required: true },
   { key: "amount", label: "Amount", description: "Transaction amount", required: true },
   { key: "description", label: "Description", description: "Transaction description", required: true },
-  { key: "merchant", label: "Merchant", description: "Merchant/payee name", required: false },
-  { key: "transactionType", label: "Type", description: "Credit/Debit indicator", required: false },
   { key: "fee", label: "Fee", description: "Transaction fee (deducted from balance)", required: false },
   { key: "state", label: "State/Status", description: "Transaction status (e.g., COMPLETED, PENDING)", required: false },
   { key: "startingBalance", label: "Starting Balance", description: "Opening balance (for verification)", required: false },

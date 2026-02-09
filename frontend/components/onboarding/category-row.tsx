@@ -47,7 +47,7 @@ export function CategoryRow({ category, onEdit, onDelete }: CategoryRowProps) {
             size="icon"
             className="h-8 w-8"
             disabled
-            title="System category cannot be modified"
+            title="Not able to modify."
           >
             <RiLockLine className="h-4 w-4 text-muted-foreground" />
           </Button>

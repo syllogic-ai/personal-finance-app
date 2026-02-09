@@ -72,15 +72,15 @@ export default function OnboardingStep1Page() {
     <div className="space-y-8">
       <OnboardingProgress currentStep={1} />
 
-      <Card>
+      <Card className="min-h-[640px] h-[640px] flex flex-col">
         <CardHeader>
           <CardTitle>Welcome! Let&apos;s set up your profile</CardTitle>
           <CardDescription>
             Tell us a bit about yourself to personalize your experience.
           </CardDescription>
         </CardHeader>
-        <form onSubmit={handleSubmit}>
-          <CardContent className="space-y-6">
+        <form onSubmit={handleSubmit} className="flex flex-1 flex-col">
+          <CardContent className="space-y-6 flex-1 min-h-0">
             <div className="flex flex-col items-center gap-4">
               <Label className="text-center">Profile Photo</Label>
               <ProfilePhotoUpload

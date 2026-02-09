@@ -5,7 +5,15 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { RiArrowLeftLine, RiArrowRightLine, RiSparklingLine } from "@remixicon/react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Header } from "@/components/layout/header";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { OnboardingProgress } from "@/components/onboarding/onboarding-progress";
 import { CsvMappingTable } from "@/components/transactions/csv-mapping-table";
 import { CsvSamplePreview } from "@/components/transactions/csv-sample-preview";
 import {
@@ -43,14 +51,6 @@ function MappingPageContent() {
   });
 
   const aiMappingTriggeredRef = useRef(false);
-  const sanitizeMapping = useCallback(
-    (input: ColumnMapping): ColumnMapping => ({
-      ...input,
-      merchant: null,
-      transactionType: null,
-    }),
-    []
-  );
 
   const triggerAiMapping = useCallback(async (id: string, data: ParsedCsvData) => {
     if (aiMappingTriggeredRef.current) return;
@@ -60,7 +60,7 @@ function MappingPageContent() {
     try {
       const result = await getAiColumnMapping(id, data.headers, data.sampleRows);
       if (result.success && result.mapping) {
-        setMapping(sanitizeMapping(result.mapping));
+        setMapping(result.mapping);
         toast.success("AI mapping applied automatically");
       }
     } catch {
@@ -68,54 +68,50 @@ function MappingPageContent() {
     } finally {
       setIsAiMapping(false);
     }
-  }, [sanitizeMapping]);
+  }, []);
 
   const loadData = useCallback(async () => {
     if (!importId) {
       toast.error("Import ID not found");
-      router.push("/transactions/import");
+      router.push("/step-4");
       return;
     }
 
     try {
-      // Check if import session exists
       const session = await getCsvImportSession(importId);
       if (!session) {
         toast.error("Import session not found");
-        router.push("/transactions/import");
+        router.push("/step-4");
         return;
       }
 
-      // If existing mapping available, use it and skip AI mapping
       const hasExistingMapping = session.columnMapping &&
         (session.columnMapping.date || session.columnMapping.amount || session.columnMapping.description);
 
       if (hasExistingMapping) {
-        setMapping(sanitizeMapping(session.columnMapping!));
-        aiMappingTriggeredRef.current = true; // Don't trigger AI if mapping exists
+        setMapping(session.columnMapping!);
+        aiMappingTriggeredRef.current = true;
       }
 
-      // Parse CSV headers
       const result = await parseCsvHeaders(importId);
       if (result.success && result.data) {
         setCsvData(result.data);
 
-        // Auto-trigger AI mapping if no existing mapping
         if (!hasExistingMapping) {
           triggerAiMapping(importId, result.data);
         }
       } else {
         toast.error(result.error || "Failed to parse CSV");
-        router.push("/transactions/import");
+        router.push("/step-4");
       }
     } catch (error) {
       console.error("Failed to load data:", error);
       toast.error("Failed to load import data");
-      router.push("/transactions/import");
+      router.push("/step-4");
     } finally {
       setIsLoading(false);
     }
-  }, [importId, router, triggerAiMapping, sanitizeMapping]);
+  }, [importId, router, triggerAiMapping]);
 
   useEffect(() => {
     loadData();
@@ -124,7 +120,6 @@ function MappingPageContent() {
   const handleContinue = async () => {
     if (!importId) return;
 
-    // Validate required fields
     if (!mapping.date || !mapping.amount || !mapping.description) {
       toast.error("Please map all required fields");
       return;
@@ -132,10 +127,9 @@ function MappingPageContent() {
 
     setIsSaving(true);
     try {
-      const sanitizedMapping = sanitizeMapping(mapping);
-      const result = await saveColumnMapping(importId, sanitizedMapping);
+      const result = await saveColumnMapping(importId, mapping);
       if (result.success) {
-        router.push(`/transactions/import/preview?id=${importId}`);
+        router.push(`/step-4/preview?id=${importId}`);
       } else {
         toast.error(result.error || "Failed to save mapping");
       }
@@ -148,17 +142,17 @@ function MappingPageContent() {
 
   if (isLoading) {
     return (
-      <>
-        <Header title="Map Columns" />
-        <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
-          <div className="flex h-[calc(100vh-8rem)] items-center justify-center">
+      <div className="space-y-8">
+        <OnboardingProgress currentStep={4} />
+        <Card className="min-h-[640px] h-[640px] flex flex-col">
+          <CardContent className="flex items-center justify-center py-12">
             <div className="text-center">
               <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-2 border-muted border-t-primary" />
               <p className="text-muted-foreground">Loading CSV data...</p>
             </div>
-          </div>
-        </div>
-      </>
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 
@@ -167,54 +161,56 @@ function MappingPageContent() {
   }
 
   return (
-    <>
-      <Header title="Map Columns" />
-      <div className="flex h-[calc(100vh-4rem)] flex-col p-4 pt-0">
-        {/* AI Mapping Status Banner */}
-        {isAiMapping && (
-          <div className="mb-4 flex items-center gap-2 rounded-lg border bg-muted/50 px-4 py-3">
-            <RiSparklingLine className="h-4 w-4 animate-pulse text-primary" />
-            <span className="text-sm">Analyzing your CSV with AI...</span>
-          </div>
-        )}
+    <div className="space-y-8">
+      <OnboardingProgress currentStep={4} />
+      <Card className="min-h-[640px] h-[640px] flex flex-col">
+        <CardHeader>
+          <CardTitle>Map your columns</CardTitle>
+          <CardDescription>
+            Match each CSV column to the corresponding transaction field.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex-1 min-h-0 flex flex-col overflow-hidden">
+          {isAiMapping && (
+            <div className="mb-4 flex items-center gap-2 rounded-lg border bg-muted/50 px-4 py-3">
+              <RiSparklingLine className="h-4 w-4 animate-pulse text-primary" />
+              <span className="text-sm">Analyzing your CSV with AI...</span>
+            </div>
+          )}
 
-        {/* Main Container with 2-Column Layout */}
-        <div className="flex-1 min-h-0 overflow-hidden rounded-lg border bg-card">
-          <div className="grid h-full min-h-0 lg:grid-cols-2 lg:divide-x">
-            {/* Left Column - Field Mapping */}
-            <div className="flex min-h-0 flex-col p-6">
-              <div className="mb-4">
-                <h2 className="text-lg font-semibold">Field Mapping</h2>
-                <p className="text-sm text-muted-foreground">
-                  Match each CSV column to the corresponding transaction field
-                </p>
+          <div className="flex-1 min-h-0 rounded-lg border bg-card overflow-hidden">
+            <div className="grid h-full lg:grid-cols-2 lg:divide-x">
+              <div className="flex flex-col p-6 min-h-0">
+                <div className="mb-4">
+                  <h2 className="text-lg font-semibold">Field Mapping</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Match each CSV column to the corresponding transaction field
+                  </p>
+                </div>
+                <div className="flex-1 min-h-0 overflow-y-auto pr-2">
+                  <CsvMappingTable
+                    headers={csvData.headers}
+                    mapping={mapping}
+                    onMappingChange={setMapping}
+                  />
+                </div>
               </div>
-              <div className="flex-1 overflow-y-auto">
-                <CsvMappingTable
+
+              <div className="flex flex-col border-t p-6 lg:border-t-0 min-h-0">
+                <CsvSamplePreview
                   headers={csvData.headers}
+                  sampleRows={csvData.sampleRows}
                   mapping={mapping}
-                  onMappingChange={setMapping}
                 />
               </div>
             </div>
-
-            {/* Right Column - Dynamic Sample Preview */}
-            <div className="flex min-h-0 flex-col border-t p-6 lg:border-t-0">
-              <CsvSamplePreview
-                headers={csvData.headers}
-                sampleRows={csvData.sampleRows}
-                mapping={mapping}
-              />
-            </div>
           </div>
-        </div>
-
-        {/* Footer Actions */}
-        <div className="mt-6 flex items-center justify-between border-t pt-4">
+        </CardContent>
+        <CardFooter className="flex justify-between">
           <Button
             type="button"
             variant="outline"
-            onClick={() => router.push("/transactions/import")}
+            onClick={() => router.push("/step-4")}
           >
             <RiArrowLeftLine className="mr-2 h-4 w-4" />
             Back
@@ -223,9 +219,9 @@ function MappingPageContent() {
             {isSaving ? "Saving..." : "Preview Transactions"}
             <RiArrowRightLine className="ml-2 h-4 w-4" />
           </Button>
-        </div>
-      </div>
-    </>
+        </CardFooter>
+      </Card>
+    </div>
   );
 }
 
@@ -233,17 +229,17 @@ export default function MappingPage() {
   return (
     <Suspense
       fallback={
-        <>
-          <Header title="Map Columns" />
-          <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
-            <div className="flex h-[calc(100vh-8rem)] items-center justify-center">
+        <div className="space-y-8">
+          <OnboardingProgress currentStep={4} />
+          <Card className="min-h-[640px] h-[640px] flex flex-col">
+            <CardContent className="flex items-center justify-center py-12">
               <div className="text-center">
                 <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-2 border-muted border-t-primary" />
                 <p className="text-muted-foreground">Loading...</p>
               </div>
-            </div>
-          </div>
-        </>
+            </CardContent>
+          </Card>
+        </div>
       }
     >
       <MappingPageContent />

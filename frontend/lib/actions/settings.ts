@@ -73,7 +73,7 @@ export async function updateUserProfile(
       .update(users)
       .set({
         name: name.trim(),
-        ...(profilePhotoPath && { profilePhotoPath }),
+        ...(profilePhotoPath && { profilePhotoPath, image: profilePhotoPath }),
         updatedAt: new Date(),
       })
       .where(eq(users.id, session.user.id));

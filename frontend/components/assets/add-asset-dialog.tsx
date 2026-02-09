@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { toast } from "sonner";
 import { RiAddLine, RiArrowLeftLine } from "@remixicon/react";
 import {
   Dialog,
@@ -12,17 +11,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { CURRENCIES, ACCOUNT_TYPES } from "@/lib/constants";
-import { createAccount } from "@/lib/actions/accounts";
+import { AccountForm } from "@/components/accounts/account-form";
 import { AssetTypeSelector } from "./asset-type-selector";
 import { AddPropertyForm } from "./add-property-form";
 import { AddVehicleForm } from "./add-vehicle-form";
@@ -54,29 +43,11 @@ export function AddAssetDialog({
     }
   };
   const [step, setStep] = useState<DialogStep>("select");
-  const [isLoading, setIsLoading] = useState(false);
-
-  // Account form state
-  const [accountName, setAccountName] = useState("");
-  const [accountType, setAccountType] = useState("");
-  const [institution, setInstitution] = useState("");
-  const [accountCurrency, setAccountCurrency] = useState("EUR");
-  const [initialBalance, setInitialBalance] = useState("");
-
-  const resetAccountForm = () => {
-    setAccountName("");
-    setAccountType("");
-    setInstitution("");
-    setAccountCurrency("EUR");
-    setInitialBalance("");
-  };
 
   const handleClose = () => {
     setOpen(false);
-    // Reset step after animation completes
     setTimeout(() => {
       setStep("select");
-      resetAccountForm();
     }, 200);
   };
 
@@ -87,55 +58,6 @@ export function AddAssetDialog({
 
   const handleAssetTypeSelect = (type: AssetType) => {
     setStep(type as DialogStep);
-  };
-
-  const handleAccountSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!accountName.trim()) {
-      toast.error("Please enter an account name");
-      return;
-    }
-
-    if (!accountType) {
-      toast.error("Please select an account type");
-      return;
-    }
-
-    if (!accountCurrency) {
-      toast.error("Please select a currency");
-      return;
-    }
-
-    setIsLoading(true);
-
-    try {
-      const balance = initialBalance ? parseFloat(initialBalance) : 0;
-      if (initialBalance && isNaN(balance)) {
-        toast.error("Please enter a valid initial balance");
-        setIsLoading(false);
-        return;
-      }
-
-      const result = await createAccount({
-        name: accountName.trim(),
-        accountType,
-        institution: institution.trim() || undefined,
-        currency: accountCurrency,
-        startingBalance: balance,
-      });
-
-      if (result.success) {
-        toast.success("Account added successfully");
-        handleSuccess();
-      } else {
-        toast.error(result.error || "Failed to add account");
-      }
-    } catch {
-      toast.error("An error occurred. Please try again.");
-    } finally {
-      setIsLoading(false);
-    }
   };
 
   const getDialogTitle = () => {
@@ -196,100 +118,20 @@ export function AddAssetDialog({
         )}
 
         {step === "property" && (
-          <AddPropertyForm
-            onSuccess={handleSuccess}
-            onCancel={() => setStep("select")}
-          />
+          <AddPropertyForm onSuccess={handleSuccess} onCancel={() => setStep("select")} />
         )}
 
         {step === "vehicle" && (
-          <AddVehicleForm
-            onSuccess={handleSuccess}
-            onCancel={() => setStep("select")}
-          />
+          <AddVehicleForm onSuccess={handleSuccess} onCancel={() => setStep("select")} />
         )}
 
         {step === "account" && (
-          <form onSubmit={handleAccountSubmit}>
-            <div className="grid gap-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="account-name">Account Name</Label>
-                <Input
-                  id="account-name"
-                  placeholder="e.g., Main Checking"
-                  value={accountName}
-                  onChange={(e) => setAccountName(e.target.value)}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="account-type">Account Type</Label>
-                <Select value={accountType} onValueChange={(v) => v && setAccountType(v)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select account type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {ACCOUNT_TYPES.map((type) => (
-                      <SelectItem key={type.value} value={type.value}>
-                        {type.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="account-institution">Institution (optional)</Label>
-                <Input
-                  id="account-institution"
-                  placeholder="e.g., Bank of America"
-                  value={institution}
-                  onChange={(e) => setInstitution(e.target.value)}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="account-balance">Initial Balance (optional)</Label>
-                <Input
-                  id="account-balance"
-                  type="number"
-                  step="0.01"
-                  placeholder="0.00"
-                  value={initialBalance}
-                  onChange={(e) => setInitialBalance(e.target.value)}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="account-currency">Currency</Label>
-                <Select value={accountCurrency} onValueChange={(v) => v && setAccountCurrency(v)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select currency" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {CURRENCIES.map((curr) => (
-                      <SelectItem key={curr.code} value={curr.code}>
-                        {curr.code} - {curr.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setStep("select")}
-                disabled={isLoading}
-              >
-                Cancel
-              </Button>
-              <Button type="submit" disabled={isLoading}>
-                {isLoading ? "Adding..." : "Add Account"}
-              </Button>
-            </div>
-          </form>
+          <AccountForm
+            onSuccess={handleSuccess}
+            onCancel={() => setStep("select")}
+            submitLabel="Add Account"
+            successMessage="Account added successfully"
+          />
         )}
       </DialogContent>
     </Dialog>

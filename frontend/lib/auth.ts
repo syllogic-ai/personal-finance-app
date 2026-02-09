@@ -27,11 +27,29 @@ export const auth = betterAuth({
       maxAge: 5 * 60, // 5 minutes
     },
   },
-  trustedOrigins: [
-    process.env.BETTER_AUTH_URL ||
-      process.env.RENDER_EXTERNAL_URL ||
-      "http://localhost:3000",
-  ],
+  trustedOrigins: (() => {
+    const baseOrigins = [
+      process.env.BETTER_AUTH_URL,
+      process.env.NEXT_PUBLIC_BETTER_AUTH_URL,
+      process.env.RENDER_EXTERNAL_URL,
+    ].filter((value): value is string => Boolean(value));
+
+    if (process.env.NODE_ENV === "production") {
+      return Array.from(new Set(baseOrigins));
+    }
+
+    return Array.from(
+      new Set([
+        ...baseOrigins,
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:8080",
+        "http://127.0.0.1:8080",
+        "https://localhost:8443",
+        "https://127.0.0.1:8443",
+      ])
+    );
+  })(),
 });
 
 export type Session = typeof auth.$Infer.Session;

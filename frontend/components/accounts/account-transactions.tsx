@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { DataTable } from "@/components/ui/data-table";
 import type { TransactionWithRelations } from "@/lib/actions/transactions";
 import type { CategoryDisplay } from "@/types";
@@ -26,6 +27,7 @@ export function AccountTransactions({
   onDeleteTransaction,
   onBulkUpdate,
 }: AccountTransactionsProps) {
+  const router = useRouter();
   const [selectedTransaction, setSelectedTransaction] = useState<TransactionWithRelations | null>(null);
 
   const handleRowClick = (transaction: TransactionWithRelations) => {
@@ -70,7 +72,7 @@ export function AccountTransactions({
                 onBulkUpdate?.(selectedIds, categoryId);
               }}
               onLinkSuccess={() => {
-                window.location.reload();
+                router.refresh();
               }}
             />
           );

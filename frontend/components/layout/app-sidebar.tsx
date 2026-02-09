@@ -67,6 +67,10 @@ export function AppSidebar() {
   const { data: session } = useSession();
   const { isMobile, state } = useSidebar();
   const isCollapsed = state === "collapsed";
+  const userWithProfilePhoto = session?.user as
+    | { profilePhotoPath?: string | null; image?: string | null }
+    | undefined;
+  const avatarSrc = userWithProfilePhoto?.profilePhotoPath ?? userWithProfilePhoto?.image ?? undefined;
 
   const handleSignOut = async () => {
     await signOut();
@@ -140,7 +144,7 @@ export function AppSidebar() {
                 >
                   <Avatar className="h-8 w-8 shrink-0">
                     <AvatarImage
-                      src={session?.user?.image || undefined}
+                      src={avatarSrc}
                       alt={session?.user?.name || "User"}
                     />
                     <AvatarFallback>

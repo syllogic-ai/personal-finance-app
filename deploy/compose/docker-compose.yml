@@ -54,12 +54,6 @@ services:
       # Optional integrations / features
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY:-}
-      PONTO_CLIENT_ID: ${PONTO_CLIENT_ID:-}
-      PONTO_CLIENT_SECRET: ${PONTO_CLIENT_SECRET:-}
-      PONTO_REDIRECT_URI: ${PONTO_REDIRECT_URI:-}
-      PONTO_SANDBOX: ${PONTO_SANDBOX:-}
-      KRAKEN_API_KEY: ${KRAKEN_API_KEY:-}
-      KRAKEN_PRIVATE_KEY: ${KRAKEN_PRIVATE_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -70,10 +64,8 @@ services:
     healthcheck:
       test:
         [
-          "CMD",
-          "python",
-          "-c",
-          "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()",
+          "CMD-SHELL",
+          "python -c \"import os,urllib.request; urllib.request.urlopen(os.environ.get('BACKEND_HEALTHCHECK_URL','http://localhost:8000/health')).read()\"",
         ]
       interval: 10s
       timeout: 5s
@@ -119,12 +111,6 @@ services:
       # Optional integrations / features
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY:-}
-      PONTO_CLIENT_ID: ${PONTO_CLIENT_ID:-}
-      PONTO_CLIENT_SECRET: ${PONTO_CLIENT_SECRET:-}
-      PONTO_REDIRECT_URI: ${PONTO_REDIRECT_URI:-}
-      PONTO_SANDBOX: ${PONTO_SANDBOX:-}
-      KRAKEN_API_KEY: ${KRAKEN_API_KEY:-}
-      KRAKEN_PRIVATE_KEY: ${KRAKEN_PRIVATE_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -147,12 +133,6 @@ services:
       # Optional integrations / features
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY:-}
-      PONTO_CLIENT_ID: ${PONTO_CLIENT_ID:-}
-      PONTO_CLIENT_SECRET: ${PONTO_CLIENT_SECRET:-}
-      PONTO_REDIRECT_URI: ${PONTO_REDIRECT_URI:-}
-      PONTO_SANDBOX: ${PONTO_SANDBOX:-}
-      KRAKEN_API_KEY: ${KRAKEN_API_KEY:-}
-      KRAKEN_PRIVATE_KEY: ${KRAKEN_PRIVATE_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -185,10 +165,8 @@ services:
     healthcheck:
       test:
         [
-          "CMD",
-          "node",
-          "-e",
-          "fetch('http://localhost:3000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+          "CMD-SHELL",
+          "node -e \"fetch(process.env.APP_HEALTHCHECK_URL || 'http://localhost:3000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\"",
         ]
       interval: 10s
       timeout: 5s
