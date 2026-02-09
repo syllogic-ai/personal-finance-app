@@ -146,6 +146,14 @@ export function useImportStatus(
   useEffect(() => {
     // Don't connect if missing required params
     if (!userId || !importId) {
+      setIsConnected(false);
+      setIsImporting(false);
+      setIsComplete(false);
+      setProgress(null);
+      setTotalRows(null);
+      setProcessedRows(null);
+      setError(null);
+      setResult(null);
       return;
     }
 
@@ -171,7 +179,6 @@ export function useImportStatus(
 
     eventSource.onopen = () => {
       setIsConnected(true);
-      setIsImporting(true);
     };
 
     eventSource.onerror = () => {

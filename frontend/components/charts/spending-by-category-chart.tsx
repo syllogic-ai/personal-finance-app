@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatCurrency } from "@/lib/utils";
@@ -20,6 +21,10 @@ interface SpendingByCategoryChartProps {
   limit?: number;
   isLoading?: boolean;
   periodTitle?: string;
+  accountId?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  horizon?: number;
 }
 
 // Graduated opacity levels for grayscale bars (highest first)
@@ -54,7 +59,13 @@ export function SpendingByCategoryChart({
   limit = 5,
   isLoading = false,
   periodTitle = "30-Day",
+  accountId,
+  dateFrom,
+  dateTo,
+  horizon,
 }: SpendingByCategoryChartProps) {
+  const router = useRouter();
+
   if (isLoading) {
     return <SpendingByCategoryChartSkeleton />;
   }
@@ -62,13 +73,35 @@ export function SpendingByCategoryChart({
   const displayData = data.slice(0, limit);
   const maxAmount = Math.max(...displayData.map((d) => d.amount), 1);
 
+  const navigateToTransactions = React.useCallback(
+    (categoryId: string | null) => {
+      if (!categoryId) return;
+      const params = new URLSearchParams();
+      params.set("category", categoryId);
+      params.set("reset", Date.now().toString());
+      if (accountId) {
+        params.set("account", accountId);
+      }
+      if (dateFrom) {
+        params.set("from", dateFrom);
+        params.set("to", dateTo ?? dateFrom);
+      } else if (horizon) {
+        params.set("horizon", String(horizon));
+      }
+      router.push(`/transactions?${params.toString()}`);
+    },
+    [accountId, dateFrom, dateTo, horizon, router]
+  );
+
   return (
     <Card className="col-span-2">
-      <CardHeader className="flex flex-row items-center justify-between pb-4">
-        <CardTitle className="text-sm font-medium">{periodTitle} Expenses</CardTitle>
-        <span className="font-mono text-2xl font-semibold tracking-tight">
-          {formatCurrency(total, currency)}
-        </span>
+      <CardHeader className="pb-4">
+        <div className="flex flex-row items-center justify-between">
+          <CardTitle className="text-sm font-medium">{periodTitle} Expenses</CardTitle>
+          <span className="font-mono text-2xl font-semibold tracking-tight">
+            {formatCurrency(total, currency)}
+          </span>
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
         {displayData.length === 0 ? (
@@ -79,9 +112,16 @@ export function SpendingByCategoryChart({
           displayData.map((category, index) => {
             const percentage = (category.amount / maxAmount) * 100;
             const opacity = OPACITY_LEVELS[index % OPACITY_LEVELS.length];
+            const categoryKey = category.id ?? "uncategorized";
 
             return (
-              <div key={category.id || index} className="space-y-1.5">
+              <div
+                key={category.id || index}
+                className="space-y-1.5 rounded-md px-2 py-1 transition-colors hover:bg-muted/30 cursor-pointer"
+                onClick={() => {
+                  navigateToTransactions(categoryKey);
+                }}
+              >
                 <div className="flex items-center justify-between text-sm">
                   <span className="truncate font-medium">{category.name || "Unknown"}</span>
                   <span className="font-mono text-muted-foreground">

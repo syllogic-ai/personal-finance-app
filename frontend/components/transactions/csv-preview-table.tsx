@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { RiArrowDownLine, RiArrowUpLine } from "@remixicon/react";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import type { PreviewTransaction } from "@/lib/actions/csv-import";
@@ -102,8 +101,6 @@ export function CsvPreviewTable({
             </div>
           </th>
           <th className="px-4 py-3 text-left font-medium">Description</th>
-          <th className="px-4 py-3 text-left font-medium">Merchant</th>
-          <th className="px-4 py-3 text-left font-medium">Type</th>
           <th
             className="cursor-pointer px-4 py-3 text-right font-medium"
             onClick={() => toggleSort("amount")}
@@ -144,14 +141,6 @@ export function CsvPreviewTable({
             </td>
             <td className="max-w-xs truncate px-4 py-3" title={tx.description}>
               {tx.description}
-            </td>
-            <td className="px-4 py-3">
-              {tx.merchant || <span className="text-muted-foreground">-</span>}
-            </td>
-            <td className="px-4 py-3">
-              <Badge variant={tx.transactionType === "credit" ? "default" : "secondary"}>
-                {tx.transactionType === "credit" ? "Income" : "Expense"}
-              </Badge>
             </td>
             <td className="whitespace-nowrap px-4 py-3 text-right font-mono">
               {tx.transactionType === "credit" ? "+" : "-"}

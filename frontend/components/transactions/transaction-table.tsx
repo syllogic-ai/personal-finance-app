@@ -3,6 +3,8 @@
 import * as React from "react";
 import { useState, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
+import { type DateRange } from "react-day-picker";
+import { type ColumnFiltersState } from "@tanstack/react-table";
 import { DataTable } from "@/components/ui/data-table";
 import type { TransactionWithRelations } from "@/lib/actions/transactions";
 import type { CategoryDisplay, AccountForFilter } from "@/types";
@@ -35,6 +37,80 @@ export function TransactionTable({
   const searchParams = useSearchParams();
   const router = useRouter();
 
+  const searchKey = searchParams.toString();
+  const resetToken = searchParams.get("reset");
+  const [tableKey, setTableKey] = useState(() =>
+    resetToken ? `reset-${resetToken}` : "default"
+  );
+
+  useEffect(() => {
+    if (!resetToken) return;
+    setTableKey(`reset-${resetToken}`);
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("reset");
+    const queryString = params.toString();
+    router.replace(queryString ? `/transactions?${queryString}` : "/transactions", {
+      scroll: false,
+    });
+  }, [resetToken, router, searchParams]);
+
+  const initialColumnFilters = React.useMemo(() => {
+    const filters: ColumnFiltersState = [];
+    const params = new URLSearchParams(searchKey);
+    const categoryParam = params.get("category");
+    const accountParam = params.get("account");
+    const fromParam = params.get("from");
+    const toParam = params.get("to");
+    const horizonParam = params.get("horizon");
+
+    if (categoryParam) {
+      filters.push({ id: "category", value: [categoryParam] });
+    }
+
+    if (accountParam) {
+      filters.push({ id: "account", value: [accountParam] });
+    }
+
+    let dateRange: DateRange | undefined;
+    if (fromParam) {
+      const fromDate = new Date(fromParam);
+      const toDate = new Date(toParam ?? fromParam);
+      if (!Number.isNaN(fromDate.getTime())) {
+        dateRange = {
+          from: fromDate,
+          to: Number.isNaN(toDate.getTime()) ? fromDate : toDate,
+        };
+      }
+    } else if (horizonParam) {
+      const horizon = parseInt(horizonParam, 10);
+      if (!Number.isNaN(horizon) && horizon > 0) {
+        const referenceDate = transactions
+          .filter((tx) => !accountParam || tx.accountId === accountParam)
+          .reduce<Date | null>((latest, tx) => {
+            const bookedAt = new Date(tx.bookedAt);
+            if (Number.isNaN(bookedAt.getTime())) return latest;
+            if (!latest || bookedAt > latest) return bookedAt;
+            return latest;
+          }, null);
+
+        if (referenceDate) {
+          const fromDate = new Date(referenceDate);
+          fromDate.setDate(fromDate.getDate() - horizon);
+          fromDate.setHours(0, 0, 0, 0);
+          const toDate = new Date(referenceDate);
+          toDate.setHours(23, 59, 59, 999);
+          dateRange = { from: fromDate, to: toDate };
+        }
+      }
+    }
+
+    if (dateRange) {
+      filters.push({ id: "bookedAt", value: dateRange });
+    }
+
+    return filters;
+  }, [searchKey, transactions]);
+
   // Handle URL query param for auto-selecting a transaction
   useEffect(() => {
     const txId = searchParams.get("tx");
@@ -62,6 +138,7 @@ export function TransactionTable({
   return (
     <>
       <DataTable
+        key={tableKey}
         columns={transactionColumns}
         data={transactions}
         onRowClick={handleRowClick}
@@ -69,6 +146,7 @@ export function TransactionTable({
         enableRowSelection={true}
         enablePagination={true}
         pageSize={20}
+        initialColumnFilters={initialColumnFilters}
         toolbar={(table) => (
           <TransactionFilters table={table} categories={categories} accounts={accounts} action={action} />
         )}
@@ -90,7 +168,7 @@ export function TransactionTable({
                 onBulkUpdate?.(selectedIds, categoryId);
               }}
               onLinkSuccess={() => {
-                window.location.reload();
+                router.refresh();
               }}
             />
           );

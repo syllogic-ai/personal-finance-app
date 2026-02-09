@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { RiArrowDownLine, RiArrowUpLine } from "@remixicon/react";
 import {
@@ -43,6 +44,7 @@ interface AddTransactionDialogProps {
 }
 
 export function AddTransactionDialog({ open, onOpenChange, categories: propCategories }: AddTransactionDialogProps) {
+  const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -124,6 +126,7 @@ export function AddTransactionDialog({ open, onOpenChange, categories: propCateg
         toast.success("Transaction added");
         resetForm();
         onOpenChange(false);
+        router.refresh();
       } else {
         toast.error(result.error || "Failed to add transaction");
       }

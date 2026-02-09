@@ -43,6 +43,14 @@ function MappingPageContent() {
   });
 
   const aiMappingTriggeredRef = useRef(false);
+  const sanitizeMapping = useCallback(
+    (input: ColumnMapping): ColumnMapping => ({
+      ...input,
+      merchant: null,
+      transactionType: null,
+    }),
+    []
+  );
 
   const triggerAiMapping = useCallback(async (id: string, data: ParsedCsvData) => {
     if (aiMappingTriggeredRef.current) return;
@@ -52,7 +60,7 @@ function MappingPageContent() {
     try {
       const result = await getAiColumnMapping(id, data.headers, data.sampleRows);
       if (result.success && result.mapping) {
-        setMapping(result.mapping);
+        setMapping(sanitizeMapping(result.mapping));
         toast.success("AI mapping applied automatically");
       }
     } catch {
@@ -60,7 +68,7 @@ function MappingPageContent() {
     } finally {
       setIsAiMapping(false);
     }
-  }, []);
+  }, [sanitizeMapping]);
 
   const loadData = useCallback(async () => {
     if (!importId) {
@@ -83,7 +91,7 @@ function MappingPageContent() {
         (session.columnMapping.date || session.columnMapping.amount || session.columnMapping.description);
 
       if (hasExistingMapping) {
-        setMapping(session.columnMapping!);
+        setMapping(sanitizeMapping(session.columnMapping!));
         aiMappingTriggeredRef.current = true; // Don't trigger AI if mapping exists
       }
 
@@ -107,7 +115,7 @@ function MappingPageContent() {
     } finally {
       setIsLoading(false);
     }
-  }, [importId, router, triggerAiMapping]);
+  }, [importId, router, triggerAiMapping, sanitizeMapping]);
 
   useEffect(() => {
     loadData();
@@ -124,7 +132,8 @@ function MappingPageContent() {
 
     setIsSaving(true);
     try {
-      const result = await saveColumnMapping(importId, mapping);
+      const sanitizedMapping = sanitizeMapping(mapping);
+      const result = await saveColumnMapping(importId, sanitizedMapping);
       if (result.success) {
         router.push(`/transactions/import/preview?id=${importId}`);
       } else {
@@ -160,7 +169,7 @@ function MappingPageContent() {
   return (
     <>
       <Header title="Map Columns" />
-      <div className="flex flex-1 flex-col p-4 pt-0">
+      <div className="flex h-[calc(100vh-4rem)] flex-col p-4 pt-0">
         {/* AI Mapping Status Banner */}
         {isAiMapping && (
           <div className="mb-4 flex items-center gap-2 rounded-lg border bg-muted/50 px-4 py-3">
@@ -170,10 +179,10 @@ function MappingPageContent() {
         )}
 
         {/* Main Container with 2-Column Layout */}
-        <div className="flex-1 rounded-lg border bg-card">
-          <div className="grid h-full lg:grid-cols-2 lg:divide-x">
+        <div className="flex-1 min-h-0 overflow-hidden rounded-lg border bg-card">
+          <div className="grid h-full min-h-0 lg:grid-cols-2 lg:divide-x">
             {/* Left Column - Field Mapping */}
-            <div className="flex flex-col p-6">
+            <div className="flex min-h-0 flex-col p-6">
               <div className="mb-4">
                 <h2 className="text-lg font-semibold">Field Mapping</h2>
                 <p className="text-sm text-muted-foreground">
@@ -190,7 +199,7 @@ function MappingPageContent() {
             </div>
 
             {/* Right Column - Dynamic Sample Preview */}
-            <div className="flex flex-col border-t p-6 lg:border-t-0">
+            <div className="flex min-h-0 flex-col border-t p-6 lg:border-t-0">
               <CsvSamplePreview
                 headers={csvData.headers}
                 sampleRows={csvData.sampleRows}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { AccountHeader } from "@/components/accounts/account-header";
 import { AccountBalanceChart } from "@/components/accounts/account-balance-chart";
 import { AccountTransactions } from "@/components/accounts/account-transactions";
@@ -24,6 +24,10 @@ export function AccountDetail({
 }: AccountDetailProps) {
   const [transactions, setTransactions] = useState(initialTransactions);
   const currency = account.currency || "EUR";
+
+  useEffect(() => {
+    setTransactions(initialTransactions);
+  }, [initialTransactions]);
 
   // Convert Category[] to CategoryDisplay[]
   const categoryDisplays: CategoryDisplay[] = categories.map((cat) => ({
