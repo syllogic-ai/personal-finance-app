@@ -9,6 +9,8 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    env:
+      INTERNAL_AUTH_SECRET: test-internal-auth-secret
     
     services:
       postgres:
@@ -67,6 +69,10 @@ jobs:
     - name: Install frontend dependencies
       working-directory: ./frontend
       run: pnpm install --frozen-lockfile
+
+    - name: Lint frontend
+      working-directory: ./frontend
+      run: pnpm lint
 
     - name: Run DB migrations (Drizzle)
       working-directory: ./frontend
@@ -173,6 +179,7 @@ jobs:
           DATABASE_URL=postgresql://financeuser:financepass@postgres:5432/finance_db
 
           REDIS_URL=redis://redis:6379/0
+          INTERNAL_AUTH_SECRET=test-internal-auth-secret
 
           BACKEND_URL=http://backend:8000
           CORS_ALLOW_ORIGINS=http://localhost:8080
