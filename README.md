@@ -93,7 +93,46 @@ The app uses a **two-service architecture** with a shared PostgreSQL database:
 - Redis 7
 - Docker & Docker Compose
 
-## Installation
+## Getting Started
+
+## Deployment Options (Recommended)
+
+Choose one path based on how you want to run Syllogic:
+
+1. Local developer workflow (run app/backend from source, DB/Redis in Docker):
+```bash
+cd /Users/gianniskotsas/Documents/WebDev/personal-finance-app
+./scripts/dev-up.sh --local
+```
+
+2. Local full-stack Docker (build images from your current checkout):
+```bash
+cd /Users/gianniskotsas/Documents/WebDev/personal-finance-app
+cp deploy/compose/.env.example deploy/compose/.env
+# edit deploy/compose/.env and set:
+# - POSTGRES_PASSWORD
+# - BETTER_AUTH_SECRET
+# - INTERNAL_AUTH_SECRET
+docker compose \
+  --env-file deploy/compose/.env \
+  -f deploy/compose/docker-compose.yml \
+  -f deploy/compose/docker-compose.local.yml \
+  up -d --build
+```
+
+3. Production/self-host with prebuilt GHCR images:
+```bash
+cd /Users/gianniskotsas/Documents/WebDev/personal-finance-app
+cp deploy/compose/.env.example deploy/compose/.env
+# edit deploy/compose/.env and set:
+# - POSTGRES_PASSWORD
+# - BETTER_AUTH_SECRET
+# - INTERNAL_AUTH_SECRET
+./scripts/prod-up.sh
+```
+
+For full production details, see `/Users/gianniskotsas/Documents/WebDev/personal-finance-app/deploy/compose/README.md`.
+For CasaOS installs, see `/Users/gianniskotsas/Documents/WebDev/personal-finance-app/deploy/casaos/README.md`.
 
 ### Prerequisites
 
@@ -143,6 +182,7 @@ cp .env.example .env
 ```env
 DATABASE_URL=postgresql+psycopg://financeuser:financepass@localhost:5433/finance_db
 REDIS_URL=redis://localhost:6379/0
+INTERNAL_AUTH_SECRET=your-shared-internal-secret
 GOCARDLESS_SECRET_ID=your-gocardless-id
 GOCARDLESS_SECRET_KEY=your-gocardless-key
 OPENAI_API_KEY=your-openai-key
@@ -164,8 +204,10 @@ cp .env.example .env.local
 **Frontend `.env.local` configuration:**
 ```env
 DATABASE_URL=postgresql://financeuser:financepass@localhost:5433/finance_db
-APP_URL=http://localhost:8080
+APP_URL=http://localhost:3000
 BETTER_AUTH_SECRET=your-secret-key-here
+INTERNAL_AUTH_SECRET=your-shared-internal-secret
+BACKEND_URL=http://localhost:8000
 ```
 
 ### 5. Initialize Database
@@ -272,12 +314,15 @@ pnpm db:studio
 | `DATABASE_URL` | PostgreSQL connection string | Yes |
 | `APP_URL` | Canonical public app URL | Yes |
 | `BETTER_AUTH_SECRET` | Secret key for authentication | Yes |
+| `INTERNAL_AUTH_SECRET` | Shared secret used by app->backend signed internal auth | Yes |
+| `BACKEND_URL` | Backend base URL used by Next.js API proxy | Yes |
 
 #### Backend (.env)
 | Variable | Description | Required |
 |----------|-------------|----------|
 | `DATABASE_URL` | PostgreSQL connection string | Yes |
 | `REDIS_URL` | Redis connection string | Yes |
+| `INTERNAL_AUTH_SECRET` | Shared secret used to verify signed internal app requests | Yes |
 | `GOCARDLESS_SECRET_ID` | GoCardless API ID | No |
 | `GOCARDLESS_SECRET_KEY` | GoCardless API key | No |
 | `OPENAI_API_KEY` | OpenAI API key | No |

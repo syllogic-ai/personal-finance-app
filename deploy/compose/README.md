@@ -12,7 +12,10 @@ This directory contains the production-grade Docker Compose bundle:
 ## Quick Start
 
 1. Copy `deploy/compose/.env.example` to `deploy/compose/.env`.
-2. Edit `.env` values (at minimum: `POSTGRES_PASSWORD`, `BETTER_AUTH_SECRET`).
+2. Edit `.env` values (at minimum: `POSTGRES_PASSWORD`, `BETTER_AUTH_SECRET`, `INTERNAL_AUTH_SECRET`).
+   - Generate secrets:
+     - `BETTER_AUTH_SECRET`: `openssl rand -hex 32`
+     - `INTERNAL_AUTH_SECRET`: `openssl rand -hex 32`
    - `APP_URL` defaults to `http://localhost:8080`.
    - `HTTP_PORT` defaults to `8080` in the example env for a conflict-free local default.
    - For a real domain, set `APP_URL`, `CADDY_ADDRESS`, and `ACME_EMAIL`.
@@ -21,6 +24,20 @@ This directory contains the production-grade Docker Compose bundle:
 ```bash
 docker compose --env-file deploy/compose/.env -f deploy/compose/docker-compose.yml up -d
 ```
+
+## Local Build From Current Checkout (Dev/QA)
+
+Use this when you want containers to run your current local code (instead of GHCR prebuilt images):
+
+```bash
+docker compose \
+  --env-file deploy/compose/.env \
+  -f deploy/compose/docker-compose.yml \
+  -f deploy/compose/docker-compose.local.yml \
+  up -d --build
+```
+
+This is the recommended flow when validating recent code changes.
 
 ## Reusing Existing Dev `.env` Files (Optional)
 
@@ -87,6 +104,13 @@ For truly one-click installs, the GHCR packages must be public:
 docker compose --env-file deploy/compose/.env -f deploy/compose/docker-compose.yml pull
 docker compose --env-file deploy/compose/.env -f deploy/compose/docker-compose.yml up -d
 ```
+
+## One-Command Helpers
+
+From repository root:
+
+- Local infra + migrations for source development: `./scripts/dev-up.sh --local`
+- Full prebuilt self-host stack: `./scripts/prod-up.sh`
 
 ## Backups (Docs-Only in v1)
 
