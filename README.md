@@ -63,7 +63,7 @@ The app uses a **two-service architecture** with a shared PostgreSQL database:
                           │
 ┌─────────────────────────▼───────────────────────────────────┐
 │  Backend (Python/FastAPI)                                   │
-│  - GoCardless integration (bank sync)                       │
+│  - Open banking + data integrations                          │
 │  - Transaction enrichment & categorization                  │
 │  - Celery + Redis (cron jobs)                               │
 └─────────────────────────────────────────────────────────────┘
@@ -85,11 +85,11 @@ The app uses a **two-service architecture** with a shared PostgreSQL database:
 - FastAPI for API endpoints
 - SQLAlchemy 2.0 as ORM
 - Celery + Redis for background jobs
-- GoCardless/Nordigen for bank sync
+- Plaid + exchange integrations (optional)
 - OpenAI for transaction enrichment
 
 **Infrastructure:**
-- PostgreSQL 15
+- PostgreSQL 16
 - Redis 7
 - Docker & Docker Compose
 
@@ -133,6 +133,18 @@ cp deploy/compose/.env.example deploy/compose/.env
 
 For full production details, see `/Users/gianniskotsas/Documents/WebDev/personal-finance-app/deploy/compose/README.md`.
 For CasaOS installs, see `/Users/gianniskotsas/Documents/WebDev/personal-finance-app/deploy/casaos/README.md`.
+
+## One-Click Deploy (Render)
+
+This repository includes a root `render.yaml` Blueprint, so users can deploy with one click:
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/syllogic-ai/personal-finance-app)
+
+Recommended explicit branch link:
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/syllogic-ai/personal-finance-app/tree/main)
+
+The deploy button reads `/Users/gianniskotsas/Documents/WebDev/personal-finance-app/render.yaml`.
 
 ### Prerequisites
 
@@ -183,8 +195,9 @@ cp .env.example .env
 DATABASE_URL=postgresql+psycopg://financeuser:financepass@localhost:5433/finance_db
 REDIS_URL=redis://localhost:6379/0
 INTERNAL_AUTH_SECRET=your-shared-internal-secret
-GOCARDLESS_SECRET_ID=your-gocardless-id
-GOCARDLESS_SECRET_KEY=your-gocardless-key
+PLAID_CLIENT_ID=your-plaid-client-id
+PLAID_SECRET=your-plaid-secret
+PLAID_ENVIRONMENT=sandbox
 OPENAI_API_KEY=your-openai-key
 ```
 
@@ -323,8 +336,9 @@ pnpm db:studio
 | `DATABASE_URL` | PostgreSQL connection string | Yes |
 | `REDIS_URL` | Redis connection string | Yes |
 | `INTERNAL_AUTH_SECRET` | Shared secret used to verify signed internal app requests | Yes |
-| `GOCARDLESS_SECRET_ID` | GoCardless API ID | No |
-| `GOCARDLESS_SECRET_KEY` | GoCardless API key | No |
+| `PLAID_CLIENT_ID` | Plaid client ID | No |
+| `PLAID_SECRET` | Plaid secret | No |
+| `PLAID_ENVIRONMENT` | Plaid environment (`sandbox`, `development`, `production`) | No |
 | `OPENAI_API_KEY` | OpenAI API key | No |
 | `LOGO_DEV_API_KEY` | Logo.dev API key | No |
 
@@ -441,4 +455,4 @@ See the LICENSE file for details, and COPYING for the GNU GPL v3.
 
 ---
 
-Built with Next.js, FastAPI, and PostgreSQL. Powered by GoCardless for bank sync and OpenAI for smart categorization.
+Built with Next.js, FastAPI, and PostgreSQL. Powered by OpenAI for smart categorization.

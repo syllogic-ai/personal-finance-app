@@ -19,6 +19,7 @@ services:
     runtime: image
     region: frankfurt
     plan: starter
+    autoDeploy: false
     image:
       url: ghcr.io/syllogic-ai/personal-finance-backend:edge
     envVars:
@@ -33,6 +34,8 @@ services:
           property: connectionString
       - key: API_DOCS_ENABLED
         value: "false"
+      - key: INTERNAL_AUTH_SECRET
+        value: change-me-in-render-dashboard
 
   # Celery worker
   - type: worker
@@ -40,6 +43,7 @@ services:
     runtime: image
     region: frankfurt
     plan: starter
+    autoDeploy: false
     image:
       url: ghcr.io/syllogic-ai/personal-finance-backend:edge
     dockerCommand:
@@ -66,6 +70,7 @@ services:
     runtime: image
     region: frankfurt
     plan: starter
+    autoDeploy: false
     image:
       url: ghcr.io/syllogic-ai/personal-finance-backend:edge
     dockerCommand:
@@ -91,6 +96,7 @@ services:
     runtime: image
     region: frankfurt
     plan: starter
+    autoDeploy: false
     image:
       url: ghcr.io/syllogic-ai/personal-finance-frontend:edge
     healthCheckPath: /
@@ -106,6 +112,8 @@ services:
           property: connectionString
       - key: BETTER_AUTH_SECRET
         generateValue: true
+      - key: INTERNAL_AUTH_SECRET
+        value: change-me-in-render-dashboard
       - key: BACKEND_URL
         fromService:
           name: personal-finance-backend
@@ -122,6 +130,7 @@ services:
     runtime: image
     region: frankfurt
     plan: starter
+    autoDeploy: false
     image:
       url: ghcr.io/syllogic-ai/personal-finance-backend:edge
     dockerCommand:
