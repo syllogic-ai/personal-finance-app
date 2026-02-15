@@ -299,7 +299,11 @@ export function SubscriptionFormDialog({
         if (result.success) {
           toast.success("Subscription created");
           onOpenChange(false);
-          onSuccess?.();
+          if (result.subscription) {
+            onSuccess?.(undefined, result.subscription as RecurringTransaction);
+          } else {
+            onSuccess?.();
+          }
         } else {
           toast.error(result.error || "Failed to create");
         }
