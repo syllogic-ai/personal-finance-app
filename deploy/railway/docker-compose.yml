@@ -33,6 +33,11 @@ services:
       POSTGRES_PASSWORD: ${{shared.POSTGRES_PASSWORD}}
       POSTGRES_DB: finance_db
       PGDATA: /var/lib/postgresql/data/pgdata
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U financeuser -d finance_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
     volumes:
       - postgres_data:/var/lib/postgresql/data
     restart: always
@@ -103,6 +108,15 @@ services:
       - /bin/sh
       - -lc
       - mkdir -p /app/public/uploads && node scripts/migrate.js && exec node_modules/.bin/next start -p 3000 -H 0.0.0.0
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "node -e \"require('http').get('http://127.0.0.1:3000/', (r)=>process.exit(r.statusCode && r.statusCode < 500 ? 0 : 1)).on('error', ()=>process.exit(1))\"",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
     environment:
       NODE_ENV: production
       PORT: "3000"
