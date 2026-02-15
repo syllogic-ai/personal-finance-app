@@ -1,5 +1,11 @@
 # Deploy Syllogic to Railway
 
+## One-Click Deploy
+
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/template/REPLACE_ME)
+
+Replace `REPLACE_ME` with your published Railway template code/slug. Keep secrets in Railway Shared Variables, not in the URL.
+
 ## 1. Import
 
 Drag `docker-compose.yml` (this directory) onto your Railway project canvas.

@@ -136,9 +136,33 @@ For CasaOS installs, see `/Users/gianniskotsas/Documents/WebDev/personal-finance
 
 ## Cloud Deploy (Recommended)
 
-- Railway (recommended): deploy once, then publish a Railway Template URL for one-click sharing.
+- Railway (recommended): use the Railway Template for a one-click install.
 - DigitalOcean App Platform: good managed alternative if you want team-friendly app specs and predictable managed services.
 - Self-hosted Docker Compose remains the most complete/supported path in this repository.
+
+### Deploy To Railway (One-Click)
+
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/template/REPLACE_ME)
+
+This template provisions 7 services: `postgres`, `redis`, `backend`, `worker`, `beat`, `mcp`, `app`.
+
+After deploy, set these **Shared Variables** in Railway (do not hardcode secrets in the template URL):
+
+- `POSTGRES_PASSWORD` (required)
+- `DATABASE_URL` (required)
+  - Recommended: `postgresql://financeuser:${{shared.POSTGRES_PASSWORD}}@${{postgres.RAILWAY_PRIVATE_DOMAIN}}:5432/finance_db`
+- `REDIS_URL` (required)
+  - Recommended: `redis://${{redis.RAILWAY_PRIVATE_DOMAIN}}:6379/0`
+- `APP_URL` (required)
+  - Recommended: `https://${{app.RAILWAY_PUBLIC_DOMAIN}}`
+- `BACKEND_URL` (required)
+  - Recommended: `http://${{backend.RAILWAY_PRIVATE_DOMAIN}}:8080`
+- `BETTER_AUTH_SECRET` (required)
+- `INTERNAL_AUTH_SECRET` (required)
+- `OPENAI_API_KEY` (optional, enables AI categorization)
+- `LOGO_DEV_API_KEY` (optional, enables company logo search)
+
+Template note: replace `REPLACE_ME` with your published Railway template code/slug (see `/deploy/railway/README.md`).
 
 ### Prerequisites
 
