@@ -28,20 +28,40 @@ export const auth = betterAuth({
     },
   },
   trustedOrigins: (() => {
+    const normalizeOrigin = (value: string): string => {
+      const trimmed = value.trim();
+      if (!trimmed) return "";
+      if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+        return trimmed.replace(/\/+$/, "");
+      }
+      // Railway-provided domains can be host-only; default to https for public origins.
+      return `https://${trimmed.replace(/\/+$/, "")}`;
+    };
+
+    const csvOrigins = (process.env.BETTER_AUTH_TRUSTED_ORIGINS || "")
+      .split(",")
+      .map(normalizeOrigin)
+      .filter(Boolean);
+
     const baseOrigins = [
       process.env.APP_URL,
       process.env.BETTER_AUTH_URL,
       process.env.NEXT_PUBLIC_BETTER_AUTH_URL,
       process.env.RENDER_EXTERNAL_URL,
-    ].filter((value): value is string => Boolean(value));
+      process.env.RAILWAY_PUBLIC_DOMAIN,
+      process.env.RAILWAY_STATIC_URL,
+    ]
+      .filter((value): value is string => Boolean(value))
+      .map(normalizeOrigin);
 
     if (process.env.NODE_ENV === "production") {
-      return Array.from(new Set(baseOrigins));
+      return Array.from(new Set([...baseOrigins, ...csvOrigins]));
     }
 
     return Array.from(
       new Set([
         ...baseOrigins,
+        ...csvOrigins,
         "http://localhost:3000",
         "http://127.0.0.1:3000",
         "http://localhost:8080",
