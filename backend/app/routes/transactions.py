@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import func, or_, asc, desc
+from sqlalchemy import func, or_, and_, asc, desc
 from typing import List, Optional
 from uuid import UUID
 from datetime import datetime
@@ -67,10 +67,13 @@ def list_transactions(
         query = query.filter(Transaction.account_id == account_id)
 
     if category_id:
-        # Check both category_id (user override) and category_system_id (AI assigned)
+        # Match effective category: user override first, otherwise AI-assigned fallback
         query = query.filter(
             (Transaction.category_id == category_id) |
-            (Transaction.category_system_id == category_id)
+            and_(
+                Transaction.category_id.is_(None),
+                Transaction.category_system_id == category_id
+            )
         )
 
     if uncategorized:

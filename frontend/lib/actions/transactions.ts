@@ -621,7 +621,12 @@ export async function getTransactionsPage(
     const categoryConditions = [];
     if (categoryIds.length > 0) {
       categoryConditions.push(inArray(transactions.categoryId, categoryIds));
-      categoryConditions.push(inArray(transactions.categorySystemId, categoryIds));
+      categoryConditions.push(
+        and(
+          isNull(transactions.categoryId),
+          inArray(transactions.categorySystemId, categoryIds)
+        )
+      );
     }
     if (includeUncategorized) {
       categoryConditions.push(

@@ -66,7 +66,10 @@ def list_transactions(
         if category_id and category_uuid:
             query = query.filter(
                 (Transaction.category_id == category_uuid) |
-                (Transaction.category_system_id == category_uuid)
+                and_(
+                    Transaction.category_id.is_(None),
+                    Transaction.category_system_id == category_uuid
+                )
             )
 
         if from_dt:
