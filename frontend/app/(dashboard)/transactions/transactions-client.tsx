@@ -15,13 +15,17 @@ import {
   clearPendingImport,
 } from "@/lib/hooks/use-import-status";
 import { useSession } from "@/lib/auth-client";
-import type { TransactionWithRelations } from "@/lib/actions/transactions";
+import type {
+  FilteredTransactionTotals,
+  TransactionWithRelations,
+} from "@/lib/actions/transactions";
 import type { CategoryDisplay, AccountForFilter } from "@/types";
 import type { TransactionsQueryState } from "@/lib/transactions/query-state";
 
 interface TransactionsClientProps {
   initialTransactions: TransactionWithRelations[];
   totalCount: number;
+  filteredTotals: FilteredTransactionTotals | null;
   initialQueryState: TransactionsQueryState;
   categories: CategoryDisplay[];
   accounts: AccountForFilter[];
@@ -30,6 +34,7 @@ interface TransactionsClientProps {
 export function TransactionsClient({
   initialTransactions,
   totalCount,
+  filteredTotals,
   initialQueryState,
   categories,
   accounts,
@@ -269,6 +274,7 @@ export function TransactionsClient({
         <TransactionTable
           transactions={transactions}
           totalCount={totalCount}
+          filteredTotals={filteredTotals}
           queryState={initialQueryState}
           categories={categories}
           accounts={accounts}

@@ -11,6 +11,7 @@ const MIN_PAGE_SIZE = 10;
 const MAX_PAGE_SIZE = 100;
 const DEFAULT_SORT = "bookedAt";
 const DEFAULT_ORDER = "desc";
+const DEFAULT_HORIZON = 30;
 
 export type TransactionSortField = "bookedAt" | "amount" | "description" | "merchant";
 export type TransactionSortOrder = "asc" | "desc";
@@ -229,4 +230,20 @@ export function applyTransactionsQueryPatch(
   nextState.pageSize = clamp(nextState.pageSize, MIN_PAGE_SIZE, MAX_PAGE_SIZE);
 
   return toTransactionsSearchParams(nextState);
+}
+
+export function hasActiveTransactionFilters(state: TransactionsQueryState): boolean {
+  return Boolean(
+    state.search ||
+      state.category.length > 0 ||
+      state.accountIds.length > 0 ||
+      state.status.length > 0 ||
+      state.subscription.length > 0 ||
+      state.analytics.length > 0 ||
+      state.minAmount ||
+      state.maxAmount ||
+      state.from ||
+      state.to ||
+      (state.horizon !== undefined && state.horizon !== DEFAULT_HORIZON)
+  );
 }

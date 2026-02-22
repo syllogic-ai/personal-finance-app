@@ -29,6 +29,7 @@ export default async function TransactionsPage({ searchParams }: TransactionsPag
           <TransactionsClient
             initialTransactions={pageData.rows}
             totalCount={pageData.totalCount}
+            filteredTotals={pageData.filteredTotals}
             initialQueryState={queryState}
             categories={categories}
             accounts={accounts}
