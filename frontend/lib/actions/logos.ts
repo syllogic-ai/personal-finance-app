@@ -9,8 +9,12 @@ import { storage } from "@/lib/storage";
 // Constants
 // ============================================================================
 
-const LOGO_DEV_API_KEY = process.env.LOGO_DEV_API_KEY;
 const NOT_FOUND_RECHECK_DAYS = 30;
+
+function getLogoDevApiKey(): string | undefined {
+  // Use bracket access to avoid build-time env inlining in Next.js server bundles.
+  return process.env["LOGO_DEV_API_KEY"];
+}
 
 // ============================================================================
 // Helper Functions
@@ -88,13 +92,14 @@ function shouldRecheckNotFound(logo: CompanyLogo): boolean {
 async function fetchAndStoreLogo(
   domain: string
 ): Promise<{ success: boolean; logoUrl?: string }> {
-  if (!LOGO_DEV_API_KEY) {
+  const logoDevApiKey = getLogoDevApiKey();
+  if (!logoDevApiKey) {
     console.error("LOGO_DEV_API_KEY is not configured");
     return { success: false };
   }
 
   try {
-    const apiUrl = `https://img.logo.dev/${domain}?token=${LOGO_DEV_API_KEY}&size=128&format=png`;
+    const apiUrl = `https://img.logo.dev/${domain}?token=${logoDevApiKey}&size=128&format=png`;
 
     const response = await fetch(apiUrl);
 
@@ -138,7 +143,7 @@ async function fetchAndStoreLogo(
  * Check if the Logo.dev API key is configured
  */
 export async function hasLogoApiKey(): Promise<boolean> {
-  return !!LOGO_DEV_API_KEY;
+  return !!getLogoDevApiKey();
 }
 
 /**
