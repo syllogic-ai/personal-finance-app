@@ -26,7 +26,10 @@ def list_recurring_transactions(
     with get_db() as db:
         query = db.query(RecurringTransaction).filter(
             RecurringTransaction.user_id == user_id
-        ).options(joinedload(RecurringTransaction.category))
+        ).options(
+            joinedload(RecurringTransaction.category),
+            joinedload(RecurringTransaction.account),
+        )
 
         if is_active is not None:
             query = query.filter(RecurringTransaction.is_active == is_active)
@@ -44,6 +47,8 @@ def list_recurring_transactions(
                 "importance": r.importance,
                 "is_active": r.is_active,
                 "description": r.description,
+                "account_id": str(r.account_id) if r.account_id else None,
+                "account_name": r.account.name if r.account else None,
                 "category_id": str(r.category_id) if r.category_id else None,
                 "category_name": r.category.name if r.category else None,
                 "created_at": r.created_at.isoformat() if r.created_at else None,
@@ -79,6 +84,7 @@ def get_recurring_transaction(
                 RecurringTransaction.user_id == user_id
             )
             .options(joinedload(RecurringTransaction.category))
+            .options(joinedload(RecurringTransaction.account))
             .first()
         )
 
@@ -95,6 +101,8 @@ def get_recurring_transaction(
             "importance": recurring.importance,
             "is_active": recurring.is_active,
             "description": recurring.description,
+            "account_id": str(recurring.account_id) if recurring.account_id else None,
+            "account_name": recurring.account.name if recurring.account else None,
             "category_id": str(recurring.category_id) if recurring.category_id else None,
             "category_name": recurring.category.name if recurring.category else None,
             "created_at": recurring.created_at.isoformat() if recurring.created_at else None,

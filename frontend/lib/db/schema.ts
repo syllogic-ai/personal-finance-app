@@ -209,6 +209,7 @@ export const recurringTransactions = pgTable(
     userId: text("user_id")
       .references(() => users.id, { onDelete: "cascade" })
       .notNull(),
+    accountId: uuid("account_id").references(() => accounts.id, { onDelete: "set null" }),
     name: varchar("name", { length: 255 }).notNull(),
     merchant: varchar("merchant", { length: 255 }),
     amount: decimal("amount", { precision: 15, scale: 2 }).notNull(),
@@ -224,6 +225,7 @@ export const recurringTransactions = pgTable(
   },
   (table) => [
     index("idx_recurring_transactions_user").on(table.userId),
+    index("idx_recurring_transactions_account").on(table.accountId),
     index("idx_recurring_transactions_category").on(table.categoryId),
     index("idx_recurring_transactions_active").on(table.isActive),
   ]
@@ -478,6 +480,7 @@ export const accountsRelations = relations(accounts, ({ one, many }) => ({
   transactions: many(transactions),
   csvImports: many(csvImports),
   balances: many(accountBalances),
+  recurringTransactions: many(recurringTransactions),
 }));
 
 export const accountBalancesRelations = relations(accountBalances, ({ one }) => ({
@@ -536,6 +539,10 @@ export const recurringTransactionsRelations = relations(recurringTransactions, (
   user: one(users, {
     fields: [recurringTransactions.userId],
     references: [users.id],
+  }),
+  account: one(accounts, {
+    fields: [recurringTransactions.accountId],
+    references: [accounts.id],
   }),
   category: one(categories, {
     fields: [recurringTransactions.categoryId],

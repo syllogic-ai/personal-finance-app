@@ -105,13 +105,19 @@ def match_transactions(
 
         # Get all transactions for this user that don't already have a recurring_transaction_id
         # or have a different one
-        candidate_transactions = db.query(Transaction).filter(
+        candidate_query = db.query(Transaction).filter(
             Transaction.user_id == actual_user_id,
             or_(
                 Transaction.recurring_transaction_id.is_(None),
                 Transaction.recurring_transaction_id != subscription_id
             )
-        ).all()
+        )
+        if subscription.account_id:
+            candidate_query = candidate_query.filter(
+                Transaction.account_id == subscription.account_id
+            )
+
+        candidate_transactions = candidate_query.all()
 
         logger.info(f"[MATCH] Found {len(candidate_transactions)} candidate transactions to check")
 

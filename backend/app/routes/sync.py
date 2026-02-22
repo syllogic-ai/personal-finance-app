@@ -21,6 +21,7 @@ class SyncResponse(BaseModel):
     accounts_synced: int
     transactions_created: int
     transactions_updated: int
+    subscriptions_detected: int = 0
     suggestions_count: int = 0
     message: str
 
@@ -68,20 +69,21 @@ async def sync_revolut_csv(
             end_date=end_date,
         )
 
-        suggestions_count = result.get('suggestions_count', 0)
+        subscriptions_detected = result.get('subscriptions_detected', 0)
         message = (
             f"Successfully synced {result['accounts_synced']} account(s). "
             f"Created {result['transactions_created']} new transactions, "
             f"updated {result['transactions_updated']} existing transactions."
         )
-        if suggestions_count > 0:
-            message += f" Found {suggestions_count} subscription suggestion(s)."
+        if subscriptions_detected > 0:
+            message += f" Detected {subscriptions_detected} active monthly subscription(s)."
 
         return SyncResponse(
             accounts_synced=result['accounts_synced'],
             transactions_created=result['transactions_created'],
             transactions_updated=result['transactions_updated'],
-            suggestions_count=suggestions_count,
+            subscriptions_detected=subscriptions_detected,
+            suggestions_count=0,
             message=message,
         )
     except Exception as e:
@@ -143,20 +145,21 @@ def sync_plaid(
             end_date=end_date,
         )
 
-        suggestions_count = result.get('suggestions_count', 0)
+        subscriptions_detected = result.get('subscriptions_detected', 0)
         message = (
             f"Successfully synced {result['accounts_synced']} account(s). "
             f"Created {result['transactions_created']} new transactions, "
             f"updated {result['transactions_updated']} existing transactions."
         )
-        if suggestions_count > 0:
-            message += f" Found {suggestions_count} subscription suggestion(s)."
+        if subscriptions_detected > 0:
+            message += f" Detected {subscriptions_detected} active monthly subscription(s)."
 
         return SyncResponse(
             accounts_synced=result['accounts_synced'],
             transactions_created=result['transactions_created'],
             transactions_updated=result['transactions_updated'],
-            suggestions_count=suggestions_count,
+            subscriptions_detected=subscriptions_detected,
+            suggestions_count=0,
             message=message,
         )
     except ImportError:
@@ -203,4 +206,3 @@ def get_sync_status(
         "last_synced": account.updated_at.isoformat() if account.updated_at else None,
         "transaction_count": transaction_count,
     }
-

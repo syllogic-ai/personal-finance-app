@@ -7,6 +7,7 @@ import {
   recurringTransactions,
   transactions,
   categories,
+  accounts,
   companyLogos,
   type RecurringTransaction,
   type NewRecurringTransaction,
@@ -32,6 +33,7 @@ export interface SubscriptionKpis {
 // ============================================================================
 
 export interface SubscriptionCreateInput {
+  accountId: string;
   name: string;
   merchant?: string;
   amount: number;
@@ -44,6 +46,7 @@ export interface SubscriptionCreateInput {
 }
 
 export interface SubscriptionUpdateInput {
+  accountId?: string;
   name?: string;
   merchant?: string;
   amount?: number;
@@ -95,6 +98,21 @@ export async function createSubscription(
       return { success: false, error: "Importance must be between 1 and 3" };
     }
 
+    if (!input.accountId) {
+      return { success: false, error: "Account is required" };
+    }
+
+    const account = await db.query.accounts.findFirst({
+      where: and(
+        eq(accounts.id, input.accountId),
+        eq(accounts.userId, userId)
+      ),
+    });
+
+    if (!account) {
+      return { success: false, error: "Invalid account" };
+    }
+
     // Validate category belongs to user if provided
     if (input.categoryId) {
       const category = await db.query.categories.findFirst({
@@ -113,6 +131,7 @@ export async function createSubscription(
     const existing = await db.query.recurringTransactions.findFirst({
       where: and(
         eq(recurringTransactions.userId, userId),
+        eq(recurringTransactions.accountId, input.accountId),
         eq(recurringTransactions.name, input.name.trim())
       ),
     });
@@ -129,6 +148,7 @@ export async function createSubscription(
       .insert(recurringTransactions)
       .values({
         userId,
+        accountId: input.accountId,
         name: input.name.trim(),
         merchant: input.merchant?.trim() || null,
         amount: input.amount.toFixed(2),
@@ -147,6 +167,7 @@ export async function createSubscription(
         eq(recurringTransactions.userId, userId)
       ),
       with: {
+        account: true,
         category: true,
         logo: true,
       },
@@ -212,16 +233,35 @@ export async function updateSubscription(
       }
     }
 
-    // Check for duplicate name if changing
-    if (input.name && input.name.trim() !== existing.name) {
-      const duplicate = await db.query.recurringTransactions.findFirst({
+    if (input.accountId) {
+      const account = await db.query.accounts.findFirst({
         where: and(
-          eq(recurringTransactions.userId, userId),
-          eq(recurringTransactions.name, input.name.trim())
+          eq(accounts.id, input.accountId),
+          eq(accounts.userId, userId)
         ),
       });
 
-      if (duplicate) {
+      if (!account) {
+        return { success: false, error: "Invalid account" };
+      }
+    }
+
+    // Check for duplicate name if changing
+    const targetName = input.name?.trim() ?? existing.name;
+    const targetAccountId = input.accountId ?? existing.accountId;
+    const duplicateAccountCondition = targetAccountId
+      ? eq(recurringTransactions.accountId, targetAccountId)
+      : isNull(recurringTransactions.accountId);
+    if (targetName !== existing.name || targetAccountId !== existing.accountId) {
+      const duplicate = await db.query.recurringTransactions.findFirst({
+        where: and(
+          eq(recurringTransactions.userId, userId),
+          duplicateAccountCondition,
+          eq(recurringTransactions.name, targetName)
+        ),
+      });
+
+      if (duplicate && duplicate.id !== existing.id) {
         return {
           success: false,
           error: "A subscription with this name already exists",
@@ -239,6 +279,7 @@ export async function updateSubscription(
     if (input.amount !== undefined) updateData.amount = input.amount.toFixed(2);
     if (input.currency !== undefined) updateData.currency = input.currency;
     if (input.categoryId !== undefined) updateData.categoryId = input.categoryId || null;
+    if (input.accountId !== undefined) updateData.accountId = input.accountId || null;
     if (input.logoId !== undefined) updateData.logoId = input.logoId || null;
     if (input.importance !== undefined) updateData.importance = input.importance;
     if (input.frequency !== undefined) updateData.frequency = input.frequency;
@@ -374,6 +415,7 @@ export async function getSubscriptions(
     const results = await db.query.recurringTransactions.findMany({
       where: whereConditions,
       with: {
+        account: true,
         category: true,
         logo: true,
       },
@@ -477,6 +519,7 @@ export async function getSubscription(
         eq(recurringTransactions.userId, userId)
       ),
       with: {
+        account: true,
         category: true,
         logo: true,
       },
@@ -619,6 +662,10 @@ export async function findPotentialMatches(): Promise<PotentialMatch[]> {
 
     for (const subscription of activeSubscriptions) {
       for (const transaction of unlinkedTransactions) {
+        if (subscription.accountId && transaction.accountId !== subscription.accountId) {
+          continue;
+        }
+
         let matchScore = 0;
         const reasons: string[] = [];
 
@@ -749,6 +796,13 @@ export async function linkTransactionToSubscription(
       return { success: false, error: "Subscription not found" };
     }
 
+    if (subscription.accountId && transaction.accountId !== subscription.accountId) {
+      return {
+        success: false,
+        error: "Transaction account does not match this subscription account",
+      };
+    }
+
     // Link the transaction
     await db
       .update(transactions)
@@ -855,12 +909,28 @@ export async function bulkLinkTransactions(
     // Create sets for quick lookup
     const validTransactionIds = new Set(userTransactions.map((t) => t.id));
     const validSubscriptionIds = new Set(userSubscriptions.map((r) => r.id));
+    const transactionById = new Map(userTransactions.map((t) => [t.id, t]));
+    const subscriptionById = new Map(userSubscriptions.map((r) => [r.id, r]));
 
     // Filter to valid links only
     const validLinks = links.filter(
-      (link) =>
-        validTransactionIds.has(link.transactionId) &&
-        validSubscriptionIds.has(link.subscriptionId)
+      (link) => {
+        if (!validTransactionIds.has(link.transactionId) || !validSubscriptionIds.has(link.subscriptionId)) {
+          return false;
+        }
+
+        const transaction = transactionById.get(link.transactionId);
+        const subscription = subscriptionById.get(link.subscriptionId);
+        if (!transaction || !subscription) {
+          return false;
+        }
+
+        if (subscription.accountId && subscription.accountId !== transaction.accountId) {
+          return false;
+        }
+
+        return true;
+      }
     );
 
     if (validLinks.length === 0) {
@@ -916,14 +986,23 @@ export async function matchTransactionsToSubscription(
       return { success: false, error: "Subscription not found" };
     }
 
-    const candidateTransactions = await db.query.transactions.findMany({
-      where: and(
-        eq(transactions.userId, userId),
-        or(
-          isNull(transactions.recurringTransactionId),
-          ne(transactions.recurringTransactionId, subscriptionId)
+    const recurringMismatchCondition = or(
+      isNull(transactions.recurringTransactionId),
+      ne(transactions.recurringTransactionId, subscriptionId)
+    );
+    const candidateWhere = subscription.accountId
+      ? and(
+          eq(transactions.userId, userId),
+          eq(transactions.accountId, subscription.accountId),
+          recurringMismatchCondition
         )
-      ),
+      : and(
+          eq(transactions.userId, userId),
+          recurringMismatchCondition
+        );
+
+    const candidateTransactions = await db.query.transactions.findMany({
+      where: candidateWhere,
       orderBy: [desc(transactions.bookedAt)],
       limit: 2000,
     });
@@ -1275,6 +1354,7 @@ export async function detectSubscriptionFromTransaction(
     const allTransactions = await db.query.transactions.findMany({
       where: and(
         eq(transactions.userId, userId),
+        eq(transactions.accountId, sourceTransaction.accountId),
         gte(transactions.bookedAt, twoYearsAgo),
         lt(transactions.amount, "0") // Only expenses
       ),
@@ -1570,6 +1650,7 @@ export async function createSubscriptionFromTransaction(
     const existing = await db.query.recurringTransactions.findFirst({
       where: and(
         eq(recurringTransactions.userId, userId),
+        eq(recurringTransactions.accountId, sourceTransaction.accountId),
         eq(recurringTransactions.name, input.name.trim())
       ),
     });
@@ -1584,6 +1665,7 @@ export async function createSubscriptionFromTransaction(
       .insert(recurringTransactions)
       .values({
         userId,
+        accountId: sourceTransaction.accountId,
         name: input.name.trim(),
         merchant: sourceTransaction.merchant || null,
         amount: amount.toFixed(2),

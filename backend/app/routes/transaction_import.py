@@ -565,7 +565,8 @@ def import_transactions(
                     match = subscription_matcher.match_transaction(
                         description=txn.description,
                         merchant=txn.merchant,
-                        amount=txn.amount
+                        amount=txn.amount,
+                        account_id=str(txn.account_id),
                     )
 
                     if match:
@@ -591,31 +592,59 @@ def import_transactions(
                 logger.error(traceback.format_exc())
                 subscription_matches_result = {"error": str(e)}
 
-        # Step 5b: Detect subscription patterns from newly imported transactions
+        # Step 5b: Detect and auto-apply monthly subscription patterns from full history
         subscription_detection_result = None
-        if request.detect_subscriptions and inserted_ids:
-            logger.info(f"[IMPORT] Detecting subscription patterns from {len(inserted_ids)} new transactions...")
+        if request.detect_subscriptions:
+            logger.info(
+                "[IMPORT] Detecting subscription patterns (new transactions: %s)...",
+                len(inserted_ids),
+            )
             try:
                 detector = SubscriptionDetector(db, user_id=user_id)
-                suggestions_count = detector.detect_and_save(inserted_ids)
+                detection = detector.detect_and_apply(inserted_ids or None)
 
                 subscription_detection_result = {
-                    "suggestions_created": suggestions_count,
-                    "enabled": True
+                    "enabled": True,
+                    **detection,
                 }
 
-                if suggestions_count > 0:
-                    logger.info(f"[IMPORT] Created {suggestions_count} subscription suggestion(s)")
+                if detection.get("detected_count", 0) > 0:
+                    logger.info(
+                        "[IMPORT] Auto-detected %s monthly subscription(s) "
+                        "(created=%s, updated=%s, linked=%s, deactivated=%s)",
+                        detection.get("detected_count", 0),
+                        detection.get("created_count", 0),
+                        detection.get("updated_count", 0),
+                        detection.get("linked_count", 0),
+                        detection.get("deactivated_count", 0),
+                    )
                 else:
-                    logger.info("[IMPORT] No new subscription patterns detected")
+                    logger.info("[IMPORT] No active monthly subscription patterns detected")
 
             except Exception as e:
                 logger.error(f"[IMPORT] Error detecting subscription patterns: {e}")
                 import traceback
                 logger.error(traceback.format_exc())
-                subscription_detection_result = {"suggestions_created": 0, "enabled": True, "error": str(e)}
+                subscription_detection_result = {
+                    "enabled": True,
+                    "detected_count": 0,
+                    "created_count": 0,
+                    "updated_count": 0,
+                    "linked_count": 0,
+                    "activated_count": 0,
+                    "deactivated_count": 0,
+                    "error": str(e),
+                }
         else:
-            subscription_detection_result = {"suggestions_created": 0, "enabled": False}
+            subscription_detection_result = {
+                "enabled": False,
+                "detected_count": 0,
+                "created_count": 0,
+                "updated_count": 0,
+                "linked_count": 0,
+                "activated_count": 0,
+                "deactivated_count": 0,
+            }
 
         # Step 6: Sync exchange rates (renumbered from 5)
         exchange_rates_result = None

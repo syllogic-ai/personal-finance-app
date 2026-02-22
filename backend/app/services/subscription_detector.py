@@ -1,13 +1,13 @@
 """
 Subscription pattern detection service for discovering recurring payment patterns.
 
-Core approach: Find transactions with very similar descriptions that occur at
-consistent time intervals. Supports any frequency (not just predefined ones).
+Core approach: find account-scoped transactions with very similar descriptions
+that occur on a consistent monthly cadence and are still recent/active.
 
 Usage:
     detector = SubscriptionDetector(db, user_id)
-    suggestions = detector.detect_patterns(new_transaction_ids)
-    # suggestions are auto-saved to database
+    result = detector.detect_and_apply(new_transaction_ids)
+    # creates/updates account-scoped monthly subscriptions and links transactions
 """
 import os
 import re
@@ -18,9 +18,10 @@ from decimal import Decimal
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from collections import defaultdict
+from uuid import UUID
 
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, func
+from sqlalchemy import func
 
 from app.models import Transaction, RecurringTransaction, SubscriptionSuggestion
 from app.db_helpers import get_user_id
@@ -49,17 +50,10 @@ AMOUNT_TOLERANCE_PERCENT = 0.30
 # E.g., 0.25 means intervals can vary by 25% from the average
 INTERVAL_CONSISTENCY_THRESHOLD = 0.35
 
-# Cadence configuration for tiered scoring system
-# Prioritizes monthly/annual cadences, reduces score for weekly/custom patterns
-CADENCE_CONFIG = {
-    'monthly': {'bonus': 15, 'multiplier': 1.0, 'min_txns': 3},
-    'yearly': {'bonus': 15, 'multiplier': 1.0, 'min_txns': 2},
-    'quarterly': {'bonus': 10, 'multiplier': 0.9, 'min_txns': 2},
-    'semi-annual': {'bonus': 10, 'multiplier': 0.9, 'min_txns': 2},
-    'biweekly': {'bonus': 2, 'multiplier': 0.7, 'min_txns': 4},
-    'weekly': {'bonus': 0, 'multiplier': 0.6, 'min_txns': 5},
-    'custom': {'bonus': -5, 'multiplier': 0.4, 'min_txns': 5},
-}
+# Monthly-only detection constraints
+MONTHLY_MIN_INTERVAL_DAYS = 26
+MONTHLY_MAX_INTERVAL_DAYS = 35
+ACTIVE_LOOKBACK_DAYS = 62  # "last 2 months" window for active subscriptions
 
 # P2P/Personal transfer patterns to exclude from subscription detection
 # These patterns indicate transfers to individuals rather than businesses
@@ -87,15 +81,18 @@ P2P_PATTERNS = [
 @dataclass
 class DetectedPattern:
     """A detected recurring payment pattern."""
+    account_id: str
     suggested_name: str
     suggested_merchant: Optional[str]
     suggested_amount: Decimal
     currency: str
-    detected_frequency: str  # weekly, biweekly, monthly, quarterly, yearly, or "every X days"
+    detected_frequency: str
     confidence: int  # 0-100
     matched_transaction_ids: List[str] = field(default_factory=list)
     match_count: int = 0
     avg_interval_days: float = 0.0
+    category_id: Optional[str] = None
+    latest_transaction_at: Optional[datetime] = None
 
 
 class SubscriptionDetector:
@@ -103,15 +100,15 @@ class SubscriptionDetector:
     Detects recurring payment patterns from transactions.
 
     Core Algorithm:
-    1. Get all unlinked expense transactions
-    2. Group by SEPA Creditor ID (CSID) if available - this uniquely identifies merchants
-    3. For each group, check if transactions occur at consistent intervals
-    4. If intervals are consistent, it's likely a subscription
+    1. Get all expense transactions (full history) per account
+    2. Group by SEPA Creditor ID (CSID) and normalized fingerprint
+    3. For each account-scoped group, verify monthly interval consistency
+    4. Weight confidence heavily by recency and auto-link matched transactions
 
     This approach:
     - Uses CSID as the primary grouping key for SEPA direct debits
     - Falls back to description similarity for non-SEPA transactions
-    - Supports ANY frequency (not just weekly/monthly/yearly)
+    - Auto-detects monthly cadence only
     - Is robust to amount variations
     """
 
@@ -160,6 +157,16 @@ class SubscriptionDetector:
             ).all()
         return self._existing_subscriptions
 
+    @staticmethod
+    def _to_uuid(value: Optional[str]) -> Optional[UUID]:
+        """Safely parse a UUID-like string."""
+        if not value:
+            return None
+        try:
+            return UUID(str(value))
+        except (ValueError, TypeError):
+            return None
+
     def _is_personal_transfer(self, txn: Transaction) -> bool:
         """
         Check if a transaction appears to be a personal/P2P transfer.
@@ -203,16 +210,9 @@ class SubscriptionDetector:
         Returns one of: 'monthly', 'yearly', 'quarterly', 'semi-annual',
                        'biweekly', 'weekly', or 'custom'
         """
-        if frequency_label in CADENCE_CONFIG:
-            return frequency_label
-
-        # Check if it's a custom variant of a known cadence
         label_lower = frequency_label.lower()
 
         if 'month' in label_lower:
-            # "every 2 months", "bimonthly", etc.
-            if 'every 2' in label_lower or 'bimonth' in label_lower:
-                return 'quarterly'  # Treat bimonthly like quarterly
             return 'monthly'
         elif 'year' in label_lower or 'annual' in label_lower:
             return 'yearly'
@@ -594,7 +594,8 @@ class SubscriptionDetector:
 
     def _analyze_transaction_group(
         self,
-        transactions: List[Transaction]
+        transactions: List[Transaction],
+        account_latest_date: datetime
     ) -> Optional[DetectedPattern]:
         """
         Analyze a group of similar transactions to see if they form a pattern.
@@ -628,114 +629,60 @@ class SubscriptionDetector:
         if len(dates) < MIN_TRANSACTIONS:
             return None
 
-        # Check interval consistency
         is_consistent, avg_interval, consistency_score = self._check_interval_consistency(dates)
 
-        # For CSID groups, be more lenient on interval consistency
         if not is_consistent:
             if is_csid_group and len(transactions) >= 3:
-                is_consistent = True
                 consistency_score = max(0.3, consistency_score)
             else:
                 return None
 
-        # Get frequency label first - needed for tiered scoring
-        frequency_label = self._get_frequency_label(avg_interval)
-        cadence_type = self._get_cadence_type(frequency_label)
-        cadence_config = CADENCE_CONFIG.get(cadence_type, CADENCE_CONFIG['custom'])
-
-        # Check if we have enough transactions for this cadence type
-        min_txns_required = cadence_config['min_txns']
-        if len(transactions) < min_txns_required:
-            logger.debug(
-                f"[SUBSCRIPTION_DETECTOR] Skipping pattern: {len(transactions)} txns "
-                f"< {min_txns_required} required for {cadence_type} cadence"
-            )
+        # Monthly-only auto detection.
+        if not (MONTHLY_MIN_INTERVAL_DAYS <= avg_interval <= MONTHLY_MAX_INTERVAL_DAYS):
             return None
 
-        # Calculate confidence score using tiered system
+        frequency_label = "monthly"
+        latest_transaction_at = max(dates)
+
+        # Inactive subscriptions are excluded from active detection output.
+        recency_days = max(0, (account_latest_date - latest_transaction_at).days)
+        if recency_days > ACTIVE_LOOKBACK_DAYS:
+            return None
+
+        # Confidence scoring with explicit recency weighting.
         confidence = 0
 
-        # Base confidence from interval consistency (0-25 points, reduced from 40)
-        confidence += int(consistency_score * 25)
+        # Interval quality (0-35): consistency + closeness to monthly cadence.
+        distance_from_monthly = abs(avg_interval - 30)
+        cadence_fit = max(0.0, 1.0 - (distance_from_monthly / 6.0))
+        confidence += int(consistency_score * 20)
+        confidence += int(cadence_fit * 15)
 
-        # Big bonus for CSID-based groups (0-25 points)
-        # CSID = definitive proof it's the same merchant
+        # Match count confidence (0-20): 2 points = weak, 5+ points = strong.
+        confidence += min(20, max(0, (len(transactions) - 1) * 5))
+
+        # Amount stability (0-15): fixed subscription amounts score higher.
+        if amount_cv < 0.01:
+            confidence += 15
+        elif amount_cv < 0.03:
+            confidence += 12
+        elif amount_cv < 0.05:
+            confidence += 8
+        elif amount_cv < 0.10:
+            confidence += 4
+
+        # Recency (0-30): most recent 1-2 months contribute much more.
+        if recency_days <= 31:
+            confidence += 30
+        else:
+            # Linear decay from day 32 to the 2-month threshold.
+            decay_window = max(1, ACTIVE_LOOKBACK_DAYS - 31)
+            remaining = max(0, ACTIVE_LOOKBACK_DAYS - recency_days)
+            confidence += int((remaining / decay_window) * 20)
+
+        # Known creditor IDs are still strong evidence of a real subscription.
         if is_csid_group:
-            if known_merchant:
-                confidence += 25  # Known merchant from CSID
-            else:
-                confidence += 15  # Unknown CSID, but still same creditor
-
-        # Cadence-based bonus (from CADENCE_CONFIG)
-        cadence_bonus = cadence_config['bonus']
-        confidence += cadence_bonus
-
-        # Transaction count bonus - different for different cadence types
-        is_preferred_cadence = cadence_type in ['monthly', 'yearly', 'quarterly', 'semi-annual']
-        txn_count = len(transactions)
-
-        if is_preferred_cadence:
-            # Monthly/Yearly/Quarterly/Semi-annual: higher bonuses for fewer transactions
-            if cadence_type == 'yearly' and txn_count == 2:
-                count_bonus = 8  # Yearly subscriptions often only have 2 data points
-            elif txn_count == 2:
-                count_bonus = 0
-            elif txn_count == 3:
-                count_bonus = 10
-            elif txn_count == 4:
-                count_bonus = 18
-            else:  # 5+
-                count_bonus = 25
-        else:
-            # Weekly/Biweekly/Custom: require more transactions, lower max bonus
-            if txn_count < 4:
-                count_bonus = 0
-            elif txn_count == 4:
-                count_bonus = 8
-            elif txn_count == 5:
-                count_bonus = 12
-            else:  # 6+
-                count_bonus = 15  # Capped lower than preferred cadences
-
-        confidence += count_bonus
-
-        # Amount consistency bonus - stricter for preferred cadences
-        if is_preferred_cadence:
-            # Stricter thresholds for monthly/yearly
-            if amount_cv < 0.01:  # CV < 1%: fixed amount
-                amount_bonus = 15
-            elif amount_cv < 0.03:  # CV < 3%
-                amount_bonus = 12
-            elif amount_cv < 0.05:  # CV < 5%
-                amount_bonus = 8
-            elif amount_cv < 0.10:  # CV < 10%
-                amount_bonus = 3
-            else:
-                amount_bonus = 0
-        else:
-            # More lenient for other cadences
-            if amount_cv < 0.05:
-                amount_bonus = 10
-            elif amount_cv < 0.10:
-                amount_bonus = 5
-            else:
-                amount_bonus = 0
-
-        confidence += amount_bonus
-
-        # Bonus for known merchant from extractor (0-10 points) - only if not already from CSID
-        if not known_merchant:
-            merchant_result = self.merchant_extractor.extract(
-                first_txn.description, first_txn.merchant
-            )
-            if merchant_result.merchant and merchant_result.confidence >= 90:
-                confidence += 10
-            elif merchant_result.merchant and merchant_result.confidence >= 60:
-                confidence += 5
-
-        # Apply cadence multiplier (reduces score for non-preferred cadences)
-        confidence = int(confidence * cadence_config['multiplier'])
+            confidence += 8 if known_merchant else 5
 
         confidence = min(100, confidence)
 
@@ -747,8 +694,10 @@ class SubscriptionDetector:
 
         # Sort transactions by date for ID list
         sorted_txns = sorted(transactions, key=lambda t: t.booked_at)
+        category_id = self._resolve_pattern_category_id(sorted_txns)
 
         return DetectedPattern(
+            account_id=str(first_txn.account_id),
             suggested_name=suggested_name[:255],
             suggested_merchant=suggested_merchant[:255] if suggested_merchant else None,
             suggested_amount=Decimal(str(round(avg_amount, 2))),
@@ -757,7 +706,9 @@ class SubscriptionDetector:
             confidence=confidence,
             matched_transaction_ids=[str(txn.id) for txn in sorted_txns],
             match_count=len(transactions),
-            avg_interval_days=avg_interval
+            avg_interval_days=avg_interval,
+            category_id=category_id,
+            latest_transaction_at=latest_transaction_at,
         )
 
     def _extract_best_name(self, transactions: List[Transaction]) -> Tuple[str, Optional[str]]:
@@ -837,11 +788,36 @@ class SubscriptionDetector:
 
         return "Unknown Subscription", None
 
+    def _resolve_pattern_category_id(self, transactions: List[Transaction]) -> Optional[str]:
+        """
+        Pick the most common category across matched transactions.
+
+        Preference order per transaction:
+        1. User category override (category_id)
+        2. System-assigned category (category_system_id)
+        """
+        category_counts: Dict[str, int] = defaultdict(int)
+        for txn in transactions:
+            category_id = txn.category_id or txn.category_system_id
+            if category_id:
+                category_counts[str(category_id)] += 1
+
+        if not category_counts:
+            return None
+
+        return max(category_counts.items(), key=lambda item: item[1])[0]
+
     def _matches_existing_subscription(self, pattern: DetectedPattern) -> bool:
         """Check if a pattern matches an existing active subscription."""
         existing = self._load_existing_subscriptions()
 
         for sub in existing:
+            # Matching is account-scoped. Ignore legacy account-agnostic entries.
+            if not sub.account_id:
+                continue
+            if str(sub.account_id) != pattern.account_id:
+                continue
+
             # Check amount match (within tolerance)
             sub_amount = abs(float(sub.amount))
             pattern_amount = abs(float(pattern.suggested_amount))
@@ -900,16 +876,17 @@ class SubscriptionDetector:
     def detect_patterns(
         self,
         transaction_ids: Optional[List[str]] = None,
-        lookback_days: int = 365
+        lookback_days: Optional[int] = None,
+        exclude_existing: bool = True,
     ) -> List[DetectedPattern]:
         """
         Analyze transactions to find recurring patterns.
 
         Core algorithm:
-        1. Group transactions by description fingerprint (rough grouping)
-        2. Within each group, check if transactions have similar descriptions
-        3. For similar transactions, check if they occur at consistent intervals
-        4. If intervals are consistent, create a pattern suggestion
+        1. Partition expense transactions by account
+        2. Group by description fingerprint (rough grouping) per account
+        3. Within each account, analyze similar transactions for monthly patterns
+        4. Score patterns with strong recency weighting
         """
         if not ENABLE_SUBSCRIPTION_SUGGESTIONS:
             return []
@@ -918,51 +895,20 @@ class SubscriptionDetector:
             f"[SUBSCRIPTION_DETECTOR] Starting pattern detection for user {self.user_id}"
         )
 
-        # Build query for unlinked expense transactions
-        lookback_date = datetime.utcnow() - timedelta(days=lookback_days)
-
+        # Full-history scan by default (lookback is optional).
         query = self.db.query(Transaction).filter(
             Transaction.user_id == self.user_id,
-            Transaction.recurring_transaction_id.is_(None),
             Transaction.amount < 0,  # Only expenses
-            Transaction.booked_at >= lookback_date
         )
 
-        # If specific transaction IDs provided, also include related transactions
-        if transaction_ids:
-            source_txns = self.db.query(Transaction).filter(
-                Transaction.id.in_(transaction_ids),
-                Transaction.user_id == self.user_id
-            ).all()
+        if lookback_days is not None:
+            lookback_date = datetime.utcnow() - timedelta(days=lookback_days)
+            query = query.filter(Transaction.booked_at >= lookback_date)
 
-            if not source_txns:
-                return []
-
-            # Get fingerprints for source transactions
-            source_fingerprints = {
-                self._get_description_fingerprint(txn) for txn in source_txns
-            }
-
-            # Get all transactions
-            all_transactions = query.order_by(Transaction.booked_at.asc()).all()
-
-            # Filter to those with matching fingerprints OR high similarity to source
-            transactions = []
-            for txn in all_transactions:
-                fp = self._get_description_fingerprint(txn)
-                if fp in source_fingerprints:
-                    transactions.append(txn)
-                else:
-                    # Check similarity to any source transaction
-                    for src in source_txns:
-                        if self._calculate_description_similarity(src, txn) >= TEXT_SIMILARITY_THRESHOLD:
-                            transactions.append(txn)
-                            break
-        else:
-            transactions = query.order_by(Transaction.booked_at.asc()).all()
+        transactions = query.order_by(Transaction.account_id.asc(), Transaction.booked_at.asc()).all()
 
         if not transactions:
-            logger.info("[SUBSCRIPTION_DETECTOR] No unlinked expense transactions found")
+            logger.info("[SUBSCRIPTION_DETECTOR] No expense transactions found")
             return []
 
         # Filter out personal/P2P transfers
@@ -979,66 +925,83 @@ class SubscriptionDetector:
             logger.info("[SUBSCRIPTION_DETECTOR] No transactions left after P2P filtering")
             return []
 
+        # Per-account latest transaction date (all transaction types).
+        latest_by_account_rows = (
+            self.db.query(Transaction.account_id, func.max(Transaction.booked_at))
+            .filter(Transaction.user_id == self.user_id)
+            .group_by(Transaction.account_id)
+            .all()
+        )
+        latest_by_account: Dict[str, datetime] = {
+            str(account_id): latest_at
+            for account_id, latest_at in latest_by_account_rows
+            if account_id and latest_at
+        }
+
         logger.info(
-            f"[SUBSCRIPTION_DETECTOR] Analyzing {len(transactions)} transactions"
+            f"[SUBSCRIPTION_DETECTOR] Analyzing {len(transactions)} transactions across all accounts"
         )
 
-        # Group transactions by fingerprint for efficiency
-        fingerprint_groups: Dict[str, List[Transaction]] = defaultdict(list)
+        # Group transactions by account first.
+        account_groups: Dict[str, List[Transaction]] = defaultdict(list)
         for txn in transactions:
-            fp = self._get_description_fingerprint(txn)
-            if fp:
-                fingerprint_groups[fp].append(txn)
+            account_groups[str(txn.account_id)].append(txn)
 
-        logger.info(
-            f"[SUBSCRIPTION_DETECTOR] Created {len(fingerprint_groups)} fingerprint groups"
-        )
-
-        # Analyze each group
         patterns: List[DetectedPattern] = []
-        processed_ids: Set[str] = set()
-
-        for fingerprint, group_txns in fingerprint_groups.items():
-            if len(group_txns) < MIN_TRANSACTIONS:
+        for account_id, account_txns in account_groups.items():
+            if len(account_txns) < MIN_TRANSACTIONS:
                 continue
 
-            # Skip if all transactions already processed
-            unprocessed = [t for t in group_txns if str(t.id) not in processed_ids]
-            if len(unprocessed) < MIN_TRANSACTIONS:
+            account_latest_date = latest_by_account.get(account_id)
+            if not account_latest_date:
                 continue
 
-            # For each unprocessed transaction, find its similar transactions
-            for txn in unprocessed:
-                if str(txn.id) in processed_ids:
+            fingerprint_groups: Dict[str, List[Transaction]] = defaultdict(list)
+            for txn in account_txns:
+                fp = self._get_description_fingerprint(txn)
+                if fp:
+                    fingerprint_groups[fp].append(txn)
+
+            processed_ids: Set[str] = set()
+            for group_txns in fingerprint_groups.values():
+                if len(group_txns) < MIN_TRANSACTIONS:
                     continue
 
-                # Find similar transactions (within this group and across groups)
-                similar = self._find_similar_transactions(txn, transactions, processed_ids)
-
-                if len(similar) < MIN_TRANSACTIONS:
+                unprocessed = [t for t in group_txns if str(t.id) not in processed_ids]
+                if len(unprocessed) < MIN_TRANSACTIONS:
                     continue
 
-                # Analyze the similar transactions
-                pattern = self._analyze_transaction_group(similar)
+                for txn in unprocessed:
+                    if str(txn.id) in processed_ids:
+                        continue
 
-                if pattern:
-                    patterns.append(pattern)
-                    # Mark these transactions as processed
-                    for t in similar:
-                        processed_ids.add(str(t.id))
+                    similar = self._find_similar_transactions(txn, account_txns, processed_ids)
+                    if len(similar) < MIN_TRANSACTIONS:
+                        continue
+
+                    pattern = self._analyze_transaction_group(
+                        similar,
+                        account_latest_date=account_latest_date
+                    )
+
+                    if pattern:
+                        patterns.append(pattern)
+                        for t in similar:
+                            processed_ids.add(str(t.id))
 
         logger.info(
             f"[SUBSCRIPTION_DETECTOR] Found {len(patterns)} potential patterns"
         )
 
-        # Filter out patterns matching existing subscriptions
-        patterns = [p for p in patterns if not self._matches_existing_subscription(p)]
+        if exclude_existing:
+            patterns = [p for p in patterns if not self._matches_existing_subscription(p)]
 
         # Sort by confidence (descending), then by transaction count
         patterns.sort(key=lambda p: (p.confidence, p.match_count), reverse=True)
 
-        # Limit to MAX_SUGGESTIONS
-        patterns = patterns[:MAX_SUGGESTIONS]
+        # Suggestion workflow remains capped, auto-apply workflow is not.
+        if exclude_existing:
+            patterns = patterns[:MAX_SUGGESTIONS]
 
         logger.info(
             f"[SUBSCRIPTION_DETECTOR] Final result: {len(patterns)} subscription patterns"
@@ -1046,7 +1009,7 @@ class SubscriptionDetector:
 
         for p in patterns:
             logger.info(
-                f"  - {p.suggested_name}: {p.detected_frequency}, "
+                f"  - {p.suggested_name} ({p.account_id}): {p.detected_frequency}, "
                 f"€{p.suggested_amount}, {p.match_count} txns, {p.confidence}% confidence"
             )
 
@@ -1105,6 +1068,302 @@ class SubscriptionDetector:
         transaction_ids: Optional[List[str]] = None
     ) -> int:
         """Detect patterns and save suggestions in one call."""
-        patterns = self.detect_patterns(transaction_ids)
+        patterns = self.detect_patterns(
+            transaction_ids=transaction_ids,
+            lookback_days=None,
+            exclude_existing=True,
+        )
         suggestions = self.save_suggestions(patterns)
         return len(suggestions)
+
+    def _find_matching_subscription_for_pattern(
+        self,
+        pattern: DetectedPattern
+    ) -> Optional[RecurringTransaction]:
+        """Find an existing account-scoped monthly subscription matching a detected pattern."""
+        account_uuid = self._to_uuid(pattern.account_id)
+        if not account_uuid:
+            return None
+
+        candidates = self.db.query(RecurringTransaction).filter(
+            RecurringTransaction.user_id == self.user_id,
+            RecurringTransaction.account_id.isnot(None),
+            RecurringTransaction.account_id == account_uuid,
+            RecurringTransaction.frequency == "monthly",
+        ).all()
+
+        best_match: Optional[RecurringTransaction] = None
+        best_score = 0.0
+
+        for sub in candidates:
+            sub_amount = abs(float(sub.amount))
+            pattern_amount = abs(float(pattern.suggested_amount))
+            if sub_amount > 0 and pattern_amount > 0:
+                diff = abs(sub_amount - pattern_amount)
+                avg = (sub_amount + pattern_amount) / 2
+                if avg == 0 or (diff / avg) > 0.20:
+                    continue
+
+            score, _ = self.text_similarity.calculate_match_score(
+                subscription_name=sub.name,
+                subscription_merchant=sub.merchant,
+                transaction_description=pattern.suggested_name,
+                transaction_merchant=pattern.suggested_merchant,
+            )
+
+            if score > best_score:
+                best_score = score
+                best_match = sub
+
+        if best_match and best_score >= 65:
+            return best_match
+
+        return None
+
+    def _upsert_subscription_from_pattern(
+        self,
+        pattern: DetectedPattern
+    ) -> Tuple[RecurringTransaction, bool]:
+        """
+        Create or update a monthly account-scoped subscription from a detected pattern.
+
+        Returns:
+            (subscription, created_new)
+        """
+        existing = self._find_matching_subscription_for_pattern(pattern)
+        pattern_account_uuid = self._to_uuid(pattern.account_id)
+        pattern_category_uuid = self._to_uuid(pattern.category_id)
+        if not pattern_account_uuid:
+            raise ValueError(f"Invalid account_id in detected pattern: {pattern.account_id}")
+
+        if existing:
+            existing.account_id = pattern_account_uuid
+            existing.amount = pattern.suggested_amount
+            existing.currency = pattern.currency
+            existing.frequency = "monthly"
+            existing.is_active = True
+            if not existing.merchant and pattern.suggested_merchant:
+                existing.merchant = pattern.suggested_merchant
+            if pattern_category_uuid:
+                existing.category_id = pattern_category_uuid
+            self.db.add(existing)
+            self.db.flush()
+            return existing, False
+
+        subscription = RecurringTransaction(
+            user_id=self.user_id,
+            account_id=pattern_account_uuid,
+            name=pattern.suggested_name,
+            merchant=pattern.suggested_merchant,
+            amount=pattern.suggested_amount,
+            currency=pattern.currency,
+            category_id=pattern_category_uuid,
+            importance=2,
+            frequency="monthly",
+            is_active=True,
+            description=None,
+        )
+        self.db.add(subscription)
+        self.db.flush()
+        return subscription, True
+
+    def _link_transactions_to_subscription(
+        self,
+        subscription: RecurringTransaction,
+        transaction_ids: List[str]
+    ) -> int:
+        """Link matched transactions to a subscription, with safe account-aware reassignment."""
+        if not transaction_ids:
+            return 0
+
+        matched_transactions = self.db.query(Transaction).filter(
+            Transaction.user_id == self.user_id,
+            Transaction.id.in_(transaction_ids),
+        ).all()
+
+        existing_subscription_ids = {
+            str(txn.recurring_transaction_id)
+            for txn in matched_transactions
+            if txn.recurring_transaction_id and str(txn.recurring_transaction_id) != str(subscription.id)
+        }
+        existing_by_id: Dict[str, RecurringTransaction] = {}
+        if existing_subscription_ids:
+            existing_subscriptions = self.db.query(RecurringTransaction).filter(
+                RecurringTransaction.user_id == self.user_id,
+                RecurringTransaction.id.in_(existing_subscription_ids),
+            ).all()
+            existing_by_id = {str(sub.id): sub for sub in existing_subscriptions}
+
+        linked_count = 0
+        for txn in matched_transactions:
+            if str(txn.account_id) != str(subscription.account_id):
+                continue
+
+            if txn.recurring_transaction_id and str(txn.recurring_transaction_id) == str(subscription.id):
+                continue
+
+            should_reassign = False
+            if not txn.recurring_transaction_id:
+                should_reassign = True
+            else:
+                existing = existing_by_id.get(str(txn.recurring_transaction_id))
+                if existing:
+                    # Reassign legacy account-agnostic links or cross-account links.
+                    if not existing.account_id or str(existing.account_id) != str(txn.account_id):
+                        should_reassign = True
+
+            if should_reassign:
+                txn.recurring_transaction_id = subscription.id
+                linked_count += 1
+
+        return linked_count
+
+    def _backfill_subscription_accounts(self) -> None:
+        """
+        Backfill account_id for legacy subscriptions based on linked transactions.
+
+        If linked transactions span multiple accounts, keep account_id null and
+        mark inactive to avoid surfacing ambiguous account attribution.
+        """
+        legacy_subs = self.db.query(RecurringTransaction).filter(
+            RecurringTransaction.user_id == self.user_id,
+            RecurringTransaction.account_id.is_(None),
+            RecurringTransaction.frequency == "monthly",
+        ).all()
+
+        for sub in legacy_subs:
+            account_rows = self.db.query(
+                Transaction.account_id,
+                func.count(Transaction.id),
+            ).filter(
+                Transaction.user_id == self.user_id,
+                Transaction.recurring_transaction_id == sub.id,
+            ).group_by(Transaction.account_id).all()
+
+            if len(account_rows) == 0:
+                sub.is_active = False
+            elif len(account_rows) == 1:
+                sub.account_id = account_rows[0][0]
+            elif len(account_rows) > 1:
+                sub.is_active = False
+
+            if not sub.category_id:
+                linked_txns = self.db.query(Transaction).filter(
+                    Transaction.user_id == self.user_id,
+                    Transaction.recurring_transaction_id == sub.id,
+                ).all()
+                category_id = self._resolve_pattern_category_id(linked_txns)
+                category_uuid = self._to_uuid(category_id)
+                if category_uuid:
+                    sub.category_id = category_uuid
+
+    def _refresh_subscription_activity_status(self) -> Dict[str, int]:
+        """
+        Refresh active/inactive status for monthly subscriptions per account.
+
+        A subscription is active only if it appeared within 2 months of the
+        latest transaction date for its account.
+        """
+        subscriptions = self.db.query(RecurringTransaction).filter(
+            RecurringTransaction.user_id == self.user_id,
+            RecurringTransaction.account_id.isnot(None),
+            RecurringTransaction.frequency == "monthly",
+        ).all()
+
+        if not subscriptions:
+            return {"activated": 0, "deactivated": 0}
+
+        account_latest_rows = self.db.query(
+            Transaction.account_id,
+            func.max(Transaction.booked_at),
+        ).filter(
+            Transaction.user_id == self.user_id,
+        ).group_by(Transaction.account_id).all()
+        account_latest = {
+            str(account_id): latest_at
+            for account_id, latest_at in account_latest_rows
+            if account_id and latest_at
+        }
+
+        subscription_latest_rows = self.db.query(
+            Transaction.recurring_transaction_id,
+            func.max(Transaction.booked_at),
+        ).filter(
+            Transaction.user_id == self.user_id,
+            Transaction.recurring_transaction_id.isnot(None),
+        ).group_by(Transaction.recurring_transaction_id).all()
+        subscription_latest = {
+            str(sub_id): latest_at
+            for sub_id, latest_at in subscription_latest_rows
+            if sub_id and latest_at
+        }
+
+        activated = 0
+        deactivated = 0
+
+        for sub in subscriptions:
+            account_latest_date = account_latest.get(str(sub.account_id))
+            subscription_latest_date = subscription_latest.get(str(sub.id))
+            # Respect user-managed subscriptions that have no linked history yet.
+            if not subscription_latest_date:
+                continue
+
+            should_be_active = False
+            if account_latest_date:
+                age_days = (account_latest_date - subscription_latest_date).days
+                should_be_active = age_days <= ACTIVE_LOOKBACK_DAYS
+
+            if should_be_active and not sub.is_active:
+                sub.is_active = True
+                activated += 1
+            elif not should_be_active and sub.is_active:
+                sub.is_active = False
+                deactivated += 1
+
+        return {"activated": activated, "deactivated": deactivated}
+
+    def detect_and_apply(
+        self,
+        transaction_ids: Optional[List[str]] = None
+    ) -> Dict[str, int]:
+        """
+        Detect monthly subscriptions and apply them automatically.
+
+        This creates/updates account-scoped subscriptions, pre-fills category,
+        auto-links matched transactions, and refreshes active status by recency.
+        """
+        patterns = self.detect_patterns(
+            transaction_ids=transaction_ids,
+            lookback_days=None,
+            exclude_existing=False,
+        )
+
+        created_count = 0
+        updated_count = 0
+        linked_count = 0
+
+        self._backfill_subscription_accounts()
+
+        for pattern in patterns:
+            subscription, created = self._upsert_subscription_from_pattern(pattern)
+            if created:
+                created_count += 1
+            else:
+                updated_count += 1
+
+            linked_count += self._link_transactions_to_subscription(
+                subscription=subscription,
+                transaction_ids=pattern.matched_transaction_ids,
+            )
+
+        status = self._refresh_subscription_activity_status()
+        self.db.commit()
+
+        return {
+            "detected_count": len(patterns),
+            "created_count": created_count,
+            "updated_count": updated_count,
+            "linked_count": linked_count,
+            "activated_count": status["activated"],
+            "deactivated_count": status["deactivated"],
+        }

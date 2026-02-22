@@ -36,6 +36,13 @@
       "when": 1771006303622,
       "tag": "0004_remove_bank_connections",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1771099200000,
+      "tag": "0005_subscription_account_scope",
+      "breakpoints": true
     }
   ]
 }

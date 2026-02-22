@@ -243,6 +243,7 @@ export function SubscriptionsGroupedList({
     const frequencyLabel = frequencyLabels[item.frequency] || item.frequency;
     const frequencyClass =
       frequencyColors[item.frequency] || "bg-gray-500/10 text-gray-700";
+    const accountLabel = item.accountName || item.account?.name;
 
     return (
       <div
@@ -265,6 +266,11 @@ export function SubscriptionsGroupedList({
             {item.merchant && (
               <div className="truncate text-sm text-muted-foreground">
                 {item.merchant}
+              </div>
+            )}
+            {accountLabel && (
+              <div className="truncate text-xs text-muted-foreground">
+                {accountLabel}
               </div>
             )}
             {item.isSuggestion && (
