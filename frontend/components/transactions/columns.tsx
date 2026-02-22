@@ -36,7 +36,7 @@ function AccountCell({
   return (
     <button
       onClick={handleClick}
-      className="flex items-center gap-2 text-muted-foreground hover:text-foreground hover:underline transition-colors text-left"
+      className="mx-auto flex items-center justify-center gap-1.5 text-muted-foreground transition-colors hover:text-foreground hover:underline"
       style={{ maxWidth: `${maxWidth}px` }}
       title={accountName}
     >
@@ -45,8 +45,9 @@ function AccountCell({
         logoUrl={logo?.logoUrl}
         updatedAt={logo?.updatedAt}
         size="sm"
+        className="!size-4"
       />
-      <span className="truncate">{accountName}</span>
+      <span className="truncate text-center">{accountName}</span>
     </button>
   );
 }
@@ -190,23 +191,25 @@ export const transactionColumns: ColumnDef<TransactionWithRelations>[] = [
   },
   {
     accessorKey: "category",
-    header: "Category",
+    header: () => <div className="text-center">Category</div>,
     cell: ({ row, column }) => {
       const category = row.original.category;
       const columnSize = column.getSize();
       return category ? (
-        <span
-          className="inline-flex items-center px-2 py-0.5 text-xs text-white truncate"
-          style={{ 
-            backgroundColor: category.color ?? "#6B7280",
-            maxWidth: `${columnSize}px`
-          }}
-          title={category.name}
-        >
-          {category.name}
-        </span>
+        <div className="flex justify-center">
+          <span
+            className="inline-flex items-center px-2 py-0.5 text-xs text-white truncate"
+            style={{ 
+              backgroundColor: category.color ?? "#6B7280",
+              maxWidth: `${columnSize}px`
+            }}
+            title={category.name}
+          >
+            {category.name}
+          </span>
+        </div>
       ) : (
-        <span className="text-muted-foreground">Uncategorized</span>
+        <div className="text-center text-muted-foreground">Uncategorized</div>
       );
     },
     size: 140,
@@ -218,14 +221,16 @@ export const transactionColumns: ColumnDef<TransactionWithRelations>[] = [
   },
   {
     accessorKey: "transactionType",
-    header: "Type",
+    header: () => <div className="text-center">Type</div>,
     cell: ({ row }) => {
       const type = row.original.transactionType;
       const isCredit = type === "credit";
       return (
-        <Badge variant={isCredit ? "default" : "secondary"}>
-          {isCredit ? "Income" : "Expense"}
-        </Badge>
+        <div className="flex justify-center">
+          <Badge variant={isCredit ? "default" : "secondary"}>
+            {isCredit ? "Income" : "Expense"}
+          </Badge>
+        </div>
       );
     },
     size: 100,
@@ -236,7 +241,7 @@ export const transactionColumns: ColumnDef<TransactionWithRelations>[] = [
       const sorted = column.getIsSorted();
       return (
         <div
-          className="flex items-center justify-end gap-1 cursor-pointer"
+          className="flex cursor-pointer items-center justify-center gap-1"
           onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
         >
           Amount
@@ -253,7 +258,7 @@ export const transactionColumns: ColumnDef<TransactionWithRelations>[] = [
       const type = row.original.transactionType;
       const isCredit = type === "credit";
       return (
-        <span className="whitespace-nowrap text-right font-mono block">
+        <span className="block whitespace-nowrap text-center font-mono">
           {isCredit ? "+" : "-"}
           {Math.abs(amount).toFixed(2)}
         </span>
@@ -270,20 +275,22 @@ export const transactionColumns: ColumnDef<TransactionWithRelations>[] = [
   },
   {
     accessorKey: "account",
-    header: "Account",
+    header: () => <div className="text-center">Account</div>,
     cell: ({ row, column }) => {
       const columnSize = column.getSize();
       const account = row.original.account;
       if (!account) {
-        return <span className="text-muted-foreground">Unknown</span>;
+        return <div className="text-center text-muted-foreground">Unknown</div>;
       }
       return (
-        <AccountCell
-          accountId={account.id}
-          accountName={account.name}
-          logo={account.logo}
-          maxWidth={columnSize}
-        />
+        <div className="flex justify-center">
+          <AccountCell
+            accountId={account.id}
+            accountName={account.name}
+            logo={account.logo}
+            maxWidth={columnSize}
+          />
+        </div>
       );
     },
     size: 140,
