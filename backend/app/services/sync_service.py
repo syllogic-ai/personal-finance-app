@@ -140,7 +140,8 @@ class SyncService:
                 matched_subscription = self.subscription_matcher.match_transaction(
                     description=transaction_data.description,
                     merchant=merchant,
-                    amount=Decimal(str(transaction_data.amount))
+                    amount=Decimal(str(transaction_data.amount)),
+                    account_id=str(account.id),
                 )
 
             if existing_transaction:
@@ -203,7 +204,7 @@ class SyncService:
             detect_subscriptions: Whether to detect subscription patterns
 
         Returns:
-            Dict with sync results including suggestions_count
+            Dict with sync results including subscriptions_detected
         """
         # Sync accounts first
         accounts = self.sync_accounts(adapter, provider)
@@ -265,16 +266,17 @@ class SyncService:
             self.db.commit()
 
         # Detect subscription patterns from newly created transactions
-        suggestions_count = 0
-        if detect_subscriptions and all_created_ids:
+        subscriptions_detected = 0
+        if detect_subscriptions:
             detector = SubscriptionDetector(self.db, self.user_id)
-            suggestions_count = detector.detect_and_save(all_created_ids)
+            detection_result = detector.detect_and_apply(all_created_ids or None)
+            subscriptions_detected = detection_result.get("detected_count", 0)
 
         return {
             'accounts_synced': len(accounts),
             'transactions_created': total_created,
             'transactions_updated': total_updated,
-            'suggestions_count': suggestions_count,
+            'subscriptions_detected': subscriptions_detected,
         }
 
     def upsert_transaction(
@@ -323,7 +325,8 @@ class SyncService:
             matched_subscription = self.subscription_matcher.match_transaction(
                 description=transaction_data.description,
                 merchant=merchant,
-                amount=Decimal(str(transaction_data.amount))
+                amount=Decimal(str(transaction_data.amount)),
+                account_id=str(account.id),
             )
 
         # Check if transaction already exists
@@ -384,4 +387,3 @@ class SyncService:
                 'updated': False,
                 'transaction_id': str(new_transaction.id)
             }
-

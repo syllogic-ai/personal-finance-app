@@ -28,6 +28,10 @@ import {
 } from "@/lib/actions/subscriptions";
 
 interface SubscriptionWithCategory extends RecurringTransaction {
+  account?: {
+    id: string;
+    name: string;
+  } | null;
   category?: {
     id: string;
     name: string;
@@ -183,6 +187,9 @@ export function SubscriptionDetailSheet({
               >
                 {subscription.category.name}
               </Badge>
+            )}
+            {subscription.account && (
+              <Badge variant="outline">{subscription.account.name}</Badge>
             )}
           </div>
           <SheetTitle className="text-xl">{subscription.name}</SheetTitle>

@@ -20,11 +20,13 @@ import os
 import logging
 from typing import Optional, List, Dict
 from decimal import Decimal
+from uuid import UUID
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 
 from app.models import RecurringTransaction
 from app.db_helpers import get_user_id
-from app.services.text_similarity import TextSimilarity, SimilarityResult
+from app.services.text_similarity import TextSimilarity
 from app.services.merchant_extractor import MerchantExtractor
 
 logger = logging.getLogger(__name__)
@@ -59,33 +61,54 @@ class SubscriptionMatcher:
         """
         self.db = db
         self.user_id = get_user_id(user_id)
-        self._subscription_cache: Optional[List[RecurringTransaction]] = None
+        self._subscription_cache: Dict[Optional[str], List[RecurringTransaction]] = {}
         self._text_similarity = TextSimilarity()
         self._merchant_extractor = MerchantExtractor()
 
-    def _load_subscriptions(self) -> List[RecurringTransaction]:
+    def _load_subscriptions(
+        self,
+        account_id: Optional[str] = None
+    ) -> List[RecurringTransaction]:
         """
         Load and cache active subscriptions for the user.
 
         Returns:
             List of active RecurringTransaction objects
         """
-        if self._subscription_cache is None:
-            self._subscription_cache = self.db.query(RecurringTransaction).filter(
+        cache_key = str(account_id) if account_id else None
+        if cache_key not in self._subscription_cache:
+            account_uuid = None
+            if cache_key:
+                try:
+                    account_uuid = UUID(cache_key)
+                except (ValueError, TypeError):
+                    account_uuid = None
+
+            query = self.db.query(RecurringTransaction).filter(
                 RecurringTransaction.user_id == self.user_id,
                 RecurringTransaction.is_active == True
-            ).all()
+            )
+            if account_uuid:
+                query = query.filter(
+                    or_(
+                        RecurringTransaction.account_id == account_uuid,
+                        RecurringTransaction.account_id.is_(None),
+                    )
+                )
+
+            subscriptions = query.all()
+            self._subscription_cache[cache_key] = subscriptions
 
             logger.debug(
-                f"[SUBSCRIPTION_MATCHER] Loaded {len(self._subscription_cache)} "
-                f"active subscriptions for user {self.user_id}"
+                f"[SUBSCRIPTION_MATCHER] Loaded {len(subscriptions)} "
+                f"active subscriptions for user {self.user_id} (account={cache_key or 'any'})"
             )
 
-        return self._subscription_cache
+        return self._subscription_cache[cache_key]
 
     def clear_cache(self):
         """Clear the subscription cache. Call after subscription updates."""
-        self._subscription_cache = None
+        self._subscription_cache = {}
 
     @staticmethod
     def _amount_matches(
@@ -168,6 +191,7 @@ class SubscriptionMatcher:
         description: Optional[str],
         merchant: Optional[str],
         amount: Decimal,
+        account_id: Optional[str] = None,
         min_score: float = MIN_MATCH_SCORE
     ) -> Optional[RecurringTransaction]:
         """
@@ -196,7 +220,7 @@ class SubscriptionMatcher:
                 merchant = extraction.merchant
 
         # Load subscriptions
-        subscriptions = self._load_subscriptions()
+        subscriptions = self._load_subscriptions(account_id=account_id)
 
         if not subscriptions:
             return None
@@ -212,6 +236,13 @@ class SubscriptionMatcher:
                 merchant=merchant,
                 amount=amount
             )
+
+            # Prefer account-scoped matches over legacy account-agnostic matches.
+            if account_id and subscription.account_id:
+                if str(subscription.account_id) == str(account_id):
+                    score = min(100.0, score + 5)
+            elif account_id and not subscription.account_id:
+                score = max(0.0, score - 5)
 
             if score > best_score:
                 best_score = score
@@ -260,6 +291,7 @@ class SubscriptionMatcher:
             description = txn.get('description')
             merchant = txn.get('merchant')
             amount = txn.get('amount')
+            account_id = txn.get('account_id')
 
             if amount is None:
                 continue
@@ -272,6 +304,7 @@ class SubscriptionMatcher:
                 description=description,
                 merchant=merchant,
                 amount=amount,
+                account_id=account_id,
                 min_score=min_score
             )
 

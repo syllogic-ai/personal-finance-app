@@ -373,6 +373,8 @@ def process_csv_import(
             publisher.publish_import_progress(user_id, csv_import_id, processed, total_rows)
             logger.info(f"[CSV_IMPORT_TASK] Batch processed: {processed}/{total_rows}")
 
+        inserted_ids: List[str] = []
+
         # Post-import operations
         if all_inserted_transactions:
             affected_account_ids = list(set([str(txn.account_id) for txn in all_inserted_transactions]))
@@ -380,9 +382,6 @@ def process_csv_import(
 
             # Match subscriptions
             _match_subscriptions(db, user_id, all_inserted_transactions)
-
-            # Detect subscription patterns
-            _detect_subscriptions(db, user_id, inserted_ids)
 
             # Sync exchange rates
             _sync_exchange_rates(db, user_id, transactions_data)
@@ -423,6 +422,9 @@ def process_csv_import(
                 account_ids=affected_account_ids,
                 skip_dates=skip_dates_by_account if skip_dates_by_account else None
             )
+
+        # Detect subscription patterns on every import run using full history.
+        _detect_subscriptions(db, user_id, inserted_ids)
 
         # Update CSV import record
         csv_import.status = "completed"
@@ -487,7 +489,8 @@ def _match_subscriptions(db, user_id: str, transactions: List[Transaction]) -> N
             match = subscription_matcher.match_transaction(
                 description=txn.description,
                 merchant=txn.merchant,
-                amount=txn.amount
+                amount=txn.amount,
+                account_id=str(txn.account_id),
             )
 
             if match:
@@ -505,9 +508,15 @@ def _detect_subscriptions(db, user_id: str, transaction_ids: List[str]) -> None:
     """Detect new subscription patterns."""
     try:
         detector = SubscriptionDetector(db, user_id=user_id)
-        suggestions_count = detector.detect_and_save(transaction_ids)
-        if suggestions_count > 0:
-            logger.info(f"Created {suggestions_count} subscription suggestions")
+        detection = detector.detect_and_apply(transaction_ids)
+        if detection.get("detected_count", 0) > 0:
+            logger.info(
+                "Auto-detected %s monthly subscriptions (created=%s, updated=%s, linked=%s)",
+                detection.get("detected_count", 0),
+                detection.get("created_count", 0),
+                detection.get("updated_count", 0),
+                detection.get("linked_count", 0),
+            )
     except Exception as e:
         logger.error(f"Error detecting subscriptions: {e}")
 

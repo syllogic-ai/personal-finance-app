@@ -99,6 +99,7 @@ export async function getPendingSuggestionCount(): Promise<number> {
 export async function verifySuggestion(
   suggestionId: string,
   overrides?: {
+    accountId?: string;
     name?: string;
     merchant?: string;
     amount?: number;
@@ -111,6 +112,7 @@ export async function verifySuggestion(
 ): Promise<{
   success: boolean;
   subscription?: (typeof recurringTransactions.$inferSelect) & {
+    account?: unknown;
     category?: unknown;
     logo?: unknown;
   };
@@ -124,11 +126,11 @@ export async function verifySuggestion(
   }
 
   try {
-    const resolveInheritedCategoryId = async (
+    const resolveInheritedFields = async (
       candidateTransactionIds: string[]
-    ): Promise<string | null> => {
+    ): Promise<{ categoryId: string | null; accountId: string | null }> => {
       if (candidateTransactionIds.length === 0) {
-        return null;
+        return { categoryId: null, accountId: null };
       }
 
       const matchedTransactions = await db.query.transactions.findMany({
@@ -137,13 +139,19 @@ export async function verifySuggestion(
           eq(transactions.userId, userId)
         ),
         columns: {
+          accountId: true,
           categoryId: true,
           categorySystemId: true,
         },
       });
 
       const counts = new Map<string, number>();
+      const accountCounts = new Map<string, number>();
       for (const tx of matchedTransactions) {
+        if (tx.accountId) {
+          accountCounts.set(tx.accountId, (accountCounts.get(tx.accountId) ?? 0) + 1);
+        }
+
         const categoryId = tx.categoryId ?? tx.categorySystemId;
         if (!categoryId) {
           continue;
@@ -160,7 +168,19 @@ export async function verifySuggestion(
         }
       }
 
-      return selectedCategoryId;
+      let selectedAccountId: string | null = null;
+      let selectedAccountCount = 0;
+      for (const [accountId, count] of accountCounts.entries()) {
+        if (count > selectedAccountCount) {
+          selectedAccountId = accountId;
+          selectedAccountCount = count;
+        }
+      }
+
+      return {
+        categoryId: selectedCategoryId,
+        accountId: selectedAccountId,
+      };
     };
 
     // Get the suggestion
@@ -193,13 +213,22 @@ export async function verifySuggestion(
     const finalAmount = overrides?.amount?.toFixed(2) || suggestion.suggestedAmount;
     const finalFrequency = overrides?.frequency || (suggestion.detectedFrequency as "weekly" | "biweekly" | "monthly" | "quarterly" | "yearly");
     const finalImportance = overrides?.importance ?? 2;
-    const inheritedCategoryId = await resolveInheritedCategoryId(transactionIds);
+    const inherited = await resolveInheritedFields(transactionIds);
+    const inheritedCategoryId = inherited.categoryId;
+    const inheritedAccountId = inherited.accountId;
+
     const finalCategoryId = overrides?.categoryId ?? inheritedCategoryId ?? null;
+    const finalAccountId = overrides?.accountId ?? inheritedAccountId ?? null;
+
+    if (!finalAccountId) {
+      return { success: false, error: "Could not determine account for this suggestion" };
+    }
 
     // Check for duplicate subscription name
     const existingSubscription = await db.query.recurringTransactions.findFirst({
       where: and(
         eq(recurringTransactions.userId, userId),
+        eq(recurringTransactions.accountId, finalAccountId),
         eq(recurringTransactions.name, finalName)
       ),
     });
@@ -216,6 +245,7 @@ export async function verifySuggestion(
       .insert(recurringTransactions)
       .values({
         userId,
+        accountId: finalAccountId,
         name: finalName,
         merchant: finalMerchant,
         amount: finalAmount,
@@ -269,6 +299,7 @@ export async function verifySuggestion(
     const subscriptionWithCategory = await db.query.recurringTransactions.findFirst({
       where: eq(recurringTransactions.id, created.id),
       with: {
+        account: true,
         category: true,
         logo: true,
       },

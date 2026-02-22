@@ -52,6 +52,7 @@ interface SubscriptionFormDialogProps {
   onOpenChange: (open: boolean) => void;
   subscription?: SubscriptionWithLogo | null;
   suggestion?: SubscriptionSuggestionWithMeta | null;
+  accounts: Array<{ id: string; name: string }>;
   categories: Array<{ id: string; name: string; color: string | null }>;
   onSuccess?: (suggestionId?: string, newSubscription?: RecurringTransaction) => void;
 }
@@ -69,9 +70,11 @@ export function SubscriptionFormDialog({
   onOpenChange,
   subscription,
   suggestion,
+  accounts,
   categories,
   onSuccess,
 }: SubscriptionFormDialogProps) {
+  const [accountId, setAccountId] = useState<string>("");
   const [name, setName] = useState("");
   const [merchant, setMerchant] = useState("");
   const [amount, setAmount] = useState("");
@@ -102,6 +105,7 @@ export function SubscriptionFormDialog({
     if (open) {
       if (subscription) {
         // Edit mode - populate with existing data
+        setAccountId(subscription.accountId || accounts[0]?.id || "");
         setName(subscription.name);
         setMerchant(subscription.merchant || "");
         setAmount(subscription.amount);
@@ -119,6 +123,7 @@ export function SubscriptionFormDialog({
         setLogoSearchAttempted(false);
       } else if (suggestion) {
         // Verify mode - populate with suggestion data
+        setAccountId(accounts[0]?.id ?? "");
         setName(suggestion.suggestedName);
         setMerchant(suggestion.suggestedMerchant || "");
         setAmount(suggestion.suggestedAmount);
@@ -133,6 +138,7 @@ export function SubscriptionFormDialog({
         setLogoSearchAttempted(false);
       } else {
         // Create mode - reset to defaults
+        setAccountId(accounts[0]?.id ?? "");
         setName("");
         setMerchant("");
         setAmount("");
@@ -147,7 +153,7 @@ export function SubscriptionFormDialog({
         setLogoSearchAttempted(false);
       }
     }
-  }, [open, subscription, suggestion]);
+  }, [open, subscription, suggestion, accounts]);
 
   // Handle logo search
   const handleLogoSearch = useCallback(async (query: string) => {
@@ -206,6 +212,11 @@ export function SubscriptionFormDialog({
       return;
     }
 
+    if (!accountId) {
+      toast.error("Account is required");
+      return;
+    }
+
     const amountNum = parseFloat(amount);
     if (!amount || isNaN(amountNum) || amountNum <= 0) {
       toast.error("Amount must be greater than 0");
@@ -223,6 +234,7 @@ export function SubscriptionFormDialog({
       if (isEditMode) {
         // Update existing
         const input: SubscriptionUpdateInput = {
+          accountId,
           name: name.trim(),
           merchant: merchant.trim() || undefined,
           amount: amountNum,
@@ -241,6 +253,7 @@ export function SubscriptionFormDialog({
           // Pass the updated subscription data for immediate UI update
           const updatedSubscription = {
             ...subscription,
+            accountId,
             name: name.trim(),
             merchant: merchant.trim() || null,
             amount: amountNum.toFixed(2),
@@ -252,6 +265,7 @@ export function SubscriptionFormDialog({
             logo: logoId && logoUrl
               ? { id: logoId, logoUrl, updatedAt: new Date() }
               : null,
+            account: accounts.find((account) => account.id === accountId) || null,
             updatedAt: new Date(),
           };
           onSuccess?.(undefined, updatedSubscription);
@@ -262,6 +276,7 @@ export function SubscriptionFormDialog({
         // Verify suggestion - creates subscription and links transactions
         // Pass form values as overrides to allow user customization
         const result = await verifySuggestion(suggestion.id, {
+          accountId,
           name: name.trim(),
           merchant: merchant.trim() || undefined,
           amount: amountNum,
@@ -284,6 +299,7 @@ export function SubscriptionFormDialog({
       } else {
         // Create new
         const input: SubscriptionCreateInput = {
+          accountId,
           name: name.trim(),
           merchant: merchant.trim() || undefined,
           amount: amountNum,
@@ -434,6 +450,29 @@ export function SubscriptionFormDialog({
                 onChange={(e) => setAmount(e.target.value)}
                 required
               />
+            </div>
+
+            {/* Account */}
+            <div className="grid gap-2">
+              <Label htmlFor="account">
+                Account <span className="text-destructive">*</span>
+              </Label>
+              <Select value={accountId} onValueChange={(value) => setAccountId(value ?? "")}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select an account">
+                    {accountId
+                      ? accounts.find((account) => account.id === accountId)?.name || "Select an account"
+                      : "Select an account"}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {accounts.map((account) => (
+                    <SelectItem key={account.id} value={account.id}>
+                      {account.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             {/* Category */}

@@ -19,6 +19,10 @@ import type { RecurringTransaction } from "@/lib/db/schema";
 import { withAssetVersion } from "@/lib/utils/asset-url";
 
 interface SubscriptionWithCategory extends RecurringTransaction {
+  account?: {
+    id: string;
+    name: string;
+  } | null;
   category?: {
     id: string;
     name: string;
@@ -44,6 +48,12 @@ export interface SubscriptionOrSuggestion {
   matchCount?: number;
   merchant?: string | null;
   importance?: number;
+  accountId?: string | null;
+  accountName?: string | null;
+  account?: {
+    id: string;
+    name: string;
+  } | null;
   category?: {
     id: string;
     name: string;
@@ -54,6 +64,7 @@ export interface SubscriptionOrSuggestion {
 
 interface SubscriptionsClientProps {
   initialSubscriptions: SubscriptionWithCategory[];
+  accounts: Array<{ id: string; name: string }>;
   categories: Array<{ id: string; name: string; color: string | null }>;
   suggestions?: SubscriptionSuggestionWithMeta[];
   kpis: SubscriptionKpis;
@@ -61,6 +72,7 @@ interface SubscriptionsClientProps {
 
 export function SubscriptionsClient({
   initialSubscriptions,
+  accounts,
   categories,
   suggestions: initialSuggestions = [],
   kpis,
@@ -115,6 +127,7 @@ export function SubscriptionsClient({
     isSuggestion: true,
     confidence: s.confidence,
     matchCount: s.matchCount,
+    accountName: null,
     category: null,
   }));
 
@@ -268,6 +281,7 @@ export function SubscriptionsClient({
         onOpenChange={setFormDialogOpen}
         subscription={editingSubscription}
         suggestion={verifyingSuggestion}
+        accounts={accounts}
         categories={categories}
         onSuccess={handleFormSuccess}
       />

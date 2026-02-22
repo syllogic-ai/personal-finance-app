@@ -54,6 +54,7 @@ class Account(Base):
     transactions = relationship("Transaction", back_populates="account")
     csv_imports = relationship("CsvImport", back_populates="account")
     balances = relationship("AccountBalance", back_populates="account")
+    recurring_transactions = relationship("RecurringTransaction", back_populates="account")
 
     # Indexes and constraints
     __table_args__ = (
@@ -153,6 +154,7 @@ class RecurringTransaction(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    account_id = Column(UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True, index=True)
     name = Column(String(255), nullable=False)
     merchant = Column(String(255), nullable=True)
     amount = Column(Numeric(15, 2), nullable=False)
@@ -168,6 +170,7 @@ class RecurringTransaction(Base):
 
     # Relationships
     user = relationship("User", back_populates="recurring_transactions")
+    account = relationship("Account", back_populates="recurring_transactions")
     category = relationship("Category")
     logo = relationship("CompanyLogo", back_populates="recurring_transactions")
     linked_transactions = relationship("Transaction", back_populates="recurring_transaction")
@@ -175,6 +178,7 @@ class RecurringTransaction(Base):
     # Indexes and constraints
     __table_args__ = (
         Index("idx_recurring_transactions_user", "user_id"),
+        Index("idx_recurring_transactions_account", "account_id"),
         Index("idx_recurring_transactions_category", "category_id"),
         Index("idx_recurring_transactions_active", "is_active"),
     )
