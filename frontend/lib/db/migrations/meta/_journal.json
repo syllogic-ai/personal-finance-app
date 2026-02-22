@@ -50,6 +50,13 @@
       "when": 1771099200000,
       "tag": "0006_subscription_account_scope",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1771766400000,
+      "tag": "0007_recurring_account_id_hotfix",
+      "breakpoints": true
     }
   ]
 }
