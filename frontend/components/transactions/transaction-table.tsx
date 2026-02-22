@@ -4,7 +4,10 @@ import * as React from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { type OnChangeFn, type PaginationState, type SortingState } from "@tanstack/react-table";
 import { DataTable } from "@/components/ui/data-table";
-import type { TransactionWithRelations } from "@/lib/actions/transactions";
+import type {
+  FilteredTransactionTotals,
+  TransactionWithRelations,
+} from "@/lib/actions/transactions";
 import type { CategoryDisplay, AccountForFilter } from "@/types";
 import { TransactionSheet } from "./transaction-sheet";
 import { transactionColumns } from "./columns";
@@ -15,6 +18,7 @@ import { useFilterPersistence } from "@/lib/hooks/use-filter-persistence";
 import {
   parseTransactionsSearchParamsFromUrlSearchParams,
   toTransactionsSearchParams,
+  hasActiveTransactionFilters,
   type TransactionSortField,
   type TransactionsQueryState,
 } from "@/lib/transactions/query-state";
@@ -22,6 +26,7 @@ import {
 interface TransactionTableProps {
   transactions: TransactionWithRelations[];
   totalCount: number;
+  filteredTotals: FilteredTransactionTotals | null;
   queryState: TransactionsQueryState;
   categories?: CategoryDisplay[];
   accounts?: AccountForFilter[];
@@ -69,9 +74,17 @@ function mapSortColumnIdToSortField(id: string): TransactionSortField {
   return "bookedAt";
 }
 
+function formatSummaryAmount(amount: number): string {
+  return amount.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
 export function TransactionTable({
   transactions,
   totalCount,
+  filteredTotals,
   queryState,
   categories = [],
   accounts = [],
@@ -127,6 +140,9 @@ export function TransactionTable({
   );
 
   const pageCount = Math.max(1, Math.ceil(totalCount / queryState.pageSize));
+  const resolvedFilteredTotals = hasActiveTransactionFilters(queryState)
+    ? filteredTotals
+    : null;
 
   const handleSortingStateChange = React.useCallback<OnChangeFn<SortingState>>(
     (updater) => {
@@ -293,6 +309,24 @@ export function TransactionTable({
         }}
         wrapperClassName="flex min-h-0 flex-1 flex-col"
         tableContainerClassName="min-h-0 flex-1 overflow-y-auto"
+        footer={
+          resolvedFilteredTotals ? (
+            <div className="-mt-px flex items-center justify-end gap-8 border-x border-b bg-muted/25 px-4 py-2">
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-muted-foreground">Total In</span>
+                <span className="font-mono font-medium text-emerald-700">
+                  +{formatSummaryAmount(resolvedFilteredTotals.totalIn)}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-muted-foreground">Total Out</span>
+                <span className="font-mono font-medium text-rose-700">
+                  -{formatSummaryAmount(resolvedFilteredTotals.totalOut)}
+                </span>
+              </div>
+            </div>
+          ) : null
+        }
       />
 
       <TransactionSheet

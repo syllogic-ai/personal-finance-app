@@ -12,6 +12,7 @@ import type {
   TransactionSortOrder,
   TransactionsQueryState,
 } from "@/lib/transactions/query-state";
+import { hasActiveTransactionFilters } from "@/lib/transactions/query-state";
 
 export interface CreateTransactionInput {
   accountId: string;
@@ -379,11 +380,17 @@ export interface TransactionWithRelations {
 export interface TransactionsPageResult {
   rows: TransactionWithRelations[];
   totalCount: number;
+  filteredTotals: FilteredTransactionTotals | null;
   page: number;
   pageSize: number;
   resolvedFrom?: string;
   resolvedTo?: string;
   effectiveHorizon?: number;
+}
+
+export interface FilteredTransactionTotals {
+  totalIn: number;
+  totalOut: number;
 }
 
 function normalizeAccountIds(accountIds: string[]): string[] {
@@ -554,20 +561,17 @@ async function getLatestTransactionDateForScope(
   return latestDate ? new Date(latestDate) : new Date();
 }
 
-export async function getTransactionsPage(
+interface ResolvedTransactionsWhereClause {
+  whereClause: NonNullable<ReturnType<typeof and>>;
+  resolvedFrom?: Date;
+  resolvedTo?: Date;
+  effectiveHorizon?: number;
+}
+
+async function buildTransactionsWhereClause(
+  userId: string,
   input: TransactionsQueryState
-): Promise<TransactionsPageResult> {
-  const userId = await requireAuth();
-
-  if (!userId) {
-    return {
-      rows: [],
-      totalCount: 0,
-      page: input.page,
-      pageSize: input.pageSize,
-    };
-  }
-
+): Promise<ResolvedTransactionsWhereClause> {
   const normalizedAccountIds = normalizeAccountIds(input.accountIds);
   const conditions = [eq(transactions.userId, userId)];
 
@@ -674,8 +678,38 @@ export async function getTransactionsPage(
     conditions.push(sql`ABS(${transactions.amount}) <= ${maxAmount}`);
   }
 
-  const whereClause = and(...conditions);
-  const [countRows, rows] = await Promise.all([
+  return {
+    whereClause: and(...conditions)!,
+    resolvedFrom,
+    resolvedTo,
+    effectiveHorizon,
+  };
+}
+
+export async function getTransactionsPage(
+  input: TransactionsQueryState
+): Promise<TransactionsPageResult> {
+  const userId = await requireAuth();
+
+  if (!userId) {
+    return {
+      rows: [],
+      totalCount: 0,
+      filteredTotals: null,
+      page: input.page,
+      pageSize: input.pageSize,
+    };
+  }
+
+  const {
+    whereClause,
+    resolvedFrom,
+    resolvedTo,
+    effectiveHorizon,
+  } = await buildTransactionsWhereClause(userId, input);
+  const shouldComputeFilteredTotals = hasActiveTransactionFilters(input);
+
+  const [countRows, rows, totalsRows] = await Promise.all([
     db
       .select({
         count: sql<number>`COUNT(*)::int`,
@@ -695,11 +729,40 @@ export async function getTransactionsPage(
         transactionLink: true,
       },
     }),
+    shouldComputeFilteredTotals
+      ? db
+          .select({
+            totalIn: sql<string>`COALESCE(SUM(
+              CASE
+                WHEN ${transactions.transactionType} = 'credit' THEN ABS(${transactions.amount})
+                WHEN ${transactions.transactionType} IS NULL AND ${transactions.amount} > 0 THEN ${transactions.amount}
+                ELSE 0
+              END
+            ), 0)`,
+            totalOut: sql<string>`COALESCE(SUM(
+              CASE
+                WHEN ${transactions.transactionType} = 'debit' THEN ABS(${transactions.amount})
+                WHEN ${transactions.transactionType} IS NULL AND ${transactions.amount} < 0 THEN ABS(${transactions.amount})
+                ELSE 0
+              END
+            ), 0)`,
+          })
+          .from(transactions)
+          .where(whereClause)
+      : Promise.resolve([]),
   ]);
+
+  const filteredTotals = shouldComputeFilteredTotals
+    ? {
+        totalIn: Number.parseFloat(totalsRows[0]?.totalIn ?? "0"),
+        totalOut: Number.parseFloat(totalsRows[0]?.totalOut ?? "0"),
+      }
+    : null;
 
   return {
     rows: mapTransactionRowsForUi(rows, "getTransactionsPage"),
     totalCount: countRows[0]?.count ?? 0,
+    filteredTotals,
     page: input.page,
     pageSize: input.pageSize,
     resolvedFrom: resolvedFrom ? resolvedFrom.toISOString().slice(0, 10) : undefined,
