@@ -90,6 +90,10 @@ For public demo environments, you can share a login URL that prefills demo crede
 
 `https://your-app-domain.com/login?demo=1`
 
+Syllogic public demo:
+
+`https://app.syllogic.ai/login?demo=1`
+
 Set these frontend environment variables on that deployment:
 
 - `NEXT_PUBLIC_DEMO_EMAIL`
