@@ -456,7 +456,7 @@ export async function getIncomeExpenseData(
   startDate: Date,
   endDate: Date,
   accountIds?: string[],
-  grouping: IncomeExpenseGrouping = "month"
+  grouping?: IncomeExpenseGrouping
 ) {
   const session = await getAuthenticatedSession();
 
