@@ -400,8 +400,13 @@ export function ApiKeysManager({ initialKeys }: ApiKeysManagerProps) {
                 Add this to your Claude Desktop config file:
               </p>
               <p className="text-xs text-muted-foreground">
-                This uses a local `npx` bridge (`mcp-remote`) to connect Claude
-                Desktop to the remote Syllogic MCP server.
+                This uses a local{" "}
+                <code className="rounded bg-muted px-1 font-mono">npx</code>{" "}
+                bridge (
+                <code className="rounded bg-muted px-1 font-mono">
+                  mcp-remote
+                </code>
+                ) to connect Claude Desktop to the remote Syllogic MCP server.
               </p>
               <div className="relative min-w-0">
                 <pre className="max-h-48 overflow-x-auto overflow-y-auto rounded bg-muted p-3 pr-10 text-xs whitespace-pre">

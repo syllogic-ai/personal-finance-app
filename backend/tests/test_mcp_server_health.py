@@ -77,4 +77,5 @@ if __name__ == "__main__":
 
     test_health_endpoint_is_public()
     test_mcp_transport_rejects_unauthenticated_requests()
+    test_mcp_transport_route_exposes_mcp_path()
     print("All MCP health/auth tests passed.")
