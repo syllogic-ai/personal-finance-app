@@ -13,11 +13,19 @@ fi
 
 set -a
 # shellcheck disable=SC1090
+# Temporarily disable nounset so .env with unset variable refs doesn't abort
+set +u
 source "$ENV_FILE"
+set -u
 set +a
 
 POSTGRES_USER="${POSTGRES_USER:-financeuser}"
 POSTGRES_DB="${POSTGRES_DB:-finance_db}"
+
+if [ -z "${APP_URL:-}" ]; then
+  echo "[error] APP_URL is not set. Please define APP_URL in $ENV_FILE."
+  exit 1
+fi
 
 compose_cmd() {
   docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"

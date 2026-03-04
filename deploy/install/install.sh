@@ -186,6 +186,7 @@ echo
 echo "[install] Done."
 echo "- Config: $INSTALL_DIR/.env"
 echo "- Stack:  cd $INSTALL_DIR && docker compose --env-file .env -f docker-compose.yml ps"
+echo "- Verify: post-install-check.sh $INSTALL_DIR (run from repo root)"
 echo
 if [[ "$DEPLOY_MODE" == "public" ]]; then
   echo "Open: https://${DOMAIN}"

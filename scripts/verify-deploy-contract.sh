@@ -14,12 +14,17 @@ require_file() {
 assert_contains() {
   local file="$1"
   local pattern="$2"
-  if ! grep -qE "$pattern" "$file"; then
+  if [ ! -f "$file" ]; then
+    echo "[contract] Missing required file: $file"
+    exit 1
+  fi
+  if ! grep -qF "$pattern" "$file"; then
     echo "[contract] Expected pattern not found in $file: $pattern"
     exit 1
   fi
 }
 
+require_file "$ROOT_DIR/docs/deployment-matrix.md"
 require_file "$ROOT_DIR/frontend/railway.toml"
 require_file "$ROOT_DIR/backend/railway.api.toml"
 require_file "$ROOT_DIR/backend/railway.worker.toml"
@@ -31,5 +36,7 @@ assert_contains "$ROOT_DIR/docker-compose.yml" "postgres:16-alpine"
 assert_contains "$ROOT_DIR/deploy/compose/docker-compose.yml" "postgres:16-alpine"
 assert_contains "$ROOT_DIR/deploy/railway/docker-compose.yml" "mcp"
 assert_contains "$ROOT_DIR/deploy/railway/docker-compose.yml" "/health"
+assert_contains "$ROOT_DIR/docs/deployment-matrix.md" "edge"
+assert_contains "$ROOT_DIR/docs/deployment-matrix.md" "vX.Y.Z"
 
 echo "[contract] Deployment contract checks passed."
