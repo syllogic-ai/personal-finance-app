@@ -1,531 +1,236 @@
-# Syllogic
+![Syllogic](https://pub-9a7afb92aeda47c8a8856a83903f29d1.r2.dev/syllogic/syllogic/syllogic-finance-banner.png)
 
-Syllogic is a modern, full-stack personal finance management platform for tracking savings, expenses, investments, and subscriptions with automated bank synchronization.
+<p align="center">
+  <h1 align="center"><b>Syllogic</b></h1>
+  <p align="center">
+    An open-source, minimal, wealth management app
+    <br />
+    <br />
+    <a href="https://github.com/syllogic-ai/syllogic">GitHub</a>
+    ·
+    <a href="https://github.com/syllogic-ai/syllogic/issues">Issues</a>
+    ·
+    <a href="#railway-one-click">Deploy</a>
+  </p>
+</p>
 
-## What it does
+<p align="center">
+  <a href="LICENSE">
+    <img src="https://img.shields.io/badge/License-AGPL--3.0-blue.svg" alt="License" />
+  </a>
+  <a href="https://github.com/orgs/syllogic-ai/packages">
+    <img src="https://img.shields.io/badge/Docker-GHCR-blue?logo=docker" alt="Docker" />
+  </a>
+  <a href="https://railway.com/deploy/N98lwA?referralCode=25KFsK&utm_medium=integration&utm_source=template&utm_campaign=generic">
+    <img src="https://img.shields.io/badge/Deploy-Railway-blueviolet?logo=railway" alt="Deploy on Railway" />
+  </a>
+</p>
 
-This application helps you take control of your personal finances by providing:
+## About Syllogic
 
-- **Financial Dashboard**: Real-time overview of your balances, spending patterns, and financial health
-- **Smart Categorization**: AI-powered transaction categorization and enrichment using OpenAI
-- **Transaction Management**: View, filter, search, and manually categorize transactions
-- **Subscription Tracking**: Monitor recurring payments and subscriptions with company logo integration (Logo.dev API)
-- **Category Analytics**: Visualize spending patterns by category with interactive charts
-- **Scheduled Tasks**: Automated data refresh and synchronization via background jobs
-- **Transaction Linking**: Link transactions with reimbusments that will help you split the bill, when f.i. you pay for the whole table!
-
-## Why it exists
-
-Managing personal finances across multiple accounts and tracking spending patterns can be overwhelming. This app was built to:
-
-- **Automate the tedious**: No more manual transaction entry - connect your bank and let the app do the work
-- **Gain insights**: Understand where your money goes with visual breakdowns and analytics
-- **Stay organized**: Keep all your financial data in one place with smart categorization
-- **Make better decisions**: Use data-driven insights to improve your financial health
+Syllogic is an open-source wealth management platform that gives you a complete picture of your finances — balances, spending, subscriptions, and trends — all in one place. Connect your bank accounts, let AI handle categorization, and keep your data on your own infrastructure.
 
 ## Features
 
-### Core Functionality
-- Dashboard with balance overview and recent transactions
-- Transaction list with advanced filtering, search, and pagination
-- Category management for expenses and income
-- Multi-account support with connected accounts view
-- CSV import/export for transaction data
-- Dark mode support
+**Financial Dashboard** — real-time balances, spending patterns, and financial health overview.<br/>
+**AI Categorization** — automatic transaction categorization and merchant enrichment via OpenAI.<br/>
+**Subscription Tracking** — monitor recurring payments with company logo integration.<br/>
+**Category Analytics** — interactive charts and spending breakdowns.<br/>
+**Transaction Linking** — link transactions with reimbursements for bill splitting.<br/>
+**CSV Import/Export** — bulk import and export transaction data.<br/>
 
-### Data Pipeline
-- AI-powered transaction enrichment and merchant identification
-- Automatic categorization based on transaction patterns
-- Background job processing with Celery + Redis
-- Scheduled daily syncs and data refresh
+## Quick Start
 
-### Analytics & Insights
-- Spending breakdown by category
-- Subscription KPIs and recurring payment tracking
-- Category share visualization
-- Time-based spending trends
+### Self-Hosted (Docker)
 
-## Architecture
+**One-liner** (requires root, Docker, and Docker Compose):
 
-The app uses a **two-service architecture** with a shared PostgreSQL database:
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│  Frontend (Next.js)                                         │
-│  - Server Actions + Drizzle ORM (all CRUD)                  │
-│  - BetterAuth (authentication)                              │
-│  - shadcn/ui + Recharts (UI/charts)                         │
-└─────────────────────────┬───────────────────────────────────┘
-                          │
-              ┌───────────▼───────────┐
-              │  PostgreSQL (shared)  │
-              └───────────┬───────────┘
-                          │
-┌─────────────────────────▼───────────────────────────────────┐
-│  Backend (Python/FastAPI)                                   │
-│  - Open banking + data integrations                          │
-│  - Transaction enrichment & categorization                  │
-│  - Celery + Redis (cron jobs)                               │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Tech Stack
-
-**Frontend:**
-- Next.js 16+ with App Router and Server Components
-- TypeScript (strict mode)
-- Drizzle ORM for database operations
-- BetterAuth for authentication
-- shadcn/ui (Lyra style) + Remix Icons
-- TanStack Query for server state
-- Recharts for data visualization
-- React Hook Form + Zod for forms and validation
-
-**Backend:**
-- FastAPI for API endpoints
-- SQLAlchemy 2.0 as ORM
-- Celery + Redis for background jobs
-- Plaid + exchange integrations (optional)
-- OpenAI for transaction enrichment
-
-**Infrastructure:**
-- PostgreSQL 16
-- Redis 7
-- Docker & Docker Compose
-
-## Getting Started
-
-## Deployment Options (Recommended)
-
-Choose one path based on how you want to run Syllogic:
-
-1. Local developer workflow (run app/backend from source, DB/Redis in Docker):
 ```bash
-cd syllogic
-./scripts/dev-up.sh --local
+curl -fsSL https://raw.githubusercontent.com/syllogic-ai/syllogic/main/deploy/install/install.sh | sudo bash
 ```
 
-2. Local full-stack Docker (build images from your current checkout):
-```bash
-cd syllogic
-cp deploy/compose/.env.example deploy/compose/.env
-# edit deploy/compose/.env and set:
-# - POSTGRES_PASSWORD
-# - BETTER_AUTH_SECRET
-# - INTERNAL_AUTH_SECRET
-docker compose \
-  --env-file deploy/compose/.env \
-  -f deploy/compose/docker-compose.yml \
-  -f deploy/compose/docker-compose.local.yml \
-  up -d --build
-```
+**Or manually:**
 
-3. Production/self-host with prebuilt GHCR images:
-```bash
-cd syllogic
-cp deploy/compose/.env.example deploy/compose/.env
-# edit deploy/compose/.env and set:
-# - POSTGRES_PASSWORD
-# - BETTER_AUTH_SECRET
-# - INTERNAL_AUTH_SECRET
-./scripts/prod-up.sh
-```
+1. Clone and configure:
 
-For full production details, see [`deploy/compose/README.md`](deploy/compose/README.md).
-For CasaOS installs, see [`deploy/casaos/README.md`](deploy/casaos/README.md).
+   **Linux/macOS:**
+   ```bash
+   git clone https://github.com/syllogic-ai/syllogic.git
+   cd syllogic
+   cp deploy/compose/.env.example deploy/compose/.env
+   # Edit deploy/compose/.env — set POSTGRES_PASSWORD, BETTER_AUTH_SECRET, INTERNAL_AUTH_SECRET
+   ```
 
-## Cloud Deploy (Recommended)
+   **Windows (PowerShell):**
+   ```powershell
+   git clone https://github.com/syllogic-ai/syllogic.git
+   cd syllogic
+   copy deploy\compose\.env.example deploy\compose\.env
+   # Edit deploy\compose\.env — set POSTGRES_PASSWORD, BETTER_AUTH_SECRET, INTERNAL_AUTH_SECRET
+   ```
 
-- Railway (recommended): use the Railway Template for a one-click install.
-- DigitalOcean App Platform: good managed alternative if you want team-friendly app specs and predictable managed services.
-- Self-hosted Docker Compose remains the most complete/supported path in this repository.
-- Cross-environment contract: see [`docs/deployment-matrix.md`](docs/deployment-matrix.md).
+2. Start:
 
-### Deploy To Railway (Templates)
+   **Linux/macOS:**
+   ```bash
+   ./scripts/prod-up.sh
+   ```
+
+   **Windows (PowerShell or CMD):**
+   ```powershell
+   .\scripts\prod-up.bat
+   ```
+
+3. Open `http://localhost:8080` and create your account.
+
+For advanced configuration (TLS, custom domains, MCP server), see [`deploy/compose/README.md`](deploy/compose/README.md).
+
+### Railway (One-Click)
 
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/N98lwA?referralCode=25KFsK&utm_medium=integration&utm_source=template&utm_campaign=generic)
 
-Template channels:
-
-- **V1 (current button)**: image-based compose template.
-- **V2 (recommended target)**: GitHub-source services (`app/backend/worker/beat/mcp`) + Railway Postgres/Redis plugins.
-
-Migration guide: [`deploy/railway/V1_TO_V2_MIGRATION.md`](deploy/railway/V1_TO_V2_MIGRATION.md).
-
-This V1 template provisions 7 services: `postgres`, `redis`, `backend`, `worker`, `beat`, `mcp`, `app`.
-
-After deploy, set these **Shared Variables** in Railway (do not hardcode secrets in the template URL):
+After deploy, set these **Shared Variables** in Railway:
 
 - `POSTGRES_PASSWORD` (required)
 - `BETTER_AUTH_SECRET` (required)
 - `INTERNAL_AUTH_SECRET` (required)
-- `DATA_ENCRYPTION_KEY_CURRENT` (recommended in production)
-- `DATA_ENCRYPTION_KEY_PREVIOUS` (optional, for key rotation fallback)
-- `DATA_ENCRYPTION_KEY_ID` (recommended, for example `k1`)
-- `OPENAI_API_KEY` (optional, enables AI categorization)
-- `LOGO_DEV_API_KEY` (optional, enables company logo search)
+- `DATA_ENCRYPTION_KEY_CURRENT` (recommended — field-level encryption)
+- `DATA_ENCRYPTION_KEY_ID` (recommended — e.g. `k1`)
+- `OPENAI_API_KEY` (optional — enables AI categorization)
+- `LOGO_DEV_API_KEY` (optional — enables company logos)
 
-No per-service variable bootstrapping is required for first-time setup.
-The Railway compose template hardcodes service ports and uses internal references
-for service-to-service wiring.
-`DATABASE_URL`, `REDIS_URL`, `APP_URL`, and `BACKEND_URL` are derived directly in compose
-from service references; do not set them as shared variables.
-Uploads are persisted on a Railway volume mounted at `/app/public/uploads`, including
-profile photos (`/uploads/profile/...`) and cached logos (`/uploads/logos/...`).
+For full Railway setup details, see [`deploy/railway/README.md`](deploy/railway/README.md).
 
-Template note: this button links to the Railway one-click deploy URL (no secrets in the URL).
+### Shared Demo Login Link
 
-Image/channel policy:
+For public demo environments, you can share a login URL that prefills demo credentials:
 
-- `edge` is for development/testing only.
-- `vX.Y.Z` is for production, self-hosted, and published templates.
+`https://your-app-domain.com/login?demo=1`
 
-### Existing-Install Encryption Upgrade
+Syllogic public demo:
 
-For existing environments with legacy plaintext rows, run this once from the backend service shell:
+`https://app.syllogic.ai/login?demo=1`
 
-```bash
-python postgres_migration/run_encryption_upgrade.py --batch-size 500
-```
+Set these frontend environment variables on that deployment:
 
-This validates encryption configuration, runs backfill, prints coverage counters, and exits non-zero if coverage is incomplete.
+- `NEXT_PUBLIC_DEMO_EMAIL`
+- `NEXT_PUBLIC_DEMO_PASSWORD`
 
-Optional:
+Optional auth throttling (recommended for public demos):
 
-```bash
-# Check coverage without writing changes
-python postgres_migration/run_encryption_upgrade.py --batch-size 500 --dry-run
+- `AUTH_RATE_LIMIT_ENABLED=true`
+- `AUTH_RATE_LIMIT_WINDOW_MS=60000`
+- `AUTH_RATE_LIMIT_MAX_ATTEMPTS_PER_WINDOW=30`
+- `DEMO_AUTH_RATE_LIMIT_MAX_ATTEMPTS_PER_WINDOW=10`
+- `DEMO_AUTH_RATE_LIMIT_GLOBAL_MAX_ATTEMPTS_PER_WINDOW=120`
 
-# Clear plaintext after your validation window
-python postgres_migration/run_encryption_upgrade.py --batch-size 500 --clear-plaintext
-```
+### Other Deployment Methods
 
-### Production Release Checklist
+| Method | Use case | Docs |
+|--------|----------|------|
+| CasaOS | Home lab / NAS users | [`deploy/casaos/`](deploy/casaos/README.md) |
 
-1. Confirm target image tag/digest on each Railway service (prefer pinned `vX.Y.Z`).
-2. Confirm app deploy logs show successful `node scripts/migrate.js`.
-3. Run `python postgres_migration/run_encryption_upgrade.py --batch-size 500` for upgraded environments.
-4. Confirm MCP health at `/health` returns `200` with `{"status":"healthy","service":"mcp"}`.
-5. Confirm no decrypt errors in backend logs during smoke tests.
-6. Run `scripts/verify-deploy-contract.sh` before publishing deployment-related changes.
-7. Confirm rollback plan is tested (previous tag/service config can be restored quickly).
+## Configuration
 
-### Prerequisites
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `POSTGRES_PASSWORD` | PostgreSQL password | Yes |
+| `BETTER_AUTH_SECRET` | Auth session signing key | Yes |
+| `INTERNAL_AUTH_SECRET` | App-to-backend signed auth | Yes |
+| `DATA_ENCRYPTION_KEY_CURRENT` | Field-level encryption key | Recommended |
+| `OPENAI_API_KEY` | AI transaction categorization | No |
+| `LOGO_DEV_API_KEY` | Company logo lookup | No |
 
-- Docker and Docker Compose
-- Node.js 18+ and pnpm
-- Python 3.11+
-- OpenAI API key (optional, for AI categorization)
+Generate secrets with `openssl rand -hex 32`. For encryption keys: `openssl rand -base64 32`.
 
-### 1. Clone the Repository
+### Optional Features Behavior
 
-```bash
-git clone https://github.com/yourusername/personal-finance-app.git
-cd personal-finance-app
-```
+**`OPENAI_API_KEY`** — AI-powered categorization via OpenAI (GPT-4o-mini by default).
+- **When set**: Transactions are categorized using the LLM for high accuracy.
+- **When not set**: Falls back to keyword-based matching (e.g., "Tesco" → Groceries, "Netflix" → Entertainment). The keyword matcher uses a 70% confidence threshold.
 
-### 2. Start Infrastructure Services
+**`LOGO_DEV_API_KEY`** — Company logo lookup via [logo.dev](https://logo.dev).
+- **When set**: Merchant logos are fetched and displayed for transactions and accounts.
+- **When not set**: No logos are shown; the feature is silently disabled.
 
-```bash
-docker-compose up -d db redis
-```
+Full variable reference is available in [`deploy/compose/.env.example`](deploy/compose/.env.example).
 
-This starts PostgreSQL (port 5433) and Redis (port 6379).
+## Architecture
 
-### 3. Setup Backend
+- Next.js 16+ (TypeScript, Drizzle ORM, BetterAuth, shadcn/ui, Recharts)
+- FastAPI (SQLAlchemy 2.0, Celery + Redis, OpenAI)
+- PostgreSQL 16, Redis 7, Docker Compose
 
-```bash
-cd backend
+Both services share a single PostgreSQL database. The frontend handles all CRUD via Server Actions; the backend handles data enrichment, bank sync, and background jobs.
 
-# Create virtual environment
-python -m venv venv
+## Development
 
-# Activate virtual environment
-# On Windows:
-venv\Scripts\activate
-# On macOS/Linux:
-source venv/bin/activate
+Quick start for contributors:
 
-# Install dependencies
-pip install -r requirements.txt
+### Option A: Prebuilt Mode (Recommended)
 
-# Create .env file
-cp .env.example .env
-# Edit .env with your database URL and API keys
-```
+Everything runs in Docker using prebuilt images. Easiest setup for full-stack testing.
 
-**Backend `.env` configuration:**
-```env
-DATABASE_URL=postgresql+psycopg://financeuser:financepass@localhost:5433/finance_db
-REDIS_URL=redis://localhost:6379/0
-INTERNAL_AUTH_SECRET=your-shared-internal-secret
-PLAID_CLIENT_ID=your-plaid-client-id
-PLAID_SECRET=your-plaid-secret
-PLAID_ENVIRONMENT=sandbox
-OPENAI_API_KEY=your-openai-key
-```
-
-### 4. Setup Frontend
+**1. Clone and configure:**
 
 ```bash
-cd frontend
-
-# Install dependencies
-pnpm install
-
-# Create .env.local file
-cp .env.example .env.local
-# Edit .env.local with your configuration
+git clone https://github.com/syllogic-ai/syllogic.git
+cd syllogic
+cp deploy/compose/.env.example deploy/compose/.env
+# Edit deploy/compose/.env — set INTERNAL_AUTH_SECRET, BETTER_AUTH_SECRET
+# Keep DATABASE_URL=postgresql://...@postgres:5432/... (Docker internal)
 ```
 
-**Frontend `.env.local` configuration:**
-```env
-DATABASE_URL=postgresql://financeuser:financepass@localhost:5433/finance_db
-APP_URL=http://localhost:3000
-BETTER_AUTH_SECRET=your-secret-key-here
-INTERNAL_AUTH_SECRET=your-shared-internal-secret
-BACKEND_URL=http://localhost:8000
-```
-
-### 5. Initialize Database
+**2. Start the stack:**
 
 ```bash
-cd frontend
-pnpm db:push
+# Linux/macOS
+./scripts/dev-up.sh --prebuilt
+
+# Windows
+.\scripts\dev-up.bat prebuilt
 ```
 
-Optionally seed with sample data:
+**3. Open http://localhost:8080**
+
+### Option B: Local Mode
+
+Infrastructure runs in Docker, frontend runs on host. Best for frontend development with hot reload.
+
+**1. Clone and configure:**
+
 ```bash
-cd backend
-python seed_data.py
+git clone https://github.com/syllogic-ai/syllogic.git
+cd syllogic
+cp deploy/compose/.env.example deploy/compose/.env
+# Edit deploy/compose/.env — set INTERNAL_AUTH_SECRET, BETTER_AUTH_SECRET
 ```
 
-## Usage
+**2. Start infrastructure:**
 
-### Development Mode
-
-**One-click helpers:**
-- `scripts/dev-up.sh` (starts local DB/Redis infra + migrations; use `--prebuilt` for full container stack)
-- `scripts/prod-up.sh` (pulls/runs prebuilt GHCR images, including MCP)
-- `scripts/local-smoke.sh` (source-compose smoke: health + migration table + encryption roundtrip)
-
-MCP is included by default in self-hosted compose deployments (external port defaults to `8001`, configurable via `MCP_PORT`).
-
-**Start all services with Docker Compose:**
 ```bash
-docker-compose up
+# Linux/macOS
+./scripts/dev-up.sh --local
+
+# Windows
+.\scripts\dev-up.bat local
 ```
 
-This starts:
-- PostgreSQL database (port 5433)
-- Redis (port 6379)
-- Celery worker (background jobs)
-- Celery beat (scheduled tasks)
+This starts PostgreSQL, Redis, and Celery workers, installs dependencies, runs migrations, and creates `frontend/.env.local` with the required environment variables.
 
-**Or run services individually:**
+**3. Start the Next.js dev server:**
 
-1. **Backend API:**
-```bash
-cd backend
-source venv/bin/activate  # or venv\Scripts\activate on Windows
-uvicorn app.main:app --reload
-```
-API available at: http://localhost:8000
-API docs at: http://localhost:8000/docs
-
-2. **Celery Worker (background jobs):**
-```bash
-cd backend
-celery -A celery_app worker --loglevel=info
-```
-
-3. **Celery Beat (scheduled tasks):**
-```bash
-cd backend
-celery -A celery_app beat --loglevel=info
-```
-
-4. **Frontend:**
 ```bash
 cd frontend
 pnpm dev
 ```
-App available at: http://localhost:3000
 
-### Production Build
+**4. Open http://localhost:3000**
 
-**Frontend:**
-```bash
-cd frontend
-pnpm build
-pnpm start
-```
+> **Note:** Local mode runs only infrastructure. CSV import and other backend features require starting the backend separately or using prebuilt mode.
 
-**Backend:**
-```bash
-cd backend
-uvicorn app.main:app --host 0.0.0.0 --port 8000
-```
-
-### Database Management
-
-```bash
-cd frontend
-
-# Push schema changes to database
-pnpm db:push
-
-# Generate migration files
-pnpm db:generate
-
-# Open Drizzle Studio (database GUI)
-pnpm db:studio
-```
-
-## Configuration
-
-### Environment Variables
-
-#### Frontend (.env.local)
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `DATABASE_URL` | PostgreSQL connection string | Yes |
-| `APP_URL` | Canonical public app URL | Yes |
-| `BETTER_AUTH_SECRET` | Secret key for authentication | Yes |
-| `INTERNAL_AUTH_SECRET` | Shared secret used by app->backend signed internal auth | Yes |
-| `DATA_ENCRYPTION_KEY_CURRENT` | 32-byte base64/hex key for app-level field encryption | No (recommended in production) |
-| `DATA_ENCRYPTION_KEY_PREVIOUS` | Previous encryption key for rotation fallback | No |
-| `DATA_ENCRYPTION_KEY_ID` | Identifier embedded in encrypted payloads (example: `k1`) | No |
-| `BACKEND_URL` | Backend base URL used by Next.js API proxy | Yes |
-
-#### Backend (.env)
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `DATABASE_URL` | PostgreSQL connection string | Yes |
-| `REDIS_URL` | Redis connection string | Yes |
-| `INTERNAL_AUTH_SECRET` | Shared secret used to verify signed internal app requests | Yes |
-| `DATA_ENCRYPTION_KEY_CURRENT` | 32-byte base64/hex key for app-level field encryption | No (recommended in production) |
-| `DATA_ENCRYPTION_KEY_PREVIOUS` | Previous encryption key for rotation fallback | No |
-| `DATA_ENCRYPTION_KEY_ID` | Identifier embedded in encrypted payloads (example: `k1`) | No |
-| `PLAID_CLIENT_ID` | Plaid client ID | No |
-| `PLAID_SECRET` | Plaid secret | No |
-| `PLAID_ENVIRONMENT` | Plaid environment (`sandbox`, `development`, `production`) | No |
-| `OPENAI_API_KEY` | OpenAI API key | No |
-| `LOGO_DEV_API_KEY` | Logo.dev API key | No |
-
-In production, append `?sslmode=require` to `DATABASE_URL` so DB connections fail closed without TLS.
-
-### Docker Compose Configuration
-
-The `docker-compose.yml` file configures:
-- PostgreSQL with optimized settings for performance
-- Redis with persistence
-- Celery worker with 4 concurrent workers
-- Celery beat for scheduled tasks
-
-Modify `docker-compose.yml` to adjust:
-- Database connection settings
-- Redis configuration
-- Celery concurrency
-- Volume mounts
-
-## Project Structure
-
-```
-personal-finance-app/
-├── frontend/
-│   ├── app/
-│   │   ├── (auth)/              # Login/register pages
-│   │   ├── (dashboard)/         # Main app pages
-│   │   │   ├── page.tsx         # Dashboard
-│   │   │   ├── transactions/    # Transaction pages
-│   │   │   └── settings/        # Settings pages
-│   │   └── api/auth/[...all]/   # BetterAuth handler
-│   ├── components/
-│   │   ├── ui/                  # shadcn components
-│   │   ├── layout/              # Layout components
-│   │   └── charts/              # Chart components
-│   ├── lib/
-│   │   ├── db/                  # Drizzle client & schema
-│   │   ├── auth.ts              # BetterAuth config
-│   │   └── actions/             # Server Actions
-│   └── drizzle.config.ts
-├── backend/
-│   ├── app/
-│   │   ├── main.py              # FastAPI app
-│   │   ├── database.py          # Database config
-│   │   ├── models.py            # SQLAlchemy models
-│   │   └── routes/              # API routes
-│   ├── celery_app.py            # Celery configuration
-│   ├── tasks/                   # Celery tasks
-│   └── seed_data.py             # Sample data generator
-├── docs/
-│   └── architecture.md          # Detailed architecture docs
-├── docker-compose.yml
-└── README.md
-```
-
-## API Endpoints
-
-### Accounts
-- `GET /api/accounts` - List all accounts
-- `GET /api/accounts/{id}` - Get account details
-
-### Categories
-- `GET /api/categories` - List all categories
-- `POST /api/categories` - Create a category
-- `PATCH /api/categories/{id}` - Update category
-- `DELETE /api/categories/{id}` - Delete category
-
-### Transactions
-- `GET /api/transactions` - List transactions (with filters)
-- `GET /api/transactions/{id}` - Get transaction details
-- `PATCH /api/transactions/{id}/category` - Assign category
-- `POST /api/transactions/import` - Import from CSV
-- `GET /api/transactions/export` - Export to CSV
-
-### Analytics
-- `GET /api/transactions/stats/by-category` - Spending by category
-- `GET /api/subscriptions/kpis` - Subscription KPIs
-- `GET /api/categories/share` - Category share breakdown
-
-## Contributing
-
-Contributions are welcome! Please follow these guidelines:
-
-1. **Fork the repository** and create a feature branch
-2. **Follow the existing code style**:
-   - Frontend: Use TypeScript strict mode, follow Next.js best practices
-   - Backend: Follow PEP 8 style guide
-3. **Write descriptive commit messages**
-4. **Test your changes** thoroughly
-5. **Update documentation** if you're changing functionality
-6. **Submit a pull request** with a clear description of changes
-
-### Development Guidelines
-
-- Use Server Actions for all frontend data mutations
-- Database schema changes must be made in Drizzle first, then mirrored to SQLAlchemy
-- Use shadcn/ui components before building custom UI
-- Follow the existing folder structure and naming conventions
-- Add comments for complex logic
-
-### Reporting Issues
-
-Please use GitHub Issues to report bugs or request features. Include:
-- Clear description of the issue
-- Steps to reproduce
-- Expected vs actual behavior
-- Screenshots if applicable
-- Environment details (OS, browser, etc.)
+See [CONTRIBUTING.md](CONTRIBUTING.md) for full setup instructions and code style guidelines.
 
 ## License
 
-This library is licensed under the GNU Lesser General Public License v3.0
-or later (LGPL-3.0-or-later).
-
-See the LICENSE file for details, and COPYING for the GNU GPL v3.
-
----
-
-Built with Next.js, FastAPI, and PostgreSQL. Powered by OpenAI for smart categorization.
+Licensed under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0).

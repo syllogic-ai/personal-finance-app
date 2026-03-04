@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -31,18 +31,50 @@ const loginSchema = z.object({
 
 type LoginFormData = z.infer<typeof loginSchema>;
 
-export default function LoginPage() {
+const truthyParamValues = new Set(["1", "true", "yes", "on"]);
+
+function LoginPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+
+  const demoModeRequested = useMemo(() => {
+    const raw = searchParams.get("demo");
+    if (!raw) return false;
+    return truthyParamValues.has(raw.trim().toLowerCase());
+  }, [searchParams]);
+
+  const emailFromQuery = searchParams.get("email")?.trim() || "";
+  const demoEmail = process.env.NEXT_PUBLIC_DEMO_EMAIL?.trim() || "";
+  const demoPassword = process.env.NEXT_PUBLIC_DEMO_PASSWORD || "";
+
+  const prefillEmail = demoModeRequested
+    ? (demoEmail || emailFromQuery)
+    : emailFromQuery;
+  const prefillPassword = demoModeRequested ? demoPassword : "";
 
   const {
     register,
     handleSubmit,
+    setValue,
     formState: { errors },
   } = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
+    defaultValues: {
+      email: prefillEmail,
+      password: prefillPassword,
+    },
   });
+
+  useEffect(() => {
+    if (prefillEmail) {
+      setValue("email", prefillEmail, { shouldDirty: false });
+    }
+    if (prefillPassword) {
+      setValue("password", prefillPassword, { shouldDirty: false });
+    }
+  }, [prefillEmail, prefillPassword, setValue]);
 
   const onSubmit = async (data: LoginFormData) => {
     setIsLoading(true);
@@ -82,6 +114,12 @@ export default function LoginPage() {
             {error && (
               <div className="bg-destructive/10 text-destructive p-3 text-sm">
                 {error}
+              </div>
+            )}
+            {demoModeRequested && !demoPassword && (
+              <div className="bg-muted p-3 text-sm">
+                Demo mode link detected, but demo credentials are not configured
+                on this deployment.
               </div>
             )}
             <Field>
@@ -126,5 +164,25 @@ export default function LoginPage() {
         </form>
       </CardContent>
     </Card>
+  );
+}
+
+function LoginPageFallback() {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Login to your account</CardTitle>
+        <CardDescription>Loading login form...</CardDescription>
+      </CardHeader>
+      <CardContent />
+    </Card>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<LoginPageFallback />}>
+      <LoginPageContent />
+    </Suspense>
   );
 }
