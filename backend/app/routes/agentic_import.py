@@ -42,6 +42,27 @@ router = APIRouter()
 # ---------------------------------------------------------------------------
 _pending_sessions: Dict[str, Dict[str, Any]] = {}
 
+SESSION_MAX_AGE_SECONDS = 30 * 60  # 30 minutes
+
+
+def _cleanup_expired_sessions():
+    """Remove sessions older than SESSION_MAX_AGE_SECONDS and their temp files."""
+    now = datetime.utcnow()
+    expired = [
+        sid for sid, s in _pending_sessions.items()
+        if (now - s.get("created_at", now)).total_seconds() > SESSION_MAX_AGE_SECONDS
+    ]
+    for sid in expired:
+        s = _pending_sessions.pop(sid, {})
+        fp = s.get("file_path")
+        if fp:
+            try:
+                os.unlink(fp)
+            except OSError:
+                pass
+    if expired:
+        logger.info(f"Cleaned up {len(expired)} expired import session(s)")
+
 # ---------------------------------------------------------------------------
 # Pydantic models
 # ---------------------------------------------------------------------------
@@ -112,7 +133,16 @@ class ProfilesResponse(BaseModel):
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _extract_headers_and_rows(file_path: str, filename: str):
+class FileParseResult:
+    """Holds parsed file data plus metadata needed for script generation."""
+    def __init__(self, headers, rows, delimiter=",", raw_head=""):
+        self.headers = headers
+        self.rows = rows
+        self.delimiter = delimiter
+        self.raw_head = raw_head
+
+
+def _extract_headers_and_rows(file_path: str, filename: str) -> FileParseResult:
     """Extract column headers and data rows from CSV or XLSX."""
     ext = os.path.splitext(filename)[1].lower()
 
@@ -138,7 +168,6 @@ def _extract_headers_and_rows(file_path: str, filename: str):
         if not candidate_sheets:
             raise HTTPException(status_code=400, detail="No sheets with tabular data found in the XLSX file.")
 
-        # Auto-select if only one candidate; otherwise pick the largest
         selected = max(candidate_sheets, key=lambda x: x[2])
         ws = wb[selected[0]]
 
@@ -148,7 +177,7 @@ def _extract_headers_and_rows(file_path: str, filename: str):
             rows.append([str(c) if c is not None else "" for c in row])
 
         wb.close()
-        return headers, rows
+        return FileParseResult(headers, rows, delimiter=",", raw_head="")
 
     # Default: CSV
     try:
@@ -157,6 +186,10 @@ def _extract_headers_and_rows(file_path: str, filename: str):
     except UnicodeDecodeError:
         with open(file_path, "r", encoding="latin-1") as f:
             content = f.read()
+
+    # Keep first few raw lines for the AI prompt
+    raw_lines = content.split("\n")[:4]
+    raw_head = "\n".join(raw_lines)
 
     # Detect delimiter
     sniffer = csv.Sniffer()
@@ -173,7 +206,7 @@ def _extract_headers_and_rows(file_path: str, filename: str):
 
     headers = all_rows[0]
     rows = [r for r in all_rows[1:] if any(cell.strip() for cell in r)]
-    return headers, rows
+    return FileParseResult(headers, rows, delimiter=delimiter, raw_head=raw_head)
 
 
 def _compute_daily_balances(transactions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -205,6 +238,7 @@ async def upload_file(
     db: Session = Depends(get_db),
 ):
     """Upload a bank file, compute fingerprint, and check for a matching profile."""
+    _cleanup_expired_sessions()
     resolved_user_id = get_user_id(user_id)
 
     # Validate account
@@ -237,7 +271,7 @@ async def upload_file(
         raise
 
     try:
-        headers, rows = _extract_headers_and_rows(temp_path, filename)
+        parse_result = _extract_headers_and_rows(temp_path, filename)
     except HTTPException:
         os.unlink(temp_path)
         raise
@@ -245,6 +279,8 @@ async def upload_file(
         os.unlink(temp_path)
         raise HTTPException(status_code=400, detail=f"Failed to parse file: {e}")
 
+    headers = parse_result.headers
+    rows = parse_result.rows
     fingerprint = compute_fingerprint(headers)
     import_id = str(uuid.uuid4())
 
@@ -277,6 +313,7 @@ async def upload_file(
                 "mapping_summary": profile.label,
                 "transformation_description": "",
                 "balance_column": None,
+                "created_at": datetime.utcnow(),
             }
 
             balance_col = None
@@ -308,11 +345,14 @@ async def upload_file(
         "fingerprint": fingerprint,
         "headers": headers,
         "rows": rows,
+        "delimiter": parse_result.delimiter,
+        "raw_head": parse_result.raw_head,
         "transactions": None,
         "script": None,
         "profile_id": None,
         "is_new_profile": True,
         "clarification_history": [],
+        "created_at": datetime.utcnow(),
     }
 
     return UploadResponse(
@@ -370,9 +410,15 @@ def analyze_file(
     if clarity_result.get("transformation_description"):
         combined_context += clarity_result["transformation_description"]
 
+    file_metadata = {
+        "delimiter": session.get("delimiter", ","),
+        "raw_head": session.get("raw_head", ""),
+    }
+
     success, script, transactions, error = generate_script_with_retry(
         headers, sample_rows, file_path,
         clarification_context=combined_context.strip() or None,
+        file_metadata=file_metadata,
     )
 
     if not success:
@@ -383,8 +429,19 @@ def analyze_file(
 
     session["transactions"] = transactions
     session["script"] = script
-    session["mapping_summary"] = clarity_result.get("mapping_summary", "")
-    session["transformation_description"] = clarity_result.get("transformation_description", "")
+
+    raw_summary = clarity_result.get("mapping_summary", "")
+    if isinstance(raw_summary, dict):
+        raw_summary = ", ".join(f"{k} → {v}" for k, v in raw_summary.items())
+    raw_summary = str(raw_summary)
+
+    raw_transform = clarity_result.get("transformation_description", "")
+    if isinstance(raw_transform, dict):
+        raw_transform = json.dumps(raw_transform)
+    raw_transform = str(raw_transform)
+
+    session["mapping_summary"] = raw_summary
+    session["transformation_description"] = raw_transform
     session["balance_column"] = clarity_result.get("balance_column")
 
     balance_col = None
@@ -393,8 +450,8 @@ def analyze_file(
 
     return AnalyzeResponse(
         status="preview_ready",
-        mapping_summary=clarity_result.get("mapping_summary", ""),
-        transformation_description=clarity_result.get("transformation_description", ""),
+        mapping_summary=raw_summary,
+        transformation_description=raw_transform,
         balance_column=balance_col,
         sample_transactions=transactions[:10] if transactions else [],
         total_rows=len(transactions) if transactions else 0,
@@ -433,7 +490,11 @@ def approve_import(
         col_count = len(headers)
         filename = session.get("filename", "unknown")
         ext = os.path.splitext(filename)[1].upper().lstrip(".")
-        label = f"{ext} — {col_count} columns"
+        mapping_hint = session.get("mapping_summary", "")
+        if mapping_hint and len(mapping_hint) < 80:
+            label = f"{mapping_hint} ({ext}, {col_count} cols)"
+        else:
+            label = f"{ext} — {col_count} columns"
 
         existing = db.query(FormatProfile).filter(
             FormatProfile.user_id == resolved_user_id,
@@ -452,6 +513,22 @@ def approve_import(
             logger.info(f"Saved new format profile '{label}' for user {resolved_user_id}")
 
     # 2. Duplicate detection (date + amount + description, across all user accounts)
+    #    Batch-load existing transactions once to avoid N+1 queries.
+    from sqlalchemy import func, cast, Date as SqlDate
+
+    existing_txns = db.query(
+        cast(Transaction.booked_at, SqlDate).label("d"),
+        Transaction.amount,
+        func.lower(func.trim(Transaction.description)).label("desc"),
+    ).filter(
+        Transaction.user_id == resolved_user_id,
+    ).all()
+
+    existing_set = {
+        (str(r.d), str(r.amount), r.desc)
+        for r in existing_txns
+    }
+
     duplicates_skipped = 0
     failed_rows: List[FailedRow] = []
     to_import: List[Dict[str, Any]] = []
@@ -471,18 +548,8 @@ def approve_import(
             if tx.get("balance") is not None:
                 balance_anchors_detected = True
 
-            # Check duplicates across all user accounts
-            from sqlalchemy import func, cast, Date as SqlDate
-            tx_date = datetime.strptime(tx_date_str, "%Y-%m-%d").date()
-
-            existing = db.query(Transaction).filter(
-                Transaction.user_id == resolved_user_id,
-                cast(Transaction.booked_at, SqlDate) == tx_date,
-                Transaction.amount == tx_amount,
-                func.lower(func.trim(Transaction.description)) == tx_desc.lower().strip(),
-            ).first()
-
-            if existing:
+            lookup_key = (tx_date_str, str(round(tx_amount, 2)), tx_desc.lower().strip())
+            if lookup_key in existing_set:
                 duplicates_skipped += 1
                 continue
 
@@ -500,13 +567,11 @@ def approve_import(
         items = []
         for tx in to_import:
             amount = float(tx.get("amount", 0))
-            fee = float(tx.get("fee") or 0)
-            net = amount - abs(fee) if fee else amount
-            tx_type = "credit" if net >= 0 else "debit"
+            tx_type = "credit" if amount >= 0 else "debit"
 
             items.append(TransactionImportItem(
                 account_id=uuid.UUID(account_id),
-                amount=Decimal(str(round(net, 2))),
+                amount=Decimal(str(round(amount, 2))),
                 description=tx.get("description") or "",
                 merchant=tx.get("merchant"),
                 booked_at=datetime.fromisoformat(tx["date"][:10]),

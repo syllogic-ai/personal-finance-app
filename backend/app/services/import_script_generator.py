@@ -62,8 +62,10 @@ Return a list of dicts, each with the keys above. Example:
 - Only import: `csv`, `openpyxl`, `re`, `datetime`, `json`, `os.path`. NO other imports.
 - The function signature must be exactly: `def transform(file_path: str) -> list[dict]:`
 - Handle encoding issues gracefully (try utf-8, then latin-1).
+- **CSV delimiter detection is critical**: many European bank exports use semicolons (;) instead of commas. Always detect the delimiter using `csv.Sniffer().sniff()` or by checking the first line for common delimiters (comma, semicolon, tab). NEVER hard-code the comma delimiter.
 - If dates are ambiguous (DD/MM vs MM/DD), prefer DD/MM/YYYY (European) unless the data clearly indicates otherwise.
-- For amounts: if the file uses comma as decimal separator, handle it.
+- For amounts: if the file uses comma as decimal separator (e.g. "1.234,56" or "348,89"), handle it by replacing the comma with a period after removing any thousand separators.
+- Date formats like YYYYMMDD (e.g. 20250710) are common in Dutch/German bank exports. Handle them.
 - Never call `print()` or `sys.exit()` — just return the list.
 - Handle both CSV and XLSX with the same function by checking the file extension.
 
@@ -154,6 +156,7 @@ def generate_script(
     headers: List[str],
     sample_rows: List[List[str]],
     clarification_context: Optional[str] = None,
+    file_metadata: Optional[Dict[str, Any]] = None,
 ) -> str:
     """
     Generate a Python transformation script using OpenAI.
@@ -173,6 +176,14 @@ def generate_script(
         f"Column headers: {json.dumps(headers)}\n\n"
         f"Sample data (first 10 rows):\n{json.dumps(sample_data, indent=2)}"
     )
+
+    if file_metadata:
+        delim = file_metadata.get("delimiter", ",")
+        raw_head = file_metadata.get("raw_head", "")
+        if delim != ",":
+            user_msg += f"\n\nIMPORTANT: This CSV file uses '{delim}' (not comma) as the column delimiter. Your script MUST use delimiter='{delim}' when calling csv.reader or csv.DictReader."
+        if raw_head:
+            user_msg += f"\n\nRaw first lines of the file:\n{raw_head}"
 
     if clarification_context:
         user_msg += f"\n\nAdditional context from user:\n{clarification_context}"
@@ -203,6 +214,7 @@ def generate_script_with_retry(
     file_path: str,
     clarification_context: Optional[str] = None,
     max_retries: int = 3,
+    file_metadata: Optional[Dict[str, Any]] = None,
 ) -> Tuple[bool, Optional[str], Optional[List[Dict[str, Any]]], Optional[str]]:
     """
     Generate a script and execute it, retrying up to max_retries on failure.
@@ -218,10 +230,10 @@ def generate_script_with_retry(
 
         try:
             if attempt == 0:
-                script = generate_script(headers, sample_rows, clarification_context)
+                script = generate_script(headers, sample_rows, clarification_context, file_metadata)
             else:
                 script = _regenerate_with_error(
-                    headers, sample_rows, last_error, clarification_context
+                    headers, sample_rows, last_error, clarification_context, file_metadata
                 )
         except Exception as e:
             last_error = f"OpenAI API error: {e}"
@@ -257,6 +269,7 @@ def _regenerate_with_error(
     sample_rows: List[List[str]],
     error_message: str,
     clarification_context: Optional[str] = None,
+    file_metadata: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Re-generate the script with the previous error as context."""
     client = _get_openai_client()
@@ -274,6 +287,14 @@ def _regenerate_with_error(
         f"The previous script FAILED with this error:\n{error_message}\n\n"
         f"Please fix the script to handle this case. Generate a corrected transform function."
     )
+
+    if file_metadata:
+        delim = file_metadata.get("delimiter", ",")
+        raw_head = file_metadata.get("raw_head", "")
+        if delim != ",":
+            user_msg += f"\n\nIMPORTANT: This CSV file uses '{delim}' (not comma) as the column delimiter. Your script MUST use delimiter='{delim}' when calling csv.reader or csv.DictReader."
+        if raw_head:
+            user_msg += f"\n\nRaw first lines of the file:\n{raw_head}"
 
     if clarification_context:
         user_msg += f"\n\nAdditional context from user:\n{clarification_context}"

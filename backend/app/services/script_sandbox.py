@@ -26,8 +26,11 @@ DISALLOWED_MODULES = {
     "multiprocessing", "threading", "asyncio",
     "webbrowser", "ftplib", "smtplib", "telnetlib",
     "xmlrpc", "pickle", "shelve", "code", "codeop",
-    "compileall", "py_compile",
+    "compileall", "py_compile", "pathlib",
+    "importlib", "zipimport", "pkgutil",
 }
+
+ALLOWED_OS_SUBMODULES = {"os.path"}
 
 TIMEOUT_SECONDS = 60
 MAX_MEMORY_BYTES = 512 * 1024 * 1024  # 512 MB
@@ -44,14 +47,20 @@ def validate_script(script_source: str) -> Tuple[bool, Optional[str]]:
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
-                module_root = alias.name.split(".")[0]
+                full_name = alias.name
+                module_root = full_name.split(".")[0]
                 if module_root in DISALLOWED_MODULES:
-                    return False, f"Disallowed import: {alias.name}"
+                    return False, f"Disallowed import: {full_name}"
+                if module_root == "os" and full_name not in ALLOWED_OS_SUBMODULES:
+                    return False, f"Disallowed import: {full_name} (only os.path is allowed)"
         elif isinstance(node, ast.ImportFrom):
             if node.module:
-                module_root = node.module.split(".")[0]
+                full_name = node.module
+                module_root = full_name.split(".")[0]
                 if module_root in DISALLOWED_MODULES:
-                    return False, f"Disallowed import: from {node.module}"
+                    return False, f"Disallowed import: from {full_name}"
+                if module_root == "os" and full_name not in ALLOWED_OS_SUBMODULES:
+                    return False, f"Disallowed import: from {full_name} (only os.path is allowed)"
 
     return True, None
 

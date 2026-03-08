@@ -44,7 +44,7 @@ import {
 } from "@/lib/actions/agentic-import";
 import type { Account } from "@/lib/db/schema";
 
-type Step = "upload" | "analyzing" | "clarify" | "preview" | "importing" | "result";
+type Step = "upload" | "analyzing" | "clarify" | "preview" | "importing" | "result" | "error";
 
 interface ImportResult {
   total_rows: number;
@@ -77,6 +77,9 @@ export default function AgenticImportPage() {
   // Clarification
   const [question, setQuestion] = useState("");
   const [clarificationInput, setClarificationInput] = useState("");
+
+  // Error
+  const [errorMessage, setErrorMessage] = useState("");
 
   // Result
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
@@ -144,8 +147,8 @@ export default function AgenticImportPage() {
       const result = await analyzeImport(id, clarification);
 
       if (!result.success || !result.data) {
-        toast.error(result.error || "Analysis failed");
-        setStep("upload");
+        setErrorMessage(result.error || "Analysis failed");
+        setStep("error");
         return;
       }
 
@@ -162,12 +165,12 @@ export default function AgenticImportPage() {
         setTotalRows(d.total_rows || 0);
         setStep("preview");
       } else {
-        toast.error(d.error || "Failed to process file. Try re-exporting from your bank.");
-        setStep("upload");
+        setErrorMessage(d.error || "We couldn't process this file. Try re-exporting it from your bank or contact support.");
+        setStep("error");
       }
     } catch {
-      toast.error("Analysis failed");
-      setStep("upload");
+      setErrorMessage("Analysis failed. Please try again.");
+      setStep("error");
     } finally {
       setIsLoading(false);
     }
@@ -445,6 +448,28 @@ export default function AgenticImportPage() {
                     <RiCheckLine className="mr-2 h-4 w-4" /> Approve & Import
                   </>
                 )}
+              </Button>
+            </CardFooter>
+          </Card>
+        )}
+
+        {/* STEP: Error */}
+        {step === "error" && (
+          <Card className="w-full max-w-2xl">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <RiAlertLine className="h-5 w-5 text-red-500" />
+                Import Failed
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="rounded-lg border border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950 p-4">
+                <p className="text-sm">{errorMessage}</p>
+              </div>
+            </CardContent>
+            <CardFooter>
+              <Button variant="outline" onClick={() => { setStep("upload"); setSelectedFile(null); setErrorMessage(""); }}>
+                <RiArrowLeftLine className="mr-2 h-4 w-4" /> Try Again
               </Button>
             </CardFooter>
           </Card>
