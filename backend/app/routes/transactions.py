@@ -321,23 +321,27 @@ def delete_transaction(
 
 
 @router.delete("/by-account/{account_id}", status_code=200)
-def delete_transactions_by_account(account_id: UUID, db: Session = Depends(get_db)):
+def delete_transactions_by_account(
+    account_id: UUID,
+    user_id: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
     """
     Delete all transactions for a specific account.
     Use with caution - this permanently deletes all transactions.
     """
-    from app.models import Account
-    
-    # Verify account exists
-    account = db.query(Account).filter(Account.id == account_id).first()
+    user_id = get_user_id(user_id)
+
+    # Verify account exists and belongs to user
+    account = db.query(Account).filter(Account.id == account_id, Account.user_id == user_id).first()
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
     
-    # Count transactions before deletion
-    transaction_count = db.query(Transaction).filter(Transaction.account_id == account_id).count()
-    
-    # Delete all transactions for this account
-    db.query(Transaction).filter(Transaction.account_id == account_id).delete()
+    # Delete all transactions for this account (scoped to user)
+    transaction_count = db.query(Transaction).filter(
+        Transaction.account_id == account_id,
+        Transaction.user_id == user_id,
+    ).delete(synchronize_session=False)
     db.commit()
     
     return {

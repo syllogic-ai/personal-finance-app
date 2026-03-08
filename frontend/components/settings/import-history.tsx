@@ -20,7 +20,6 @@ export function ImportHistory() {
   const [imports, setImports] = useState<ImportHistoryItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [revertingImportId, setRevertingImportId] = useState<string | null>(null);
   const [showRevertDialog, setShowRevertDialog] = useState(false);
   const [selectedImport, setSelectedImport] = useState<ImportHistoryItem | null>(null);
   const [isReverting, setIsReverting] = useState(false);

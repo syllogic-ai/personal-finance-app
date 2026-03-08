@@ -145,10 +145,6 @@ export async function deleteTransactions(
 
     const data: DeleteResponse = await response.json();
 
-    if (!data.success) {
-      return { success: false, error: data.message };
-    }
-
     revalidatePath("/transactions");
     revalidatePath("/");
     revalidatePath("/settings");
@@ -236,17 +232,12 @@ export async function revertImport(
       return { success: false, error: `Failed to revert import: ${response.status}` };
     }
 
-    const data: RevertImportResponse = await response.json();
-
-    if (!data.success) {
-      return { success: false, error: data.message };
-    }
-
     revalidatePath("/transactions");
     revalidatePath("/");
     revalidatePath("/settings");
     revalidatePath("/assets");
 
+    const data: RevertImportResponse = await response.json();
     return { success: true, deletedCount: data.deleted_count };
   } catch (error) {
     console.error("Failed to revert import:", error);

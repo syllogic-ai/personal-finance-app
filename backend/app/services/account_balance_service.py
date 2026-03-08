@@ -548,6 +548,7 @@ class AccountBalanceService:
                         # Update existing record
                         existing.balance_in_account_currency = balance_value
                         existing.balance_in_functional_currency = functional_balance
+                        existing.is_anchored = True
                         existing.updated_at = datetime.utcnow()
                         logger.debug(
                             f"[BALANCE_IMPORT] Updated balance for {balance_date}: {balance_value} {account_currency}"
@@ -558,7 +559,8 @@ class AccountBalanceService:
                             account_id=account_id,
                             date=rate_datetime,
                             balance_in_account_currency=balance_value,
-                            balance_in_functional_currency=functional_balance
+                            balance_in_functional_currency=functional_balance,
+                            is_anchored=True,
                         )
                         self.db.add(new_balance)
                         logger.debug(

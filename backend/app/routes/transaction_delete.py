@@ -4,11 +4,10 @@ Handles single, bulk, and import-revert deletion flows.
 """
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import func, and_
+from sqlalchemy import func
 from typing import List, Optional, Dict, Any
 from uuid import UUID
-from pydantic import BaseModel
-from decimal import Decimal
+from pydantic import BaseModel, Field
 import logging
 
 from app.database import get_db
@@ -19,9 +18,11 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+MAX_TRANSACTION_IDS = 10000
+
 
 class DeletePreviewRequest(BaseModel):
-    transaction_ids: Optional[List[str]] = None
+    transaction_ids: Optional[List[str]] = Field(None, max_length=MAX_TRANSACTION_IDS)
     import_id: Optional[str] = None
 
 
@@ -46,13 +47,26 @@ class DeletePreviewResponse(BaseModel):
 
 
 class DeleteTransactionsRequest(BaseModel):
-    transaction_ids: List[str]
+    transaction_ids: List[str] = Field(..., max_length=MAX_TRANSACTION_IDS)
     confirmation: str
 
 
 class ImportRevertRequest(BaseModel):
     import_id: str
     confirmation: str
+
+
+def _compute_account_balance_in_account_currency(db: Session, account: Account) -> Optional[float]:
+    """Compute the current balance in the account's own currency (starting_balance + sum(transactions))."""
+    from decimal import Decimal
+    transaction_sum = (
+        db.query(func.sum(Transaction.amount))
+        .filter(Transaction.account_id == account.id)
+        .scalar()
+    )
+    starting = float(account.starting_balance or 0)
+    txn_total = float(transaction_sum) if transaction_sum is not None else 0.0
+    return starting + txn_total
 
 
 @router.post("/delete-preview", response_model=DeletePreviewResponse)
@@ -102,7 +116,7 @@ def get_delete_preview(
                 .filter(Account.id == txn.account_id)
                 .first()
             )
-            current_bal = float(account.functional_balance) if account and account.functional_balance else None
+            current_bal = _compute_account_balance_in_account_currency(db, account) if account else None
             account_impacts[aid] = DeletePreviewAccountImpact(
                 account_id=aid,
                 account_name=account.name if account else "Unknown",
@@ -177,23 +191,23 @@ def delete_transactions_bulk(
 
     txn_uuids = [UUID(tid) for tid in request.transaction_ids]
 
-    transactions = (
-        db.query(Transaction)
-        .filter(
-            Transaction.id.in_(txn_uuids),
-            Transaction.user_id == user_id,
-        )
+    affected_account_ids_query = (
+        db.query(Transaction.account_id)
+        .filter(Transaction.id.in_(txn_uuids), Transaction.user_id == user_id)
+        .distinct()
         .all()
     )
+    affected_account_ids = [str(row[0]) for row in affected_account_ids_query]
 
-    if not transactions:
+    deleted_count = (
+        db.query(Transaction)
+        .filter(Transaction.id.in_(txn_uuids), Transaction.user_id == user_id)
+        .delete(synchronize_session=False)
+    )
+
+    if deleted_count == 0:
+        db.rollback()
         raise HTTPException(status_code=404, detail="No matching transactions found")
-
-    affected_account_ids = list(set(str(t.account_id) for t in transactions))
-    deleted_count = len(transactions)
-
-    for txn in transactions:
-        db.delete(txn)
 
     db.commit()
 
@@ -232,20 +246,19 @@ def revert_import(
     if not csv_import:
         raise HTTPException(status_code=404, detail="Import not found")
 
-    transactions = (
-        db.query(Transaction)
-        .filter(
-            Transaction.import_id == import_uuid,
-            Transaction.user_id == user_id,
-        )
+    affected_account_ids_query = (
+        db.query(Transaction.account_id)
+        .filter(Transaction.import_id == import_uuid, Transaction.user_id == user_id)
+        .distinct()
         .all()
     )
+    affected_account_ids = [str(row[0]) for row in affected_account_ids_query]
 
-    affected_account_ids = list(set(str(t.account_id) for t in transactions))
-    deleted_count = len(transactions)
-
-    for txn in transactions:
-        db.delete(txn)
+    deleted_count = (
+        db.query(Transaction)
+        .filter(Transaction.import_id == import_uuid, Transaction.user_id == user_id)
+        .delete(synchronize_session=False)
+    )
 
     csv_import.status = "reverted"
     db.commit()

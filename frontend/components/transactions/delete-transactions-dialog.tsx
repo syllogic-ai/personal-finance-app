@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { toast } from "sonner";
 import { RiAlertLine, RiDeleteBinLine, RiLoader4Line } from "@remixicon/react";
 import {
@@ -73,9 +73,18 @@ export function DeleteTransactionsDialog({
 
   const isConfirmed = confirmText.trim().toLowerCase() === "delete transactions";
 
+  // Stabilise the transactionIds array reference so it doesn't re-trigger the
+  // effect on every parent render (arrays fail === even with same contents).
+  const idsKey = useMemo(() => transactionIds.join(","), [transactionIds]);
+  const stableIds = useRef(transactionIds);
+  if (stableIds.current.join(",") !== idsKey) {
+    stableIds.current = transactionIds;
+  }
+
   useEffect(() => {
     if (!open) return;
-    if (transactionIds.length === 0 && !importId) return;
+    const ids = stableIds.current;
+    if (ids.length === 0 && !importId) return;
 
     let cancelled = false;
     setConfirmText("");
@@ -85,7 +94,7 @@ export function DeleteTransactionsDialog({
 
     (async () => {
       try {
-        const result = await getDeleteTransactionsPreview(transactionIds, importId);
+        const result = await getDeleteTransactionsPreview(ids, importId);
         if (cancelled) return;
         if (result.success && result.preview) {
           setPreview(result.preview);
@@ -103,13 +112,15 @@ export function DeleteTransactionsDialog({
     })();
 
     return () => { cancelled = true; };
-  }, [open, transactionIds, importId]);
+  }, [open, idsKey, importId]);
 
   const handleOpenChange = (nextOpen: boolean) => {
     if (!isDeleting) {
       onOpenChange(nextOpen);
     }
   };
+
+  const displayCount = preview?.transaction_count ?? transactionIds.length;
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -122,7 +133,7 @@ export function DeleteTransactionsDialog({
           <DialogDescription>
             {importMode
               ? `Revert the import${importFileName ? ` "${importFileName}"` : ""} and delete all associated transactions.`
-              : `Permanently delete ${preview?.transaction_count ?? transactionIds.length} transaction${(preview?.transaction_count ?? transactionIds.length) !== 1 ? "s" : ""}.`}
+              : `Permanently delete ${displayCount} transaction${displayCount !== 1 ? "s" : ""}.`}
           </DialogDescription>
         </DialogHeader>
 
@@ -259,7 +270,7 @@ export function DeleteTransactionsDialog({
               ? "Deleting…"
               : importMode
                 ? "Revert Import"
-                : `Delete ${transactionIds.length} Transaction${transactionIds.length !== 1 ? "s" : ""}`}
+                : `Delete ${displayCount} Transaction${displayCount !== 1 ? "s" : ""}`}
           </Button>
         </DialogFooter>
       </DialogContent>

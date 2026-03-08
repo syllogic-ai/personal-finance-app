@@ -267,7 +267,7 @@ export const csvImports = pgTable(
     fileName: varchar("file_name", { length: 255 }).notNull(),
     filePath: text("file_path"),
     filePathCiphertext: text("file_path_ciphertext"),
-    status: varchar("status", { length: 20 }).default("pending"), // pending, mapping, previewing, importing, completed, failed
+    status: varchar("status", { length: 20 }).default("pending"), // pending, mapping, previewing, importing, completed, failed, reverted
     columnMapping: jsonb("column_mapping"),
     totalRows: integer("total_rows"),
     importedRows: integer("imported_rows"),
