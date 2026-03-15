@@ -40,7 +40,7 @@ export function CsvMappingTable({
     });
   };
 
-  const updateTypeConfig = (key: string, value: string | boolean) => {
+  const updateTypeConfig = (key: string, value: string | boolean | null) => {
     onMappingChange({
       ...mapping,
       typeConfig: {
@@ -133,6 +133,30 @@ export function CsvMappingTable({
               <SelectContent>
                 <SelectItem value="DD-MM-YYYY">DD-MM-YYYY (European)</SelectItem>
                 <SelectItem value="MM-DD-YYYY">MM-DD-YYYY (US)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <div className="rounded-lg border bg-card p-4">
+          <div className="space-y-3">
+            <div>
+              <Label className="font-medium">Amount Format</Label>
+              <p className="text-xs text-muted-foreground">
+                Controls decimal separators for amounts, fees, and balance columns.
+              </p>
+            </div>
+            <Select
+              value={mapping.typeConfig?.amountFormat ?? "AUTO"}
+              onValueChange={(value) => updateTypeConfig("amountFormat", value)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select amount format" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="AUTO">Auto detect</SelectItem>
+                <SelectItem value="DOT_DECIMAL">1,234.56</SelectItem>
+                <SelectItem value="COMMA_DECIMAL">1.234,56</SelectItem>
               </SelectContent>
             </Select>
           </div>
