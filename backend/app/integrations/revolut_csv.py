@@ -205,6 +205,8 @@ class RevolutCSVAdapter(BankAdapter):
         # Try to find date field (various names - check case-insensitive)
         date_str = None
         for key in row.keys():
+            if not isinstance(key, str):
+                continue
             key_lower = key.lower()
             if 'completed' in key_lower and 'date' in key_lower:
                 date_str = row.get(key)
@@ -255,8 +257,16 @@ class RevolutCSVAdapter(BankAdapter):
                         break
                 # Use paid_in if positive, negative paid_out if negative
                 try:
-                    out_val = parse_localized_decimal(str(paid_out), inferred_format=inferred_amount_format) or Decimal("0")
-                    in_val = parse_localized_decimal(str(paid_in), inferred_format=inferred_amount_format) or Decimal("0")
+                    out_val = parse_localized_decimal(
+                        str(paid_out),
+                        inferred_format=inferred_amount_format,
+                        allow_grouped_integers_when_ambiguous=True,
+                    ) or Decimal("0")
+                    in_val = parse_localized_decimal(
+                        str(paid_in),
+                        inferred_format=inferred_amount_format,
+                        allow_grouped_integers_when_ambiguous=True,
+                    ) or Decimal("0")
                     if in_val > 0:
                         amount = in_val
                     elif out_val > 0:
@@ -278,7 +288,11 @@ class RevolutCSVAdapter(BankAdapter):
             return None
         
         if amount is None:
-            amount = parse_localized_decimal(str(amount_str), inferred_format=inferred_amount_format)
+            amount = parse_localized_decimal(
+                str(amount_str),
+                inferred_format=inferred_amount_format,
+                allow_grouped_integers_when_ambiguous=True,
+            )
 
         if amount is None:
             return None
@@ -289,6 +303,8 @@ class RevolutCSVAdapter(BankAdapter):
         # Get description - try case-insensitive matching
         description = None
         for key in row.keys():
+            if not isinstance(key, str):
+                continue
             key_lower = key.lower()
             if 'description' in key_lower or key_lower == 'note' or key_lower == 'reference':
                 description = row.get(key)
@@ -312,6 +328,8 @@ class RevolutCSVAdapter(BankAdapter):
         # Get merchant (may be in description or separate field)
         merchant = None
         for key in row.keys():
+            if not isinstance(key, str):
+                continue
             key_lower = key.lower()
             if key_lower == 'merchant' or 'counterparty' in key_lower:
                 merchant = row.get(key)
@@ -343,6 +361,8 @@ class RevolutCSVAdapter(BankAdapter):
         # Get currency - try to find currency column
         currency = 'EUR'  # default
         for key in row.keys():
+            if not isinstance(key, str):
+                continue
             key_lower = key.lower()
             if key_lower == 'currency':
                 currency = row.get(key, 'EUR')
@@ -361,6 +381,8 @@ class RevolutCSVAdapter(BankAdapter):
         # Get state/pending status
         state = None
         for key in row.keys():
+            if not isinstance(key, str):
+                continue
             if key.lower() == 'state' or 'status' in key.lower():
                 state = row.get(key)
                 break
@@ -395,6 +417,8 @@ class RevolutCSVAdapter(BankAdapter):
 
         for row in rows:
             for key, value in row.items():
+                if not isinstance(key, str):
+                    continue
                 key_lower = key.lower()
                 if key_lower == "amount" or "paid out" in key_lower or "paid in" in key_lower:
                     if value is not None and str(value).strip():

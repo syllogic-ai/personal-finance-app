@@ -847,8 +847,6 @@ export async function previewImportedTransactions(
       // For each row, we extract the ending balance (or calculate from starting balance + transaction)
       // The last transaction of each day becomes the authoritative balance for that day
       const dailyBalanceMap = new Map<string, number>();
-      const dateIndex = mapping.date ? headers.indexOf(mapping.date) : -1;
-      const amountIndex = mapping.amount ? headers.indexOf(mapping.amount) : -1;
 
       if (dateIndex >= 0 && (endBalIdx >= 0 || startBalIdx >= 0)) {
         for (let i = 0; i < rows.length; i++) {
@@ -1724,13 +1722,17 @@ export async function importRevolutCsv(filePath: string): Promise<{
     }
 
     // Update account balance
-    const lastLine = dataLines[dataLines.length - 1];
-    const lastValues = lastLine.split(",");
-    const lastBalance = lastValues[balanceIdx];
+    const lastValues = dataRows[dataRows.length - 1];
+    const lastBalance = balanceIdx >= 0 && lastValues
+      ? parseLocalizedNumber(lastValues[balanceIdx], {
+          amountFormat: "AUTO",
+          inferredFormat: inferredAmountFormat,
+        })
+      : null;
 
     await db.update(accounts)
       .set({
-        functionalBalance: lastBalance,
+        functionalBalance: lastBalance !== null ? lastBalance.toFixed(2) : account.functionalBalance,
         lastSyncedAt: new Date(),
         updatedAt: new Date(),
       })

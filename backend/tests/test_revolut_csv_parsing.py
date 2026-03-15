@@ -22,6 +22,10 @@ class NumberParsingTests(unittest.TestCase):
         self.assertEqual(parse_localized_decimal("123,45-"), Decimal("-123.45"))
         self.assertIsNone(parse_localized_decimal("1,234"))
         self.assertEqual(
+            parse_localized_decimal("1,234", allow_grouped_integers_when_ambiguous=True),
+            Decimal("1234"),
+        )
+        self.assertEqual(
             parse_localized_decimal("1,234", amount_format="COMMA_DECIMAL"),
             Decimal("1.234"),
         )
@@ -71,6 +75,22 @@ class NumberParsingTests(unittest.TestCase):
         self.assertEqual(transactions[0].transaction_type, "debit")
         self.assertEqual(transactions[1].amount, Decimal("2500.00"))
         self.assertEqual(transactions[1].transaction_type, "credit")
+
+    def test_revolut_adapter_keeps_grouped_whole_numbers_when_inference_is_ambiguous(self) -> None:
+        csv_content = "\n".join(
+            [
+                "Type,Product,Completed Date,Description,Amount,Fee,Currency,State",
+                "CARD_PAYMENT,Current,02/01/2025 20:48,Hotel,\"1,234\",0,EUR,COMPLETED",
+                "CARD_PAYMENT,Current,03/01/2025 09:15,Salary,\"2,000\",0,EUR,COMPLETED",
+            ]
+        )
+
+        adapter = RevolutCSVAdapter(csv_content)
+        transactions = adapter.fetch_transactions("current")
+
+        self.assertEqual(len(transactions), 2)
+        self.assertEqual(transactions[0].amount, Decimal("1234"))
+        self.assertEqual(transactions[1].amount, Decimal("2000"))
 
 
 if __name__ == "__main__":

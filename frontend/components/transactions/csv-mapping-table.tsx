@@ -40,7 +40,7 @@ export function CsvMappingTable({
     });
   };
 
-  const updateTypeConfig = (key: string, value: string | boolean) => {
+  const updateTypeConfig = (key: string, value: string | boolean | null) => {
     onMappingChange({
       ...mapping,
       typeConfig: {

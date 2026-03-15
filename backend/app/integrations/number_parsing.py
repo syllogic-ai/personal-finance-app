@@ -55,6 +55,7 @@ def parse_localized_decimal(
     raw: Optional[str],
     amount_format: AmountFormat = "AUTO",
     inferred_format: InferredAmountFormat = "AMBIGUOUS",
+    allow_grouped_integers_when_ambiguous: bool = False,
 ) -> Optional[Decimal]:
     parsed = _parse_numeric_token(raw)
     if not parsed:
@@ -79,8 +80,12 @@ def parse_localized_decimal(
         else:
             digits_after = len(token) - token.rfind(separator) - 1
             if digits_after in (0, 3):
-                return None
-            normalized = _normalize_with_decimal_separator(token, separator)
+                if allow_grouped_integers_when_ambiguous and digits_after == 3:
+                    normalized = _normalize_grouped_integer(token)
+                else:
+                    return None
+            else:
+                normalized = _normalize_with_decimal_separator(token, separator)
     else:
         normalized = token
 
@@ -166,3 +171,20 @@ def _normalize_with_decimal_separator(token: str, decimal_separator: Literal["."
     if not value or value == ".":
         return None
     return value
+
+
+def _normalize_grouped_integer(token: str) -> Optional[str]:
+    normalized: list[str] = []
+
+    for char in token:
+        if char.isdigit():
+            normalized.append(char)
+            continue
+
+        if char in (".", ","):
+            continue
+
+        return None
+
+    value = "".join(normalized)
+    return value or None
