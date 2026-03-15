@@ -53,6 +53,16 @@ describe("import parsing helpers", () => {
       inferredFormat: "AMBIGUOUS",
       allowGroupedIntegersWhenAmbiguous: true,
     })).toBe(1234);
+    expect(parseLocalizedNumber(".123", {
+      amountFormat: "AUTO",
+      inferredFormat: "AMBIGUOUS",
+      allowGroupedIntegersWhenAmbiguous: true,
+    })).toBeNull();
+    expect(parseLocalizedNumber("1,,234", {
+      amountFormat: "AUTO",
+      inferredFormat: "AMBIGUOUS",
+      allowGroupedIntegersWhenAmbiguous: true,
+    })).toBeNull();
   });
 
   it("parses dot-decimal values with grouping and currency markers", () => {

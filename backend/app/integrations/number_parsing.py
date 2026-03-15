@@ -81,7 +81,7 @@ def parse_localized_decimal(
             digits_after = len(token) - token.rfind(separator) - 1
             if digits_after in (0, 3):
                 if allow_grouped_integers_when_ambiguous and digits_after == 3:
-                    normalized = _normalize_grouped_integer(token)
+                    normalized = _normalize_grouped_integer(token, separator)
                 else:
                     return None
             else:
@@ -173,7 +173,11 @@ def _normalize_with_decimal_separator(token: str, decimal_separator: Literal["."
     return value
 
 
-def _normalize_grouped_integer(token: str) -> Optional[str]:
+def _normalize_grouped_integer(token: str, separator: Literal[".", ","]) -> Optional[str]:
+    grouped_integer_pattern = re.compile(rf"^\d{{1,3}}(?:\{separator}\d{{3}})+$")
+    if not grouped_integer_pattern.fullmatch(token):
+        return None
+
     normalized: list[str] = []
 
     for char in token:

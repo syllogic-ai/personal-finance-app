@@ -29,6 +29,18 @@ class NumberParsingTests(unittest.TestCase):
             parse_localized_decimal("1,234", amount_format="COMMA_DECIMAL"),
             Decimal("1.234"),
         )
+        self.assertIsNone(
+            parse_localized_decimal(
+                ".123",
+                allow_grouped_integers_when_ambiguous=True,
+            )
+        )
+        self.assertIsNone(
+            parse_localized_decimal(
+                "1,,234",
+                allow_grouped_integers_when_ambiguous=True,
+            )
+        )
 
     def test_infer_amount_format(self) -> None:
         self.assertEqual(
