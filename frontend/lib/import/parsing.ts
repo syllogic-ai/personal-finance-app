@@ -147,7 +147,7 @@ export function parseLocalizedNumber(
       const digitsAfter = token.length - token.lastIndexOf(separator) - 1;
       if (digitsAfter === 0 || digitsAfter === 3) {
         if (options.allowGroupedIntegersWhenAmbiguous && digitsAfter === 3) {
-          normalized = normalizeGroupedInteger(token);
+          normalized = normalizeGroupedInteger(token, separator);
         } else {
           return null;
         }
@@ -307,7 +307,14 @@ function normalizeWithDecimalSeparator(
   return normalized;
 }
 
-function normalizeGroupedInteger(token: string): string | null {
+function normalizeGroupedInteger(token: string, separator: "." | ","): string | null {
+  const groupedIntegerPattern = new RegExp(
+    `^\\d{1,3}(\\${separator}\\d{3})+$`
+  );
+
+  if (!groupedIntegerPattern.test(token)) {
+    return null;
+  }
   let normalized = "";
 
   for (const char of token) {
