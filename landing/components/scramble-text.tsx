@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 
 const SCRAMBLE_CHARS = "!<>-_\\/[]{}—=+*^?#@";
 
@@ -13,11 +13,25 @@ export function ScrambleText({ children, className }: ScrambleTextProps) {
   const [display, setDisplay] = useState(children);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  useEffect(() => {
+    setDisplay(children);
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
+  }, [children]);
+
   const scramble = useCallback(() => {
     const original = children;
     let iteration = 0;
 
-    if (intervalRef.current) clearInterval(intervalRef.current);
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
 
     intervalRef.current = setInterval(() => {
       setDisplay(
@@ -33,7 +47,10 @@ export function ScrambleText({ children, className }: ScrambleTextProps) {
       );
 
       if (iteration >= original.length) {
-        if (intervalRef.current) clearInterval(intervalRef.current);
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+          intervalRef.current = null;
+        }
         setDisplay(original);
       }
 

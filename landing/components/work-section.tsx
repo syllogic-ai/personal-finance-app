@@ -83,17 +83,23 @@ export function WorkSection() {
 
   useEffect(() => {
     let cleanup: (() => void) | undefined;
+    let cancelled = false;
 
     async function initGsap() {
       const { gsap } = await import("gsap");
       const { ScrollTrigger } = await import("gsap/ScrollTrigger");
+
+      if (cancelled) {
+        return;
+      }
+
       gsap.registerPlugin(ScrollTrigger);
 
       const cards =
         sectionRef.current?.querySelectorAll<HTMLElement>(".feature-card");
       if (!cards?.length) return;
 
-      gsap.fromTo(
+      const animation = gsap.fromTo(
         cards,
         { opacity: 0, y: 24 },
         {
@@ -109,11 +115,17 @@ export function WorkSection() {
         }
       );
 
-      cleanup = () => ScrollTrigger.getAll().forEach((t) => t.kill());
+      cleanup = () => {
+        animation.scrollTrigger?.kill();
+        animation.kill();
+      };
     }
 
     initGsap();
-    return () => cleanup?.();
+    return () => {
+      cancelled = true;
+      cleanup?.();
+    };
   }, []);
 
   return (
