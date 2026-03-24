@@ -1,0 +1,4 @@
+# Default owners for the whole repo. Pair with branch protection:
+# Settings → Branches → (rule) → "Require review from Code Owners".
+# Team slug must match GitHub (org shows as syllogic-ai on github.com/syllogic-ai).
+* @syllogic-ai/developers

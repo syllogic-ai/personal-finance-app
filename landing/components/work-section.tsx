@@ -138,12 +138,12 @@ export function WorkSection() {
       >
         {/* Section header */}
         <div className="flex items-baseline gap-4 mb-4">
-        <span
-          className="font-mono text-sm"
-          style={{ color: "var(--color-accent)" }}
-        >
+          <span
+            className="font-mono text-sm"
+            style={{ color: "var(--color-accent)" }}
+          >
             04
-        </span>
+          </span>
           <h2
             className="font-display text-5xl"
             style={{ color: "var(--color-fg)" }}

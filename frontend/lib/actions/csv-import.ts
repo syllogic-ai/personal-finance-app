@@ -12,7 +12,6 @@ import {
   DEMO_RESTRICTED_ACTION_ERROR,
   isDemoRestrictedUserEmail,
 } from "@/lib/demo-access";
-import {
   detectCsvDelimiter,
   inferAmountFormat,
   parseDelimitedText,
@@ -120,7 +119,6 @@ async function getCsvImportAccess() {
 
   return { session, userId: session.user.id } as const;
 }
-
 // Column mapping types
 export interface ColumnMapping {
   date: string | null;
