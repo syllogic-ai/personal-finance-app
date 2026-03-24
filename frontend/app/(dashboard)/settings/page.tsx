@@ -5,6 +5,7 @@ import { getCurrentUserProfile } from "@/lib/actions/settings";
 import { getCategories } from "@/lib/actions/categories";
 import { listApiKeys } from "@/lib/actions/api-keys";
 import { resolveMcpServerUrlForSnippet } from "@/lib/mcp/server-url";
+import { isDemoRestrictedUserEmail } from "@/lib/demo-access";
 
 export default async function SettingsPage() {
   const user = await getCurrentUserProfile();
@@ -19,6 +20,7 @@ export default async function SettingsPage() {
   ]);
 
   const apiKeys = apiKeysResult.success && apiKeysResult.keys ? apiKeysResult.keys : [];
+  const canCreateApiKeys = !isDemoRestrictedUserEmail(user.email);
   const mcpServerUrl = resolveMcpServerUrlForSnippet({
     mcpServerUrl: process.env.MCP_SERVER_URL,
     betterAuthUrl: process.env.BETTER_AUTH_URL || process.env.NEXT_PUBLIC_BETTER_AUTH_URL,
@@ -34,6 +36,7 @@ export default async function SettingsPage() {
           categories={categories}
           apiKeys={apiKeys}
           mcpServerUrl={mcpServerUrl}
+          canCreateApiKeys={canCreateApiKeys}
         />
       </div>
     </>

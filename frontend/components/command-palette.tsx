@@ -45,7 +45,7 @@ const MIN_SEARCH_LENGTH = 2;
 
 export function CommandPalette() {
   const { callbacks } = useCommandPaletteCallbacks();
-  const { onAddTransaction, onExportCSV, onAddAsset, onRefreshData } = callbacks;
+  const { onAddTransaction, onExportCSV, onImportCsv, onAddAsset, onRefreshData } = callbacks;
   const [open, setOpen] = React.useState(false);
   const [data, setData] = React.useState<CommandPaletteData | null>(null);
   const [isLoading, setIsLoading] = React.useState(false);
@@ -211,11 +211,13 @@ export function CommandPalette() {
             onSelect: onExportCSV,
           });
         }
-        actions.push({
-          label: "Import CSV",
-          icon: RiUploadLine,
-          onSelect: () => router.push("/transactions/import"),
-        });
+        if (onImportCsv) {
+          actions.push({
+            label: "Import CSV",
+            icon: RiUploadLine,
+            onSelect: onImportCsv,
+          });
+        }
         break;
       case "/assets":
         if (onAddAsset) {

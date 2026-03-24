@@ -1,6 +1,5 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { RiAddLine, RiEditLine, RiUploadCloud2Line } from "@remixicon/react";
 import { Button } from "@/components/ui/button";
@@ -10,30 +9,24 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { hasOpenAiApiKey } from "@/lib/actions/settings";
 
 interface AddTransactionButtonProps {
   onAddManual: () => void;
+  allowCsvImport: boolean;
 }
 
-export function AddTransactionButton({ onAddManual }: AddTransactionButtonProps) {
+export function AddTransactionButton({
+  onAddManual,
+  allowCsvImport,
+}: AddTransactionButtonProps) {
   const router = useRouter();
-  const [showCsvOption, setShowCsvOption] = useState(false);
-
-  useEffect(() => {
-    const checkApiKey = async () => {
-      const hasKey = await hasOpenAiApiKey();
-      setShowCsvOption(hasKey);
-    };
-    checkApiKey();
-  }, []);
 
   const handleCsvImport = () => {
     router.push("/transactions/import");
   };
 
   // If CSV option is not available, show a simple button
-  if (!showCsvOption) {
+  if (!allowCsvImport) {
     return (
       <Button onClick={onAddManual}>
         <RiAddLine className="mr-2 h-4 w-4" />

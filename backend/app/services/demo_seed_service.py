@@ -45,6 +45,7 @@ class AccountSpec:
     institution: str
     currency: str
     target_ending_balance: Decimal
+    minimum_balance_floor: Decimal
 
 
 @dataclass(frozen=True)
@@ -76,6 +77,7 @@ ACCOUNT_SPECS: tuple[AccountSpec, ...] = (
         institution="Revolut",
         currency="EUR",
         target_ending_balance=Decimal("7425.00"),
+        minimum_balance_floor=Decimal("1500.00"),
     ),
     AccountSpec(
         name="Savings Vault",
@@ -83,6 +85,7 @@ ACCOUNT_SPECS: tuple[AccountSpec, ...] = (
         institution="Revolut",
         currency="EUR",
         target_ending_balance=Decimal("18620.00"),
+        minimum_balance_floor=Decimal("9000.00"),
     ),
     AccountSpec(
         name="Travel Card",
@@ -90,6 +93,7 @@ ACCOUNT_SPECS: tuple[AccountSpec, ...] = (
         institution="Wise",
         currency="USD",
         target_ending_balance=Decimal("1280.00"),
+        minimum_balance_floor=Decimal("600.00"),
     ),
 )
 
@@ -424,20 +428,18 @@ class DemoSeedService:
             end_date=seed_end,
         )
 
+        category_by_name = {category.name: category for category in categories}
+        self._normalize_seeded_account_balances(
+            user_id=user.id,
+            accounts=accounts,
+            transactions=transactions,
+            category_by_name=category_by_name,
+            start_date=seed_start,
+            end_date=seed_end,
+        )
+        transactions.sort(key=lambda tx: tx.booked_at)
+
         self.db.add_all(transactions)
-
-        account_sums: Dict[str, Decimal] = {str(account.id): Decimal("0") for account in accounts}
-        for tx in transactions:
-            account_sums[str(tx.account_id)] += tx.amount or Decimal("0")
-
-        target_balances = {spec.name: spec.target_ending_balance for spec in ACCOUNT_SPECS}
-        for account in accounts:
-            sum_value = account_sums[str(account.id)]
-            target = target_balances[account.name]
-            starting_balance = _quantize_currency(target - sum_value)
-            account.starting_balance = starting_balance
-            account.balance_available = target
-            account.functional_balance = target if account.currency == "EUR" else None
 
         self.db.commit()
 
@@ -566,6 +568,15 @@ class DemoSeedService:
         additional_adjustments = combined_month_transactions[len(existing_month_transactions) + len(daily_transactions):]
         if additional_adjustments:
             daily_transactions.extend(additional_adjustments)
+
+        self._normalize_daily_account_balances(
+            user_id=user.id,
+            target_date=day,
+            daily_transactions=daily_transactions,
+            accounts=accounts,
+            category_by_name=category_by_name,
+        )
+        daily_transactions.sort(key=lambda tx: tx.booked_at)
 
         self._assign_daily_external_ids(user.id, day, daily_transactions)
 
@@ -1404,15 +1415,23 @@ class DemoSeedService:
         merchant: str,
         category: Optional[Category],
         external_id: Optional[str] = None,
+        booked_time: Optional[tuple[int, int, int]] = None,
     ) -> Transaction:
         self._external_counter += 1
+        if booked_time is None:
+            booked_time = (
+                self.rng.randint(7, 22),
+                self.rng.randint(0, 59),
+                self.rng.randint(0, 59),
+            )
+
         booked_at = datetime.combine(
             booked_date,
             datetime.min.time(),
         ).replace(
-            hour=self.rng.randint(7, 22),
-            minute=self.rng.randint(0, 59),
-            second=self.rng.randint(0, 59),
+            hour=booked_time[0],
+            minute=booked_time[1],
+            second=booked_time[2],
         )
 
         normalized_amount = _quantize_currency(amount)
@@ -1436,6 +1455,320 @@ class DemoSeedService:
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow(),
         )
+
+    def _build_balance_adjustment_transaction(
+        self,
+        user_id: str,
+        account: Account,
+        category: Category,
+        amount: Decimal,
+        booked_date: date,
+        description: str,
+        booked_time: tuple[int, int, int],
+    ) -> Transaction:
+        tx = self._build_transaction(
+            user_id=user_id,
+            account=account,
+            amount=amount,
+            booked_date=booked_date,
+            description=description,
+            merchant="System Balance Normalization",
+            category=category,
+            booked_time=booked_time,
+        )
+        tx.include_in_analytics = False
+        return tx
+
+    def _normalize_seeded_account_balances(
+        self,
+        user_id: str,
+        accounts: List[Account],
+        transactions: List[Transaction],
+        category_by_name: Dict[str, Category],
+        start_date: date,
+        end_date: date,
+    ) -> None:
+        balancing_category = category_by_name["Balancing Transfer"]
+        spec_by_name = {spec.name: spec for spec in ACCOUNT_SPECS}
+        transactions_by_account: Dict[str, List[Transaction]] = {str(account.id): [] for account in accounts}
+
+        for tx in transactions:
+            transactions_by_account.setdefault(str(tx.account_id), []).append(tx)
+
+        for account in accounts:
+            spec = spec_by_name[account.name]
+            floor = spec.minimum_balance_floor
+            account_transactions = sorted(
+                transactions_by_account.get(str(account.id), []),
+                key=lambda tx: tx.booked_at,
+            )
+            total_amount = sum(
+                ((tx.amount or Decimal("0")) for tx in account_transactions),
+                Decimal("0"),
+            )
+            minimum_prefix = self._minimum_prefix_sum(account_transactions)
+            starting_balance = _quantize_currency(floor - minimum_prefix)
+
+            account.starting_balance = starting_balance
+            account.balance_available = spec.target_ending_balance
+            account.functional_balance = (
+                spec.target_ending_balance if account.currency == "EUR" else None
+            )
+
+            adjustment_transactions = self._build_seed_balance_adjustments(
+                user_id=user_id,
+                account=account,
+                category=balancing_category,
+                opening_balance=starting_balance,
+                transactions=account_transactions,
+                target_ending_balance=spec.target_ending_balance,
+                minimum_balance_floor=floor,
+                start_date=start_date,
+                end_date=end_date,
+            )
+            if adjustment_transactions:
+                transactions.extend(adjustment_transactions)
+                transactions_by_account[str(account.id)].extend(adjustment_transactions)
+
+            logger.info(
+                "[DEMO_SEED] Normalized account=%s floor=%s target=%s tx_sum=%s adjustments=%s",
+                account.name,
+                floor,
+                spec.target_ending_balance,
+                total_amount,
+                len(adjustment_transactions),
+            )
+
+    def _build_seed_balance_adjustments(
+        self,
+        user_id: str,
+        account: Account,
+        category: Category,
+        opening_balance: Decimal,
+        transactions: List[Transaction],
+        target_ending_balance: Decimal,
+        minimum_balance_floor: Decimal,
+        start_date: date,
+        end_date: date,
+    ) -> List[Transaction]:
+        adjustments: List[Transaction] = []
+        ending_balance = self._ending_balance(opening_balance, transactions)
+        balance_delta = _quantize_currency(ending_balance - target_ending_balance)
+
+        if balance_delta < Decimal("-0.01"):
+            adjustments.append(
+                self._build_balance_adjustment_transaction(
+                    user_id=user_id,
+                    account=account,
+                    category=category,
+                    amount=abs(balance_delta),
+                    booked_date=end_date,
+                    booked_time=(23, 59, 40),
+                    description="DEMO BALANCE TOP-UP",
+                )
+            )
+            return adjustments
+
+        if balance_delta <= Decimal("0.01"):
+            return adjustments
+
+        remaining_delta = balance_delta
+        candidate_dates = self._balance_adjustment_dates(start_date, end_date)
+
+        for offset, candidate_date in enumerate(candidate_dates):
+            if remaining_delta <= Decimal("0.01"):
+                break
+
+            candidate_transactions = sorted(
+                [*transactions, *adjustments],
+                key=lambda tx: tx.booked_at,
+            )
+            minimum_after_candidate = self._minimum_balance_after_date(
+                opening_balance=opening_balance,
+                transactions=candidate_transactions,
+                candidate_date=candidate_date,
+            )
+            available_slack = _quantize_currency(
+                minimum_after_candidate - minimum_balance_floor
+            )
+            if available_slack <= Decimal("0.01"):
+                continue
+
+            remaining_slots = len(candidate_dates) - offset
+            target_slice = remaining_delta if remaining_slots <= 1 else _quantize_currency(
+                remaining_delta / Decimal(remaining_slots)
+            )
+            adjustment_amount = _quantize_currency(
+                min(remaining_delta, available_slack, target_slice)
+            )
+            if adjustment_amount <= Decimal("0.01"):
+                continue
+            adjustments.append(
+                self._build_balance_adjustment_transaction(
+                    user_id=user_id,
+                    account=account,
+                    category=category,
+                    amount=adjustment_amount * Decimal("-1"),
+                    booked_date=candidate_date,
+                    booked_time=(23, 59, max(0, 39 - (offset % 30))),
+                    description="DEMO BALANCE SWEEP",
+                )
+            )
+            remaining_delta = _quantize_currency(remaining_delta - adjustment_amount)
+
+        if remaining_delta > Decimal("0.01"):
+            logger.warning(
+                "[DEMO_SEED] Could not fully normalize ending balance for account=%s remaining_delta=%s",
+                account.name,
+                remaining_delta,
+            )
+
+        return adjustments
+
+    def _normalize_daily_account_balances(
+        self,
+        user_id: str,
+        target_date: date,
+        daily_transactions: List[Transaction],
+        accounts: List[Account],
+        category_by_name: Dict[str, Category],
+    ) -> None:
+        if not daily_transactions:
+            return
+
+        balancing_category = category_by_name["Balancing Transfer"]
+        spec_by_name = {spec.name: spec for spec in ACCOUNT_SPECS}
+        accounts_by_id = {str(account.id): account for account in accounts}
+        daily_by_account: Dict[str, List[Transaction]] = {}
+
+        for tx in daily_transactions:
+            daily_by_account.setdefault(str(tx.account_id), []).append(tx)
+
+        day_start = datetime.combine(target_date, datetime.min.time())
+
+        for account_id, account_transactions in daily_by_account.items():
+            account = accounts_by_id.get(account_id)
+            if not account:
+                continue
+
+            spec = spec_by_name.get(account.name)
+            if not spec:
+                continue
+
+            opening_sum = self.db.query(func.sum(Transaction.amount)).filter(
+                Transaction.user_id == user_id,
+                Transaction.account_id == account.id,
+                Transaction.booked_at < day_start,
+            ).scalar()
+            opening_balance = _quantize_currency(
+                Decimal(str(account.starting_balance or 0)) + Decimal(str(opening_sum or 0))
+            )
+
+            ordered_transactions = sorted(account_transactions, key=lambda tx: tx.booked_at)
+            minimum_balance = self._minimum_balance(
+                opening_balance=opening_balance,
+                transactions=ordered_transactions,
+            )
+            if minimum_balance >= spec.minimum_balance_floor:
+                continue
+
+            top_up_amount = _quantize_currency(spec.minimum_balance_floor - minimum_balance)
+            natural_ending_balance = self._ending_balance(opening_balance, ordered_transactions)
+            desired_ending_balance = max(natural_ending_balance, spec.minimum_balance_floor)
+
+            opening_adjustment = self._build_balance_adjustment_transaction(
+                user_id=user_id,
+                account=account,
+                category=balancing_category,
+                amount=top_up_amount,
+                booked_date=target_date,
+                booked_time=(6, 0, 0),
+                description="DEMO DAILY FLOOR TOP-UP",
+            )
+            daily_transactions.append(opening_adjustment)
+
+            closing_amount = _quantize_currency(
+                (natural_ending_balance + top_up_amount) - desired_ending_balance
+            )
+            if closing_amount > Decimal("0.01"):
+                daily_transactions.append(
+                    self._build_balance_adjustment_transaction(
+                        user_id=user_id,
+                        account=account,
+                        category=balancing_category,
+                        amount=closing_amount * Decimal("-1"),
+                        booked_date=target_date,
+                        booked_time=(23, 59, 50),
+                        description="DEMO DAILY BALANCE SWEEP",
+                    )
+                )
+
+    def _minimum_prefix_sum(self, transactions: List[Transaction]) -> Decimal:
+        balance = Decimal("0")
+        minimum_balance = Decimal("0")
+
+        for tx in sorted(transactions, key=lambda item: item.booked_at):
+            balance += tx.amount or Decimal("0")
+            if balance < minimum_balance:
+                minimum_balance = balance
+
+        return _quantize_currency(minimum_balance)
+
+    def _minimum_balance(
+        self,
+        opening_balance: Decimal,
+        transactions: List[Transaction],
+    ) -> Decimal:
+        balance = opening_balance
+        minimum_balance = opening_balance
+
+        for tx in sorted(transactions, key=lambda item: item.booked_at):
+            balance += tx.amount or Decimal("0")
+            if balance < minimum_balance:
+                minimum_balance = balance
+
+        return _quantize_currency(minimum_balance)
+
+    def _ending_balance(
+        self,
+        opening_balance: Decimal,
+        transactions: List[Transaction],
+    ) -> Decimal:
+        balance = opening_balance
+        for tx in sorted(transactions, key=lambda item: item.booked_at):
+            balance += tx.amount or Decimal("0")
+        return _quantize_currency(balance)
+
+    def _minimum_balance_after_date(
+        self,
+        opening_balance: Decimal,
+        transactions: List[Transaction],
+        candidate_date: date,
+    ) -> Decimal:
+        balance = opening_balance
+        minimum_after: Optional[Decimal] = None
+        captured_candidate = False
+
+        for tx in sorted(transactions, key=lambda item: item.booked_at):
+            if not captured_candidate and tx.booked_at.date() > candidate_date:
+                minimum_after = balance
+                captured_candidate = True
+
+            balance += tx.amount or Decimal("0")
+            if captured_candidate:
+                minimum_after = balance if minimum_after is None else min(minimum_after, balance)
+
+        if not captured_candidate:
+            minimum_after = balance
+
+        return _quantize_currency(minimum_after if minimum_after is not None else balance)
+
+    def _balance_adjustment_dates(self, start_date: date, end_date: date) -> List[date]:
+        dates = {start_date, end_date}
+        for month_anchor in _iter_month_anchors(start_date, end_date):
+            month_end = date(month_anchor.year, month_anchor.month, _days_in_month(month_anchor.year, month_anchor.month))
+            dates.add(min(month_end, end_date))
+        return sorted(dates)
 
     def _inject_categorization_edge_cases(self, transactions: List[Transaction], categories: List[Category]) -> None:
         """Introduce a small amount of uncategorized and override-like data."""
