@@ -4,10 +4,14 @@ import { revalidatePath } from "next/cache";
 import { eq, and } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { csvImports, accounts, transactions, type NewTransaction } from "@/lib/db/schema";
-import { getAuthenticatedSession, requireAuth } from "@/lib/auth-helpers";
+import { getAuthenticatedSession } from "@/lib/auth-helpers";
 import { storage } from "@/lib/storage";
 import { getBackendBaseUrl } from "@/lib/backend-url";
 import { createInternalAuthHeaders } from "@/lib/internal-auth";
+import {
+  DEMO_RESTRICTED_ACTION_ERROR,
+  isDemoRestrictedUserEmail,
+} from "@/lib/demo-access";
 import {
   detectCsvDelimiter,
   inferAmountFormat,
@@ -103,6 +107,19 @@ function parseImportedNumber(
   );
 }
 
+async function getCsvImportAccess() {
+  const session = await getAuthenticatedSession();
+
+  if (!session?.user?.id) {
+    return { error: "Not authenticated" } as const;
+  }
+
+  if (isDemoRestrictedUserEmail(session.user.email)) {
+    return { error: DEMO_RESTRICTED_ACTION_ERROR } as const;
+  }
+
+  return { session, userId: session.user.id } as const;
+}
 // Column mapping types
 export interface ColumnMapping {
   date: string | null;
@@ -163,11 +180,11 @@ export async function initializeCsvImport(
   fileName: string,
   fileContent: string
 ): Promise<{ success: boolean; error?: string; importId?: string }> {
-  const session = await getAuthenticatedSession();
-
-  if (!session?.user?.id) {
-    return { success: false, error: "Not authenticated" };
+  const access = await getCsvImportAccess();
+  if ("error" in access) {
+    return { success: false, error: access.error };
   }
+  const { session } = access;
 
   try {
     // Verify the account belongs to the user
@@ -217,11 +234,11 @@ export async function initializeCsvImport(
 export async function parseCsvHeaders(
   importId: string
 ): Promise<{ success: boolean; error?: string; data?: ParsedCsvData }> {
-  const userId = await requireAuth();
-
-  if (!userId) {
-    return { success: false, error: "Not authenticated" };
+  const access = await getCsvImportAccess();
+  if ("error" in access) {
+    return { success: false, error: access.error };
   }
+  const { userId } = access;
 
   try {
     // Get the import session
@@ -271,11 +288,11 @@ export async function getAiColumnMapping(
   csvHeaders: string[],
   sampleRows: string[][]
 ): Promise<{ success: boolean; error?: string; mapping?: ColumnMapping }> {
-  const userId = await requireAuth();
-
-  if (!userId) {
-    return { success: false, error: "Not authenticated" };
+  const access = await getCsvImportAccess();
+  if ("error" in access) {
+    return { success: false, error: access.error };
   }
+  const { userId } = access;
 
   const openaiApiKey = process.env.OPENAI_API_KEY;
   if (!openaiApiKey) {
@@ -381,11 +398,11 @@ export async function saveColumnMapping(
   importId: string,
   mapping: ColumnMapping
 ): Promise<{ success: boolean; error?: string }> {
-  const userId = await requireAuth();
-
-  if (!userId) {
-    return { success: false, error: "Not authenticated" };
+  const access = await getCsvImportAccess();
+  if ("error" in access) {
+    return { success: false, error: access.error };
   }
+  const { userId } = access;
 
   try {
     await db
@@ -425,11 +442,11 @@ export interface DailyBalance {
 export async function previewImportedTransactions(
   importId: string
 ): Promise<{ success: boolean; error?: string; transactions?: PreviewTransaction[]; balanceVerification?: BalanceVerification; dailyBalances?: DailyBalance[] }> {
-  const userId = await requireAuth();
-
-  if (!userId) {
-    return { success: false, error: "Not authenticated" };
+  const access = await getCsvImportAccess();
+  if ("error" in access) {
+    return { success: false, error: access.error };
   }
+  const { userId } = access;
 
   try {
     // Get the import session
@@ -1070,11 +1087,11 @@ export async function finalizeImport(
   importId: string,
   selectedIndices: number[]
 ): Promise<{ success: boolean; error?: string; importedCount?: number; categorizationSummary?: BackendTransactionImportResponse["categorization_summary"] }> {
-  const session = await getAuthenticatedSession();
-
-  if (!session?.user?.id) {
-    return { success: false, error: "Not authenticated" };
+  const access = await getCsvImportAccess();
+  if ("error" in access) {
+    return { success: false, error: access.error };
   }
+  const { session } = access;
 
   try {
     // Get preview transactions
@@ -1303,11 +1320,11 @@ export async function enqueueBackgroundImport(
   taskId?: string;
   totalTransactions?: number;
 }> {
-  const session = await getAuthenticatedSession();
-
-  if (!session?.user?.id) {
-    return { success: false, error: "Not authenticated" };
+  const access = await getCsvImportAccess();
+  if ("error" in access) {
+    return { success: false, error: access.error };
   }
+  const { session } = access;
 
   try {
     // Get preview transactions
@@ -1441,11 +1458,11 @@ export async function enqueueBackgroundImport(
 export async function getCsvImportSession(
   importId: string
 ): Promise<CsvImportSession | null> {
-  const userId = await requireAuth();
-
-  if (!userId) {
+  const access = await getCsvImportAccess();
+  if ("error" in access) {
     return null;
   }
+  const { userId } = access;
 
   const importSession = await db.query.csvImports.findFirst({
     where: and(
@@ -1596,11 +1613,11 @@ export async function importRevolutCsv(filePath: string): Promise<{
   imported?: number;
   categoriesCreated?: number;
 }> {
-  const session = await getAuthenticatedSession();
-
-  if (!session?.user?.id) {
-    return { success: false, error: "Not authenticated" };
+  const access = await getCsvImportAccess();
+  if ("error" in access) {
+    return { success: false, error: access.error };
   }
+  const { session } = access;
 
   try {
     // Read and parse CSV

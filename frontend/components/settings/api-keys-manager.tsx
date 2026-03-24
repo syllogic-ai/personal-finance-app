@@ -50,10 +50,12 @@ import {
   createApiKey,
   deleteApiKey,
 } from "@/lib/actions/api-keys";
+import { DEMO_RESTRICTED_ACTION_ERROR } from "@/lib/demo-access";
 import { stringifyClaudeDesktopMcpConfig } from "@/lib/mcp/claude-desktop-config";
 
 interface ApiKeysManagerProps {
   mcpServerUrl: string;
+  canCreateApiKeys: boolean;
   initialKeys: Array<{
     id: string;
     name: string;
@@ -110,7 +112,11 @@ function isExpired(date: Date | null): boolean {
   return new Date(date) < new Date();
 }
 
-export function ApiKeysManager({ initialKeys, mcpServerUrl }: ApiKeysManagerProps) {
+export function ApiKeysManager({
+  initialKeys,
+  mcpServerUrl,
+  canCreateApiKeys,
+}: ApiKeysManagerProps) {
   const router = useRouter();
   const [keys, setKeys] = useState(initialKeys);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -129,6 +135,11 @@ export function ApiKeysManager({ initialKeys, mcpServerUrl }: ApiKeysManagerProp
   const [copied, setCopied] = useState(false);
 
   const handleCreateKey = async () => {
+    if (!canCreateApiKeys) {
+      toast.error(DEMO_RESTRICTED_ACTION_ERROR);
+      return;
+    }
+
     if (!keyName.trim()) {
       toast.error("Please enter a name for the API key");
       return;
@@ -281,11 +292,22 @@ export function ApiKeysManager({ initialKeys, mcpServerUrl }: ApiKeysManagerProp
             )}
 
             {/* Create button */}
+            {!canCreateApiKeys && (
+              <p className="text-sm text-muted-foreground">
+                API key creation is disabled for the shared demo account.
+              </p>
+            )}
             <Button
               variant="outline"
               size="sm"
               className="w-full"
-              onClick={() => setCreateDialogOpen(true)}
+              onClick={() => {
+                if (!canCreateApiKeys) {
+                  return;
+                }
+                setCreateDialogOpen(true);
+              }}
+              disabled={!canCreateApiKeys}
             >
               <RiAddLine className="mr-2 h-4 w-4" />
               Create API Key

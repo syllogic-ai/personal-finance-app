@@ -5,6 +5,7 @@ import * as React from "react";
 interface CommandPaletteCallbacks {
   onAddTransaction?: () => void;
   onExportCSV?: () => void;
+  onImportCsv?: () => void;
   onAddAsset?: () => void;
   onRefreshData?: () => void;
 }

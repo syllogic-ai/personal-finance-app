@@ -10,16 +10,24 @@ export function SmoothScroll({ children }: { children: ReactNode }) {
       easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
     });
 
+    let frameId = 0;
+    let cancelled = false;
+
     function raf(time: number) {
+      if (cancelled) {
+        return;
+      }
+
       lenis.raf(time);
-      requestAnimationFrame(raf);
+      frameId = requestAnimationFrame(raf);
     }
 
-    const id = requestAnimationFrame(raf);
+    frameId = requestAnimationFrame(raf);
 
     return () => {
+      cancelled = true;
+      cancelAnimationFrame(frameId);
       lenis.destroy();
-      cancelAnimationFrame(id);
     };
   }, []);
 

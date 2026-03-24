@@ -14,7 +14,8 @@ from sqlalchemy import func
 
 from app.database import Base, SessionLocal, engine
 from app.models import Account, Category, Transaction, User
-from app.services.demo_seed_service import DemoSeedService
+from app.services.demo_seed_service import ACCOUNT_SPECS, DemoSeedService
+from tasks.demo_tasks import _scheduled_demo_window
 
 
 def ensure_test_user(db) -> User:
@@ -33,6 +34,31 @@ def ensure_test_user(db) -> User:
     db.commit()
     db.refresh(user)
     return user
+
+
+def assert_demo_account_balance_floors(db, user_id: str) -> None:
+    specs_by_name = {spec.name: spec for spec in ACCOUNT_SPECS}
+    accounts = db.query(Account).filter(Account.user_id == user_id, Account.is_active == True).all()
+
+    for account in accounts:
+        spec = specs_by_name.get(account.name)
+        if not spec:
+            continue
+
+        balance = Decimal(str(account.starting_balance or 0))
+        minimum_balance = balance
+        account_txs = db.query(Transaction).filter(
+            Transaction.user_id == user_id,
+            Transaction.account_id == account.id,
+        ).order_by(Transaction.booked_at.asc()).all()
+
+        for tx in account_txs:
+            balance += Decimal(str(tx.amount or 0))
+            minimum_balance = min(minimum_balance, balance)
+
+        assert minimum_balance >= (spec.minimum_balance_floor - Decimal("0.01")), (
+            f"Expected {account.name} minimum balance >= {spec.minimum_balance_floor}, got {minimum_balance}"
+        )
 
 
 def run_checks() -> bool:
@@ -65,6 +91,7 @@ def run_checks() -> bool:
         max_booked = max(tx.booked_at.date() for tx in txs)
         assert min_booked >= date(2025, 1, 1), "Transactions before start date"
         assert max_booked <= date(2025, 1, 31), "Transactions after end date"
+        assert_demo_account_balance_floors(db, user.id)
 
         # Monthly financial constraints:
         # - income must exceed spending with at least 35% savings rate
@@ -126,6 +153,7 @@ def run_checks() -> bool:
         )
         assert not append_summary.get("skipped"), "Expected first daily append to create transactions"
         assert append_summary.get("transactions_created", 0) > 0, "Expected created daily transactions"
+        assert_demo_account_balance_floors(db, user.id)
 
         appended_rows = db.query(Transaction).filter(
             Transaction.user_id == user.id,
@@ -148,6 +176,40 @@ def run_checks() -> bool:
             target_date=date(2025, 1, 10),
         )
         assert existing_day_skip.get("skipped"), "Expected populated seeded day to be skipped"
+
+        # Scheduled reset should stop before the append target, so the daily run can create it.
+        coverage_end, target_date = _scheduled_demo_window(today=date(2025, 2, 3))
+        service.seed_for_user(
+            user=user,
+            start_date=date(2025, 1, 1),
+            end_date=coverage_end,
+            reset=True,
+        )
+        reset_max_booked = db.query(func.max(func.date(Transaction.booked_at))).filter(
+            Transaction.user_id == user.id,
+        ).scalar()
+        assert reset_max_booked == coverage_end, (
+            f"Scheduled reset should stop at {coverage_end}, got {reset_max_booked}"
+        )
+
+        scheduled_coverage = service.ensure_demo_coverage(
+            user=user,
+            start_date=date(2025, 1, 1),
+            end_date=coverage_end,
+        )
+        assert scheduled_coverage.get("action") == "none", (
+            f"Expected scheduled coverage check to leave append target empty: {scheduled_coverage}"
+        )
+
+        scheduled_append = service.append_previous_day_transactions(
+            user=user,
+            target_date=target_date,
+        )
+        assert not scheduled_append.get("skipped"), "Expected scheduled append target to be created"
+        assert scheduled_append.get("target_date") == target_date.isoformat(), (
+            f"Unexpected scheduled append target: {scheduled_append}"
+        )
+        assert_demo_account_balance_floors(db, user.id)
 
         # Daily generation path should follow monthly optional-income cadence (0-1 per month).
         account_by_name = {account.name: account for account in accounts}

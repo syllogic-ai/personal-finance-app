@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
@@ -13,31 +13,47 @@ function SplitFlapChar({
 }) {
   const [display, setDisplay] = useState("\u00A0");
   const [settled, setSettled] = useState(false);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
+    setSettled(false);
+
     if (target === " ") {
       setDisplay("\u00A0");
+      setSettled(true);
       return;
     }
 
-    const timeout = setTimeout(() => {
+    timeoutRef.current = setTimeout(() => {
       let count = 0;
       const total = 10;
-      const interval = setInterval(() => {
+      intervalRef.current = setInterval(() => {
         if (count >= total) {
           setDisplay(target);
           setSettled(true);
-          clearInterval(interval);
+          if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
+          }
         } else {
           setDisplay(CHARS[Math.floor(Math.random() * CHARS.length)]);
           count++;
         }
       }, 55);
-
-      return () => clearInterval(interval);
     }, delay);
 
-    return () => clearTimeout(timeout);
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
   }, [target, delay]);
 
   return (

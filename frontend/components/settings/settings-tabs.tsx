@@ -11,6 +11,7 @@ interface SettingsTabsProps {
   user: User;
   categories: Category[];
   mcpServerUrl: string;
+  canCreateApiKeys: boolean;
   apiKeys: Array<{
     id: string;
     name: string;
@@ -26,6 +27,7 @@ export function SettingsTabs({
   categories,
   apiKeys,
   mcpServerUrl,
+  canCreateApiKeys,
 }: SettingsTabsProps) {
   return (
     <Tabs defaultValue="profile" className="flex-1">
@@ -53,7 +55,11 @@ export function SettingsTabs({
       </TabsContent>
 
       <TabsContent value="api-keys">
-        <ApiKeysManager initialKeys={apiKeys} mcpServerUrl={mcpServerUrl} />
+        <ApiKeysManager
+          initialKeys={apiKeys}
+          mcpServerUrl={mcpServerUrl}
+          canCreateApiKeys={canCreateApiKeys}
+        />
       </TabsContent>
     </Tabs>
   );

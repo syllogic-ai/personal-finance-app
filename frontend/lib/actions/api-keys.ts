@@ -4,7 +4,11 @@ import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
 import { apiKeys } from "@/lib/db/schema";
-import { requireAuth } from "@/lib/auth-helpers";
+import { getAuthenticatedSession, requireAuth } from "@/lib/auth-helpers";
+import {
+  DEMO_RESTRICTED_ACTION_ERROR,
+  isDemoRestrictedUserEmail,
+} from "@/lib/demo-access";
 import { revalidatePath } from "next/cache";
 import { eq, and, desc } from "drizzle-orm";
 
@@ -32,9 +36,15 @@ export async function createApiKey(input: {
     expiresAt: Date | null;
   };
 }> {
-  const userId = await requireAuth();
+  const session = await getAuthenticatedSession();
+  const userId = session?.user?.id;
+
   if (!userId) {
     return { success: false, error: "Not authenticated" };
+  }
+
+  if (isDemoRestrictedUserEmail(session.user.email)) {
+    return { success: false, error: DEMO_RESTRICTED_ACTION_ERROR };
   }
 
   const trimmedName = input.name.trim();

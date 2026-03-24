@@ -29,6 +29,7 @@ interface TransactionsClientProps {
   initialQueryState: TransactionsQueryState;
   categories: CategoryDisplay[];
   accounts: AccountForFilter[];
+  canImportCsv: boolean;
 }
 
 export function TransactionsClient({
@@ -38,6 +39,7 @@ export function TransactionsClient({
   initialQueryState,
   categories,
   accounts,
+  canImportCsv,
 }: TransactionsClientProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -264,13 +266,18 @@ export function TransactionsClient({
     exportTransactionsToCSV(transactions);
   }, [transactions]);
 
+  const handleImportCsv = useCallback(() => {
+    router.push("/transactions/import");
+  }, [router]);
+
   // Register command palette callbacks
   useRegisterCommandPaletteCallbacks(
     {
       onAddTransaction: handleAddManual,
       onExportCSV: handleExportCSV,
+      onImportCsv: canImportCsv ? handleImportCsv : undefined,
     },
-    [handleAddManual, handleExportCSV]
+    [handleAddManual, handleExportCSV, handleImportCsv, canImportCsv]
   );
 
   return (
@@ -307,7 +314,10 @@ export function TransactionsClient({
                   )}
                 </div>
               )}
-              <AddTransactionButton onAddManual={handleAddManual} />
+              <AddTransactionButton
+                onAddManual={handleAddManual}
+                allowCsvImport={canImportCsv}
+              />
             </div>
           }
         />

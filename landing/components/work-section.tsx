@@ -83,17 +83,23 @@ export function WorkSection() {
 
   useEffect(() => {
     let cleanup: (() => void) | undefined;
+    let cancelled = false;
 
     async function initGsap() {
       const { gsap } = await import("gsap");
       const { ScrollTrigger } = await import("gsap/ScrollTrigger");
+
+      if (cancelled) {
+        return;
+      }
+
       gsap.registerPlugin(ScrollTrigger);
 
       const cards =
         sectionRef.current?.querySelectorAll<HTMLElement>(".feature-card");
       if (!cards?.length) return;
 
-      gsap.fromTo(
+      const animation = gsap.fromTo(
         cards,
         { opacity: 0, y: 24 },
         {
@@ -109,11 +115,17 @@ export function WorkSection() {
         }
       );
 
-      cleanup = () => ScrollTrigger.getAll().forEach((t) => t.kill());
+      cleanup = () => {
+        animation.scrollTrigger?.kill();
+        animation.kill();
+      };
     }
 
     initGsap();
-    return () => cleanup?.();
+    return () => {
+      cancelled = true;
+      cleanup?.();
+    };
   }, []);
 
   return (
@@ -126,12 +138,12 @@ export function WorkSection() {
       >
         {/* Section header */}
         <div className="flex items-baseline gap-4 mb-4">
-        <span
-          className="font-mono text-sm"
-          style={{ color: "var(--color-accent)" }}
-        >
+          <span
+            className="font-mono text-sm"
+            style={{ color: "var(--color-accent)" }}
+          >
             04
-        </span>
+          </span>
           <h2
             className="font-display text-5xl"
             style={{ color: "var(--color-fg)" }}
