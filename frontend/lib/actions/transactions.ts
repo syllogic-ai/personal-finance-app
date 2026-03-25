@@ -1459,24 +1459,28 @@ export async function getDeleteImpact(
     const accountImpacts: AccountDeleteImpact[] = [];
     let overallEarliestDate = new Date(8640000000000000); // max-date sentinel for min-reduction
 
+    // Single grouped query replaces the previous per-account SUM inside the loop (N queries → 1).
+    const accountIds = Array.from(byAccount.keys());
+    const remainingSums = await db
+      .select({
+        accountId: transactions.accountId,
+        sum: sql<string>`COALESCE(SUM(${transactions.amount}), 0)`,
+      })
+      .from(transactions)
+      .where(
+        and(
+          inArray(transactions.accountId, accountIds),
+          eq(transactions.userId, userId),
+          notInArray(transactions.id, transactionIds)
+        )
+      )
+      .groupBy(transactions.accountId);
+    const remainingSumMap = new Map(remainingSums.map((r) => [r.accountId, r.sum]));
+
     for (const [accountId, { account, amountSum, earliestDate }] of byAccount) {
       const currentBalance = parseFloat(account.functionalBalance || "0");
-
-      // Compute projected balance the same way deleteTransactions does:
-      // startingBalance + SUM(remaining transactions after deletion).
-      // This avoids showing a wrong number when functionalBalance is stale.
-      const [remainingRow] = await db
-        .select({ sum: sql<string>`COALESCE(SUM(${transactions.amount}), 0)` })
-        .from(transactions)
-        .where(
-          and(
-            eq(transactions.accountId, accountId),
-            eq(transactions.userId, userId),
-            notInArray(transactions.id, transactionIds)
-          )
-        );
       const startingBalance = parseFloat(account.startingBalance || "0");
-      const projectedBalance = startingBalance + parseFloat(remainingRow.sum);
+      const projectedBalance = startingBalance + parseFloat(remainingSumMap.get(accountId) ?? "0");
 
       accountImpacts.push({
         accountId,
@@ -1574,7 +1578,7 @@ export async function deleteTransactions(
       await db
         .update(accounts)
         .set({ functionalBalance: newFunctionalBalance.toFixed(2), updatedAt: new Date() })
-        .where(eq(accounts.id, accountId));
+        .where(and(eq(accounts.id, accountId), eq(accounts.userId, userId)));
 
       // Rebuild daily balance snapshots from the earliest deleted transaction date
       await recalculateAccountBalancesFromDate(accountId, earliestDate, startingBalance);

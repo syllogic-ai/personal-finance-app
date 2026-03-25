@@ -50,7 +50,7 @@ export function SettingsTabs({
           <RiKeyLine className="mr-1.5 h-4 w-4" />
           API Keys
         </TabsTrigger>
-        <TabsTrigger value="import-history">
+        <TabsTrigger value="import-history" data-walkthrough="walkthrough-import-history">
           <RiUploadLine className="mr-1.5 h-4 w-4" />
           Import History
         </TabsTrigger>

@@ -1793,7 +1793,7 @@ export interface CsvImportWithStats {
  */
 export async function getCsvImportHistory(): Promise<CsvImportWithStats[]> {
   const userId = await requireAuth();
-  // Silent empty on auth failure — return type is CsvImportWithStats[], not a result object
+  // Return type is CsvImportWithStats[] (not a result object), so return empty on auth failure.
   if (!userId) return [];
 
   const imports = await db.query.csvImports.findMany({
@@ -1882,5 +1882,5 @@ export async function revertCsvImport(
 
   if (!result.success) return { success: false, error: result.error };
 
-  return { success: true, deletedCount: transactionIds.length };
+  return { success: true, deletedCount: result.deletedCount };
 }
