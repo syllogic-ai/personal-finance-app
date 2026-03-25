@@ -1,10 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { csvImports, accounts, transactions, type NewTransaction } from "@/lib/db/schema";
-import { getAuthenticatedSession } from "@/lib/auth-helpers";
+import { getAuthenticatedSession, requireAuth } from "@/lib/auth-helpers";
+import { deleteTransactions } from "@/lib/actions/transactions";
 import { storage } from "@/lib/storage";
 import { getBackendBaseUrl } from "@/lib/backend-url";
 import { createInternalAuthHeaders } from "@/lib/internal-auth";
@@ -1768,4 +1769,117 @@ export async function importRevolutCsv(filePath: string): Promise<{
     console.error("Failed to import CSV:", error);
     return { success: false, error: error instanceof Error ? error.message : "Failed to import CSV" };
   }
+}
+
+// ============================================================================
+// Import History
+// ============================================================================
+
+export interface CsvImportWithStats {
+  id: string;
+  fileName: string;
+  status: string | null;
+  importedRows: number | null;
+  totalRows: number | null;
+  createdAt: Date | null;
+  completedAt: Date | null;
+  account: { id: string; name: string; currency: string | null } | null;
+  transactionCount: number;
+  hasEditedTransactions: boolean;
+}
+
+/**
+ * Returns all CSV imports for the current user, enriched with linked transaction counts.
+ */
+export async function getCsvImportHistory(): Promise<CsvImportWithStats[]> {
+  const userId = await requireAuth();
+  if (!userId) return [];
+
+  const imports = await db.query.csvImports.findMany({
+    where: eq(csvImports.userId, userId),
+    orderBy: (t, { desc }) => [desc(t.createdAt)],
+    with: { account: { columns: { id: true, name: true, currency: true } } },
+  });
+
+  const results: CsvImportWithStats[] = [];
+
+  for (const imp of imports) {
+    const countResult = await db
+      .select({ count: sql<string>`COUNT(*)` })
+      .from(transactions)
+      .where(eq(transactions.csvImportId, imp.id));
+
+    const transactionCount = parseInt(countResult[0]?.count ?? "0", 10);
+
+    // Check if any linked transactions were manually re-categorized
+    let hasEditedTransactions = false;
+    if (transactionCount > 0) {
+      const editedResult = await db
+        .select({ count: sql<string>`COUNT(*)` })
+        .from(transactions)
+        .where(
+          and(
+            eq(transactions.csvImportId, imp.id),
+            sql`${transactions.categoryId} IS NOT NULL`,
+            sql`${transactions.categoryId} != ${transactions.categorySystemId}`
+          )
+        );
+      hasEditedTransactions = parseInt(editedResult[0]?.count ?? "0", 10) > 0;
+    }
+
+    results.push({
+      id: imp.id,
+      fileName: imp.fileName,
+      status: imp.status,
+      importedRows: imp.importedRows,
+      totalRows: imp.totalRows,
+      createdAt: imp.createdAt,
+      completedAt: imp.completedAt,
+      account: imp.account ?? null,
+      transactionCount,
+      hasEditedTransactions,
+    });
+  }
+
+  return results;
+}
+
+/**
+ * Reverts a CSV import by deleting all transactions linked to it.
+ * Reuses deleteTransactions for atomic deletion and balance recalculation.
+ */
+export async function revertCsvImport(
+  importId: string
+): Promise<{ success: boolean; error?: string; deletedCount?: number }> {
+  const session = await getAuthenticatedSession();
+  const userId = session?.user?.id ?? null;
+  if (!userId) return { success: false, error: "Not authenticated" };
+  if (isDemoRestrictedUserEmail(session?.user?.email)) {
+    return { success: false, error: DEMO_RESTRICTED_ACTION_ERROR };
+  }
+
+  // Verify the import belongs to this user
+  const csvImport = await db.query.csvImports.findFirst({
+    where: and(eq(csvImports.id, importId), eq(csvImports.userId, userId)),
+  });
+  if (!csvImport) return { success: false, error: "Import not found" };
+
+  // Find all transactions linked to this import
+  const linkedTransactions = await db
+    .select({ id: transactions.id })
+    .from(transactions)
+    .where(and(eq(transactions.csvImportId, importId), eq(transactions.userId, userId)));
+
+  if (!linkedTransactions.length) {
+    return { success: false, error: "No transactions linked to this import. It may predate import tracking." };
+  }
+
+  const transactionIds = linkedTransactions.map((t) => t.id);
+
+  // Reuse deleteTransactions for atomic deletion + balance recalculation
+  const result = await deleteTransactions(transactionIds);
+
+  if (!result.success) return { success: false, error: result.error };
+
+  return { success: true, deletedCount: transactionIds.length };
 }
