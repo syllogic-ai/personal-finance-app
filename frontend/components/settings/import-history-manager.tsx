@@ -133,13 +133,15 @@ export function ImportHistoryManager({ initialImports, canDelete = true }: Impor
                         </Button>
                       ) : (
                         <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span
-                              aria-disabled="true"
-                              className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-none border border-input bg-transparent px-3 py-1 text-xs font-medium opacity-50"
-                            >
-                              Revert
-                            </span>
+                          <TooltipTrigger
+                            render={
+                              <span
+                                aria-disabled="true"
+                                className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-none border border-input bg-transparent px-3 py-1 text-xs font-medium opacity-50"
+                              />
+                            }
+                          >
+                            Revert
                           </TooltipTrigger>
                           <TooltipContent side="left">
                             <p>
