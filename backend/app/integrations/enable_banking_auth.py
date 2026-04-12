@@ -51,12 +51,12 @@ class EnableBankingClient:
         self,
         app_id: Optional[str] = None,
         private_key_pem: Optional[str] = None,
-        environment: Optional[str] = None,
         redirect_uri: Optional[str] = None,
     ):
         self.app_id = app_id or os.getenv("ENABLE_BANKING_APP_ID", "")
-        self.environment = environment or os.getenv("ENABLE_BANKING_ENVIRONMENT", "sandbox")
         self.redirect_uri = redirect_uri or os.getenv("ENABLE_BANKING_REDIRECT_URI", "")
+        # Enable Banking uses the same API URL for sandbox and production;
+        # the application credentials determine the environment.
         self.base_url = "https://api.enablebanking.com"
 
         # Load private key from env var or file path

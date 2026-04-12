@@ -67,7 +67,6 @@ class TestEbApiClient(unittest.TestCase):
     def test_client_initializes_with_env_vars(self):
         os.environ["ENABLE_BANKING_APP_ID"] = TEST_APP_ID
         os.environ["ENABLE_BANKING_PRIVATE_KEY"] = TEST_PRIVATE_KEY_PEM
-        os.environ["ENABLE_BANKING_ENVIRONMENT"] = "sandbox"
 
         from app.integrations.enable_banking_auth import EnableBankingClient
 
@@ -78,12 +77,10 @@ class TestEbApiClient(unittest.TestCase):
         # Cleanup
         del os.environ["ENABLE_BANKING_APP_ID"]
         del os.environ["ENABLE_BANKING_PRIVATE_KEY"]
-        del os.environ["ENABLE_BANKING_ENVIRONMENT"]
 
     def test_client_get_headers_returns_bearer_jwt(self):
         os.environ["ENABLE_BANKING_APP_ID"] = TEST_APP_ID
         os.environ["ENABLE_BANKING_PRIVATE_KEY"] = TEST_PRIVATE_KEY_PEM
-        os.environ["ENABLE_BANKING_ENVIRONMENT"] = "sandbox"
 
         from app.integrations.enable_banking_auth import EnableBankingClient
 
@@ -94,7 +91,6 @@ class TestEbApiClient(unittest.TestCase):
 
         del os.environ["ENABLE_BANKING_APP_ID"]
         del os.environ["ENABLE_BANKING_PRIVATE_KEY"]
-        del os.environ["ENABLE_BANKING_ENVIRONMENT"]
 
 
 if __name__ == "__main__":
