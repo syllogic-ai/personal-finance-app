@@ -4,6 +4,7 @@ Celery tasks for Enable Banking sync and consent management.
 
 import logging
 from datetime import datetime, timedelta
+from decimal import Decimal
 
 from celery import shared_task
 from sqlalchemy.orm import Session
@@ -100,6 +101,18 @@ def sync_bank_connection(self, connection_id: str):
                 raise
 
             account.last_synced_at = datetime.utcnow()
+
+        # Recompute functional_balance for all synced accounts
+        from sqlalchemy import func as sa_func
+        from app.models import Transaction
+        for account in accounts:
+            transaction_sum_result = db.query(sa_func.sum(Transaction.amount)).filter(
+                Transaction.user_id == connection.user_id,
+                Transaction.account_id == account.id,
+            ).scalar()
+            transaction_sum = Decimal(str(transaction_sum_result)) if transaction_sum_result else Decimal("0")
+            starting_balance = account.starting_balance or Decimal("0")
+            account.functional_balance = transaction_sum + starting_balance
 
         connection.last_synced_at = datetime.utcnow()
         connection.last_sync_error = None

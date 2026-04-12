@@ -104,7 +104,7 @@ class EnableBankingAdapter(BankAdapter):
         return TransactionData(
             external_id=external_id,
             account_external_id=raw.get("account_id", ""),
-            amount=abs(amount),
+            amount=amount,
             currency=raw["transaction_amount"]["currency"],
             description=raw.get("remittance_information_unstructured", ""),
             merchant=raw.get("creditor_name") or raw.get("debtor_name"),

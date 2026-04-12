@@ -44,6 +44,7 @@ class AuthResponse(BaseModel):
 
 class SessionRequest(BaseModel):
     code: str
+    state: Optional[str] = None
 
 class SessionResponse(BaseModel):
     connection_id: str
@@ -161,6 +162,20 @@ def create_session(
     Exchange authorization code for an Enable Banking session.
     Creates a bank_connections row and upserts accounts.
     """
+    # Validate OAuth state nonce if provided
+    if body.state:
+        try:
+            r = _get_redis()
+            stored_user_id = r.get(f"eb:state:{body.state}")
+            if stored_user_id and stored_user_id != user_id:
+                raise HTTPException(status_code=403, detail="OAuth state mismatch")
+            # Clean up used nonce
+            r.delete(f"eb:state:{body.state}")
+        except HTTPException:
+            raise
+        except Exception:
+            logger.warning("Failed to validate OAuth state from Redis")
+
     client = _get_eb_client()
 
     # Exchange code for session

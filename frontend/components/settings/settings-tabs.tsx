@@ -7,7 +7,7 @@ import { CategoryManager } from "./category-manager";
 import { ApiKeysManager } from "./api-keys-manager";
 import { ImportHistoryManager } from "./import-history-manager";
 import { BankConnectionsManager } from "./bank-connections-manager";
-import type { User, Category, BankConnection } from "@/lib/db/schema";
+import type { User, Category } from "@/lib/db/schema";
 import type { CsvImportWithStats } from "@/lib/actions/csv-import";
 
 interface SettingsTabsProps {
@@ -26,7 +26,16 @@ interface SettingsTabsProps {
     createdAt: Date | null;
   }>;
   csvImports: CsvImportWithStats[];
-  bankConnections: BankConnection[];
+  bankConnections: Array<{
+    id: string;
+    aspspName: string;
+    aspspCountry: string;
+    status: string;
+    lastSyncedAt: Date | null;
+    lastSyncError: string | null;
+    consentExpiresAt: Date | null;
+    createdAt: Date | null;
+  }>;
 }
 
 export function SettingsTabs({

@@ -43,7 +43,7 @@ class Account(Base):
     external_id = Column(String(255), nullable=True)  # Provider's account ID
     external_id_ciphertext = Column(Text, nullable=True)
     external_id_hash = Column(String(64), nullable=True, index=True)
-    bank_connection_id = Column(UUID(as_uuid=True), ForeignKey("bank_connections.id", ondelete="SET NULL"), nullable=True, index=True)
+    bank_connection_id = Column(UUID(as_uuid=True), ForeignKey("bank_connections.id", ondelete="SET NULL"), nullable=True)
     balance_available = Column(Numeric(15, 2), nullable=True)
     starting_balance = Column(Numeric(15, 2), default=Decimal("0"))  # Starting balance for calculation
     functional_balance = Column(Numeric(15, 2), nullable=True)  # Calculated balance (sum of transactions + starting_balance)

@@ -3,17 +3,29 @@
 import { revalidatePath } from "next/cache";
 import { eq, and, desc } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { bankConnections, type BankConnection } from "@/lib/db/schema";
+import { bankConnections } from "@/lib/db/schema";
 import { requireAuth } from "@/lib/auth-helpers";
 import { getBackendBaseUrl } from "@/lib/backend-url";
 import { createInternalAuthHeaders } from "@/lib/internal-auth";
 
-export async function getBankConnections(): Promise<BankConnection[]> {
+export async function getBankConnections() {
   const userId = await requireAuth();
   if (!userId) return [];
 
   return db
-    .select()
+    .select({
+      id: bankConnections.id,
+      userId: bankConnections.userId,
+      provider: bankConnections.provider,
+      aspspName: bankConnections.aspspName,
+      aspspCountry: bankConnections.aspspCountry,
+      consentExpiresAt: bankConnections.consentExpiresAt,
+      status: bankConnections.status,
+      lastSyncedAt: bankConnections.lastSyncedAt,
+      lastSyncError: bankConnections.lastSyncError,
+      createdAt: bankConnections.createdAt,
+      updatedAt: bankConnections.updatedAt,
+    })
     .from(bankConnections)
     .where(eq(bankConnections.userId, userId))
     .orderBy(desc(bankConnections.createdAt));

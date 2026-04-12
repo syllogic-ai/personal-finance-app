@@ -63,24 +63,30 @@ export function BankPicker() {
   const [connectingBank, setConnectingBank] = useState<string | null>(null);
 
   useEffect(() => {
+    const controller = new AbortController();
     async function fetchAspsps() {
       setLoading(true);
       setFetchError(null);
       try {
-        const resp = await fetch(`/api/enable-banking/aspsps?country=${country}`);
+        const resp = await fetch(`/api/enable-banking/aspsps?country=${country}`, {
+          signal: controller.signal,
+        });
         if (!resp.ok) throw new Error("Failed to load banks");
         const data = await resp.json();
-        // EB returns aspsps as an array or as { aspsps: [...] }
         const list = Array.isArray(data) ? data : data.aspsps || [];
         setAspsps(list);
       } catch (e) {
+        if (e instanceof DOMException && e.name === "AbortError") return;
         setFetchError("Failed to load available banks. Please try again.");
         setAspsps([]);
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
       }
     }
     fetchAspsps();
+    return () => controller.abort();
   }, [country]);
 
   const filtered = useMemo(() => {

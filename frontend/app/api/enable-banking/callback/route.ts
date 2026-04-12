@@ -19,6 +19,7 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
   const code = searchParams.get("code");
+  const state = searchParams.get("state");
   const error = searchParams.get("error");
 
   const baseUrl = req.nextUrl.origin;
@@ -71,7 +72,7 @@ export async function GET(req: NextRequest) {
         "Content-Type": "application/json",
         ...signatureHeaders,
       },
-      body: JSON.stringify({ code }),
+      body: JSON.stringify({ code, state }),
     });
 
     if (!resp.ok) {

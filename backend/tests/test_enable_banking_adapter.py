@@ -28,7 +28,7 @@ class TestNormalizeTransaction(unittest.TestCase):
         result = self.adapter.normalize_transaction(raw)
 
         self.assertEqual(result.external_id, "txn-001")
-        self.assertEqual(result.amount, Decimal("50.00"))
+        self.assertEqual(result.amount, Decimal("-50.00"))
         self.assertEqual(result.currency, "EUR")
         self.assertEqual(result.transaction_type, "debit")
         self.assertEqual(result.merchant, "Albert Heijn")

@@ -24,10 +24,17 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { triggerSync, disconnectBank } from "@/lib/actions/bank-connections";
-import type { BankConnection } from "@/lib/db/schema";
-
 interface BankConnectionsManagerProps {
-  connections: BankConnection[];
+  connections: Array<{
+    id: string;
+    aspspName: string;
+    aspspCountry: string;
+    status: string;
+    lastSyncedAt: Date | null;
+    lastSyncError: string | null;
+    consentExpiresAt: Date | null;
+    createdAt: Date | null;
+  }>;
 }
 
 export function BankConnectionsManager({ connections }: BankConnectionsManagerProps) {

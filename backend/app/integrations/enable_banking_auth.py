@@ -55,6 +55,7 @@ class EnableBankingClient:
         redirect_uri: Optional[str] = None,
     ):
         self.app_id = app_id or os.getenv("ENABLE_BANKING_APP_ID", "")
+        self.environment = environment or os.getenv("ENABLE_BANKING_ENVIRONMENT", "sandbox")
         self.redirect_uri = redirect_uri or os.getenv("ENABLE_BANKING_REDIRECT_URI", "")
         self.base_url = "https://api.enablebanking.com"
 
