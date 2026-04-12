@@ -9,19 +9,25 @@ import { getBankConnections } from "@/lib/actions/bank-connections";
 import { resolveMcpServerUrlForSnippet } from "@/lib/mcp/server-url";
 import { isDemoRestrictedUserEmail } from "@/lib/demo-access";
 
-export default async function SettingsPage() {
+export default async function SettingsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string }>;
+}) {
   const user = await getCurrentUserProfile();
 
   if (!user) {
     redirect("/login");
   }
 
-  const [categories, apiKeysResult, csvImports, bankConnections] = await Promise.all([
-    getCategories(),
-    listApiKeys(),
-    getCsvImportHistory(),
-    getBankConnections(),
-  ]);
+  const [categories, apiKeysResult, csvImports, bankConnections, resolvedSearchParams] =
+    await Promise.all([
+      getCategories(),
+      listApiKeys(),
+      getCsvImportHistory(),
+      getBankConnections(),
+      searchParams,
+    ]);
 
   const apiKeys = apiKeysResult.success && apiKeysResult.keys ? apiKeysResult.keys : [];
   const canCreateApiKeys = !isDemoRestrictedUserEmail(user.email);
@@ -43,6 +49,7 @@ export default async function SettingsPage() {
           mcpServerUrl={mcpServerUrl}
           canCreateApiKeys={canCreateApiKeys}
           canDelete={canDelete}
+          defaultTab={resolvedSearchParams.tab || "profile"}
           csvImports={csvImports}
           bankConnections={bankConnections}
         />

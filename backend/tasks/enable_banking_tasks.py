@@ -51,6 +51,7 @@ def sync_bank_connection(self, connection_id: str):
         else:
             # Initial: fetch last 90 days
             start_date = datetime.utcnow() - timedelta(days=90)
+        end_date = datetime.utcnow()
 
         sync_service = SyncService(db, user_id=connection.user_id)
 
@@ -90,6 +91,7 @@ def sync_bank_connection(self, connection_id: str):
                     adapter=adapter,
                     account=account,
                     start_date=start_date,
+                    end_date=end_date,
                 )
                 total_created += created
                 total_updated += updated

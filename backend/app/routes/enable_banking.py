@@ -7,6 +7,7 @@ connection status, and disconnection.
 
 import os
 import logging
+import uuid as uuid_mod
 from typing import Optional
 from datetime import datetime, timedelta
 
@@ -20,7 +21,7 @@ from app.database import get_db
 from app.db_helpers import get_user_id
 from app.models import BankConnection, Account
 from app.integrations.enable_banking_auth import EnableBankingClient
-from app.integrations.enable_banking_adapter import EnableBankingAdapter
+from app.integrations.enable_banking_adapter import EnableBankingAdapter, _ACCOUNT_TYPE_MAP
 from app.services.sync_service import SyncService
 from app.security.data_encryption import encrypt_value, blind_index
 
@@ -75,7 +76,7 @@ def _get_redis() -> redis.Redis:
 # --- Routes ---
 
 @router.get("/aspsps")
-def list_aspsps(country: Optional[str] = None):
+def list_aspsps(country: Optional[str] = None, user_id: str = Depends(get_user_id)):
     """
     List available banks (ASPSPs), optionally filtered by country.
     Results are cached in Redis for 24 hours.
@@ -120,6 +121,14 @@ def initiate_auth(
     """Generate bank authorization URL for PSU redirect."""
     client = _get_eb_client()
 
+    # Generate a random state nonce (don't leak user_id in the redirect URL)
+    state_nonce = str(uuid_mod.uuid4())
+    try:
+        r = _get_redis()
+        r.setex(f"eb:state:{state_nonce}", 600, user_id)  # 10 min TTL
+    except Exception:
+        logger.warning("Failed to store OAuth state in Redis")
+
     auth_payload = {
         "access": {
             "valid_until": (datetime.utcnow() + timedelta(days=90)).strftime("%Y-%m-%dT%H:%M:%S.000Z"),
@@ -128,7 +137,7 @@ def initiate_auth(
             "name": body.aspsp_name,
             "country": body.aspsp_country.upper(),
         },
-        "state": user_id,  # Pass user_id as state for callback validation
+        "state": state_nonce,
         "redirect_url": client.redirect_uri,
         "psu_type": "personal",
     }
@@ -214,7 +223,7 @@ def create_session(
             new_account = Account(
                 user_id=user_id,
                 name=acc_data.get("account_name") or acc_data.get("iban") or "Unknown Account",
-                account_type=_map_account_type(acc_data.get("cash_account_type")),
+                account_type=_ACCOUNT_TYPE_MAP.get((acc_data.get("cash_account_type") or "").upper(), "checking"),
                 institution=aspsp_name,
                 currency=acc_data.get("currency", "EUR"),
                 provider="enable_banking",
@@ -357,22 +366,3 @@ def disconnect(
     db.commit()
 
     return {"message": "Bank connection disconnected"}
-
-
-# --- Helpers ---
-
-def _map_account_type(cash_account_type: Optional[str]) -> str:
-    """Map EB cash account type to our canonical type."""
-    if not cash_account_type:
-        return "checking"
-    mapping = {
-        "CACC": "checking",
-        "SVGS": "savings",
-        "TRAN": "checking",
-        "CASH": "checking",
-        "CARD": "credit",
-        "LOAN": "credit",
-        "MGLD": "savings",
-        "MOMA": "savings",
-    }
-    return mapping.get(cash_account_type.upper(), "checking")

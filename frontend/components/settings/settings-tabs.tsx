@@ -16,6 +16,7 @@ interface SettingsTabsProps {
   mcpServerUrl: string;
   canCreateApiKeys: boolean;
   canDelete?: boolean;
+  defaultTab?: string;
   apiKeys: Array<{
     id: string;
     name: string;
@@ -35,11 +36,12 @@ export function SettingsTabs({
   mcpServerUrl,
   canCreateApiKeys,
   canDelete = true,
+  defaultTab = "profile",
   csvImports,
   bankConnections,
 }: SettingsTabsProps) {
   return (
-    <Tabs defaultValue="profile" className="flex-1">
+    <Tabs defaultValue={defaultTab} className="flex-1">
       <TabsList variant="line" className="mb-6">
         <TabsTrigger value="profile" data-walkthrough="walkthrough-profile">
           <RiUserLine className="mr-1.5 h-4 w-4" />
