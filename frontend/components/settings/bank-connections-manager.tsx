@@ -87,7 +87,7 @@ export function BankConnectionsManager({ connections }: BankConnectionsManagerPr
 
         try {
           const resp = await fetch(`/api/enable-banking/status/${connectionId}`);
-          if (!resp.ok) return;
+          if (!resp.ok) throw new Error(`Status ${resp.status}`);
           const data = await resp.json();
 
           const startedAt = initialSyncTimes.current.get(connectionId);

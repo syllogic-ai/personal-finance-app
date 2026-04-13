@@ -351,10 +351,7 @@ def map_accounts(
 
     connection.initial_sync_days = request.initial_sync_days
     connection.status = "active"
-    db.commit()
-
-    # Clear sensitive session data now that mapping is complete
-    connection.raw_session_data = None
+    connection.raw_session_data = None  # Clear sensitive data now that mapping is complete
     db.commit()
 
     # Trigger initial sync

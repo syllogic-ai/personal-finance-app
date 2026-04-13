@@ -32,121 +32,102 @@ logger = logging.getLogger(__name__)
 
 def _sync_exchange_rates(db, user_id: str, transaction_ids: List[str]) -> None:
     """Fetch and store exchange rates for all currencies in the given transactions."""
-    try:
-        transactions = (
-            db.query(Transaction)
-            .filter(
-                Transaction.id.in_(transaction_ids),
-                Transaction.user_id == user_id,
-            )
-            .all()
+    transactions = (
+        db.query(Transaction)
+        .filter(
+            Transaction.id.in_(transaction_ids),
+            Transaction.user_id == user_id,
+        )
+        .all()
+    )
+
+    if not transactions:
+        return
+
+    user = db.query(User).filter(User.id == user_id).first()
+    functional_currency = user.functional_currency if user else "EUR"
+
+    # Unique foreign currencies (skip functional currency — no rate needed)
+    foreign_currencies = set()
+    for txn in transactions:
+        if txn.currency and txn.currency != functional_currency:
+            foreign_currencies.add(txn.currency)
+
+    if not foreign_currencies:
+        return
+
+    # Date range
+    dates = [txn.booked_at.date() for txn in transactions if txn.booked_at]
+    if not dates:
+        return
+
+    start_date = min(dates)
+    end_date = max(dates)
+
+    service = ExchangeRateService(db)
+    target_currencies = [functional_currency]
+
+    for currency in foreign_currencies:
+        rates_by_date = service.fetch_exchange_rates_batch(
+            base_currency=currency,
+            target_currencies=target_currencies,
+            start_date=start_date,
+            end_date=end_date,
         )
 
-        if not transactions:
-            return
-
-        user = db.query(User).filter(User.id == user_id).first()
-        functional_currency = user.functional_currency if user else "EUR"
-
-        # Unique foreign currencies (skip functional currency — no rate needed)
-        foreign_currencies = set()
-        for txn in transactions:
-            if txn.currency and txn.currency != functional_currency:
-                foreign_currencies.add(txn.currency)
-
-        if not foreign_currencies:
-            return
-
-        # Date range
-        dates = [txn.booked_at.date() for txn in transactions if txn.booked_at]
-        if not dates:
-            return
-
-        start_date = min(dates)
-        end_date = max(dates)
-
-        service = ExchangeRateService(db)
-        target_currencies = [functional_currency]
-
-        for currency in foreign_currencies:
-            rates_by_date = service.fetch_exchange_rates_batch(
-                base_currency=currency,
-                target_currencies=target_currencies,
-                start_date=start_date,
-                end_date=end_date,
-            )
-
-            for rate_date, rate_dict in rates_by_date.items():
-                if functional_currency in rate_dict:
-                    service.store_exchange_rates(
-                        functional_currency,
-                        {currency: rate_dict[functional_currency]},
-                        rate_date,
-                    )
-
-    except Exception as e:
-        logger.error(f"[POST_IMPORT_PIPELINE] Error syncing exchange rates: {e}")
+        for rate_date, rate_dict in rates_by_date.items():
+            if functional_currency in rate_dict:
+                service.store_exchange_rates(
+                    functional_currency,
+                    {currency: rate_dict[functional_currency]},
+                    rate_date,
+                )
 
 
 def _update_functional_amounts(db, user_id: str, transaction_ids: List[str]) -> None:
     """Set functional_amount on each transaction using stored exchange rates."""
-    try:
-        transactions = (
-            db.query(Transaction)
-            .filter(
-                Transaction.id.in_(transaction_ids),
-                Transaction.user_id == user_id,
-            )
-            .all()
+    transactions = (
+        db.query(Transaction)
+        .filter(
+            Transaction.id.in_(transaction_ids),
+            Transaction.user_id == user_id,
         )
+        .all()
+    )
 
-        if not transactions:
-            return
+    if not transactions:
+        return
 
-        user = db.query(User).filter(User.id == user_id).first()
-        functional_currency = user.functional_currency if user else "EUR"
+    user = db.query(User).filter(User.id == user_id).first()
+    functional_currency = user.functional_currency if user else "EUR"
 
-        service = ExchangeRateService(db)
+    service = ExchangeRateService(db)
 
-        for txn in transactions:
-            try:
-                if txn.currency == functional_currency:
-                    txn.functional_amount = txn.amount
-                else:
-                    txn_date = txn.booked_at.date()
-                    rate = service.get_exchange_rate(
-                        base_currency=txn.currency,
-                        target_currency=functional_currency,
-                        for_date=txn_date,
-                    )
-                    txn.functional_amount = txn.amount * rate if rate else None
-            except Exception as e:
-                logger.error(
-                    f"[POST_IMPORT_PIPELINE] Error updating functional amount for txn {txn.id}: {e}"
-                )
+    for txn in transactions:
+        if txn.currency == functional_currency:
+            txn.functional_amount = txn.amount
+        else:
+            txn_date = txn.booked_at.date()
+            rate = service.get_exchange_rate(
+                base_currency=txn.currency,
+                target_currency=functional_currency,
+                for_date=txn_date,
+            )
+            txn.functional_amount = txn.amount * rate if rate else None
 
-        db.commit()
-
-    except Exception as e:
-        logger.error(f"[POST_IMPORT_PIPELINE] Error updating functional amounts: {e}")
+    db.commit()
 
 
 def _calculate_balances(db, user_id: str, account_ids: List[str]) -> None:
     """Recalculate account balances for the given accounts."""
-    try:
-        service = AccountBalanceService(db)
-        service.calculate_account_balances(user_id, account_ids=account_ids)
-    except Exception as e:
-        logger.error(f"[POST_IMPORT_PIPELINE] Error calculating balances: {e}")
+    service = AccountBalanceService(db)
+    service.calculate_account_balances(user_id, account_ids=account_ids)
 
 
 def _calculate_timeseries(db, user_id: str, account_ids: List[str]) -> None:
     """Compute daily balance snapshots for the given accounts."""
-    try:
-        service = AccountBalanceService(db)
-        service.calculate_account_timeseries(user_id, account_ids=account_ids)
-    except Exception as e:
-        logger.error(f"[POST_IMPORT_PIPELINE] Error calculating timeseries: {e}")
+    service = AccountBalanceService(db)
+    service.calculate_account_timeseries(user_id, account_ids=account_ids)
 
 
 def _detect_subscriptions(
@@ -160,57 +141,53 @@ def _detect_subscriptions(
     When transaction_ids is None (initial sync), the detector scans ALL user
     transactions to discover cross-account patterns.
     """
-    try:
-        # --- Match to existing subscriptions ---
-        if transaction_ids is not None:
-            transactions = (
-                db.query(Transaction)
-                .filter(
-                    Transaction.id.in_(transaction_ids),
-                    Transaction.user_id == user_id,
-                )
-                .all()
+    # --- Match to existing subscriptions ---
+    if transaction_ids is not None:
+        transactions = (
+            db.query(Transaction)
+            .filter(
+                Transaction.id.in_(transaction_ids),
+                Transaction.user_id == user_id,
             )
+            .all()
+        )
 
-            matcher = SubscriptionMatcher(db, user_id=user_id)
-            matched_count = 0
+        matcher = SubscriptionMatcher(db, user_id=user_id)
+        matched_count = 0
 
-            for txn in transactions:
-                if float(txn.amount) >= 0 or txn.recurring_transaction_id:
-                    continue
-                match = matcher.match_transaction(
-                    description=txn.description,
-                    merchant=txn.merchant,
-                    amount=txn.amount,
-                    account_id=str(txn.account_id),
-                )
-                if match:
-                    txn.recurring_transaction_id = match.id
-                    matched_count += 1
+        for txn in transactions:
+            if float(txn.amount) >= 0 or txn.recurring_transaction_id:
+                continue
+            match = matcher.match_transaction(
+                description=txn.description,
+                merchant=txn.merchant,
+                amount=txn.amount,
+                account_id=str(txn.account_id),
+            )
+            if match:
+                txn.recurring_transaction_id = match.id
+                matched_count += 1
 
-            if matched_count > 0:
-                db.commit()
-                logger.info(
-                    f"[POST_IMPORT_PIPELINE] Matched {matched_count} transactions to subscriptions"
-                )
-
-        # --- Detect new subscription patterns ---
-        detector = SubscriptionDetector(db, user_id=user_id)
-        # Pass None for initial sync so detector scans all user transactions
-        detection = detector.detect_and_apply(transaction_ids, account_ids=account_ids)
-        detected_count = detection.get("detected_count", 0)
-        if detected_count > 0:
+        if matched_count > 0:
+            db.commit()
             logger.info(
-                "[POST_IMPORT_PIPELINE] Detected %s new subscriptions "
-                "(created=%s, updated=%s, linked=%s)",
-                detected_count,
-                detection.get("created_count", 0),
-                detection.get("updated_count", 0),
-                detection.get("linked_count", 0),
+                f"[POST_IMPORT_PIPELINE] Matched {matched_count} transactions to subscriptions"
             )
 
-    except Exception as e:
-        logger.error(f"[POST_IMPORT_PIPELINE] Error detecting subscriptions: {e}")
+    # --- Detect new subscription patterns ---
+    detector = SubscriptionDetector(db, user_id=user_id)
+    # Pass None for initial sync so detector scans all user transactions
+    detection = detector.detect_and_apply(transaction_ids, account_ids=account_ids)
+    detected_count = detection.get("detected_count", 0)
+    if detected_count > 0:
+        logger.info(
+            "[POST_IMPORT_PIPELINE] Detected %s new subscriptions "
+            "(created=%s, updated=%s, linked=%s)",
+            detected_count,
+            detection.get("created_count", 0),
+            detection.get("updated_count", 0),
+            detection.get("linked_count", 0),
+        )
 
 
 # ---------------------------------------------------------------------------
