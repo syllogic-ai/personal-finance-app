@@ -4,9 +4,10 @@ import { revalidatePath } from "next/cache";
 import { eq, and, desc } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { bankConnections } from "@/lib/db/schema";
-import { requireAuth } from "@/lib/auth-helpers";
+import { requireAuth, getAuthenticatedSession } from "@/lib/auth-helpers";
 import { getBackendBaseUrl } from "@/lib/backend-url";
 import { createInternalAuthHeaders } from "@/lib/internal-auth";
+import { isDemoRestrictedUserEmail, DEMO_RESTRICTED_ACTION_ERROR } from "@/lib/demo-access";
 
 export async function getBankConnections() {
   const userId = await requireAuth();
@@ -58,8 +59,12 @@ export async function getActiveBankConnectionsWithExpiry(): Promise<
 export async function triggerSync(
   connectionId: string
 ): Promise<{ success: boolean; error?: string }> {
-  const userId = await requireAuth();
+  const session = await getAuthenticatedSession();
+  const userId = session?.user?.id;
   if (!userId) return { success: false, error: "Not authenticated" };
+  if (isDemoRestrictedUserEmail(session.user.email)) {
+    return { success: false, error: DEMO_RESTRICTED_ACTION_ERROR };
+  }
 
   try {
     const backendBase = getBackendBaseUrl().replace(/\/+$/, "");
@@ -94,8 +99,12 @@ export async function triggerSync(
 export async function disconnectBank(
   connectionId: string
 ): Promise<{ success: boolean; error?: string }> {
-  const userId = await requireAuth();
+  const session = await getAuthenticatedSession();
+  const userId = session?.user?.id;
   if (!userId) return { success: false, error: "Not authenticated" };
+  if (isDemoRestrictedUserEmail(session.user.email)) {
+    return { success: false, error: DEMO_RESTRICTED_ACTION_ERROR };
+  }
 
   try {
     const backendBase = getBackendBaseUrl().replace(/\/+$/, "");
@@ -128,8 +137,12 @@ export async function initiateAuth(
   aspspName: string,
   aspspCountry: string
 ): Promise<{ success: boolean; url?: string; error?: string }> {
-  const userId = await requireAuth();
+  const session = await getAuthenticatedSession();
+  const userId = session?.user?.id;
   if (!userId) return { success: false, error: "Not authenticated" };
+  if (isDemoRestrictedUserEmail(session.user.email)) {
+    return { success: false, error: DEMO_RESTRICTED_ACTION_ERROR };
+  }
 
   try {
     const backendBase = getBackendBaseUrl().replace(/\/+$/, "");
