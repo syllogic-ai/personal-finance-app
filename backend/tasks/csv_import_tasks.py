@@ -9,12 +9,12 @@ from datetime import datetime
 from decimal import Decimal
 
 from celery_app import celery_app
+from tasks.post_import_pipeline import post_import_pipeline
 from app.database import SessionLocal
 from app.db_helpers import set_request_user_id, clear_request_user_id
 from app.models import CsvImport, Account, Transaction, User, Category
 from app.services.event_publisher import EventPublisher
 from app.services.category_matcher import CategoryMatcher
-from app.services.exchange_rate_service import ExchangeRateService
 from app.services.account_balance_service import AccountBalanceService
 from app.services.subscription_matcher import SubscriptionMatcher
 from app.services.subscription_detector import SubscriptionDetector
@@ -378,19 +378,15 @@ def process_csv_import(
             logger.info(f"[CSV_IMPORT_TASK] Batch processed: {processed}/{total_rows}")
 
         inserted_ids: List[str] = []
+        all_inserted_transaction_ids: List[str] = []
 
         # Post-import operations
         if all_inserted_transactions:
             affected_account_ids = list(set([str(txn.account_id) for txn in all_inserted_transactions]))
             inserted_ids = [str(txn.id) for txn in all_inserted_transactions]
+            all_inserted_transaction_ids = inserted_ids
 
-            # Sync exchange rates
-            _sync_exchange_rates(db, user_id, transactions_data)
-
-            # Update functional amounts
-            _update_functional_amounts(db, user_id, all_inserted_transactions)
-
-            # Update starting balance if provided
+            # Update starting balance if provided (CSV-specific)
             if starting_balance is not None:
                 for account_id in affected_account_ids:
                     account = db.query(Account).filter(Account.id == account_id).first()
@@ -399,30 +395,26 @@ def process_csv_import(
                         account.balance_is_anchored = True
                 db.commit()
 
-            # Calculate balances
-            balance_service = AccountBalanceService(db)
-            balance_service.calculate_account_balances(user_id, account_ids=affected_account_ids)
-
-            # Import daily balances if provided
-            skip_dates_by_account = {}
+            # Import daily balances if provided (CSV-specific)
             if daily_balances:
+                balance_service = AccountBalanceService(db)
                 user = db.query(User).filter(User.id == user_id).first()
                 functional_currency = user.functional_currency if user else "EUR"
 
                 for account_id in affected_account_ids:
-                    result = balance_service.import_daily_balances(
+                    balance_service.import_daily_balances(
                         account_id=account_id,
                         daily_balances=daily_balances,
                         functional_currency=functional_currency
                     )
-                    if result.get("imported_dates"):
-                        skip_dates_by_account[account_id] = result["imported_dates"]
 
-            # Calculate timeseries
-            balance_service.calculate_account_timeseries(
-                user_id,
-                account_ids=affected_account_ids,
-                skip_dates=skip_dates_by_account if skip_dates_by_account else None
+            # Chain to shared post-processing pipeline
+            account_ids = [str(csv_import.account_id)]
+            post_import_pipeline.delay(
+                user_id=user_id,
+                account_ids=account_ids,
+                transaction_ids=all_inserted_transaction_ids,
+                is_initial_sync=False,
             )
 
         # Update CSV import record
@@ -437,13 +429,6 @@ def process_csv_import(
             imported_count=total_inserted,
             skipped_count=total_skipped,
             categorization_summary=aggregated_categorization_summary,
-        )
-
-        # Chain to subscription processing task (runs after import completes)
-        process_subscriptions.delay(
-            csv_import_id=csv_import_id,
-            user_id=user_id,
-            transaction_ids=inserted_ids,
         )
 
         logger.info(
@@ -636,81 +621,3 @@ def _detect_subscriptions(
         return 0
 
 
-def _sync_exchange_rates(db, user_id: str, transactions_data: List[Dict]) -> None:
-    """Sync exchange rates for transaction currencies."""
-    try:
-        account_currencies = set()
-        for txn in transactions_data:
-            currency = txn.get("currency", "EUR")
-            if currency:
-                account_currencies.add(currency)
-
-        if not account_currencies:
-            return
-
-        # Find date range
-        dates = []
-        for txn in transactions_data:
-            booked_at = txn.get("booked_at")
-            if booked_at:
-                if isinstance(booked_at, str):
-                    booked_at = datetime.fromisoformat(booked_at.replace("Z", "+00:00"))
-                if isinstance(booked_at, datetime):
-                    dates.append(booked_at.date())
-
-        if not dates:
-            return
-
-        start_date = min(dates)
-        end_date = max(dates)
-
-        service = ExchangeRateService(db)
-        for currency in account_currencies:
-            rates_by_date = service.fetch_exchange_rates_batch(
-                base_currency=currency,
-                target_currencies=["EUR", "USD"],
-                start_date=start_date,
-                end_date=end_date
-            )
-
-            for rate_date, rate_dict in rates_by_date.items():
-                if "EUR" in rate_dict:
-                    service.store_exchange_rates("EUR", {currency: rate_dict["EUR"]}, rate_date)
-                if "USD" in rate_dict:
-                    service.store_exchange_rates("USD", {currency: rate_dict["USD"]}, rate_date)
-
-    except Exception as e:
-        logger.error(f"Error syncing exchange rates: {e}")
-
-
-def _update_functional_amounts(db, user_id: str, transactions: List[Transaction]) -> None:
-    """Update functional amounts for transactions."""
-    try:
-        user = db.query(User).filter(User.id == user_id).first()
-        functional_currency = user.functional_currency if user else "EUR"
-
-        service = ExchangeRateService(db)
-
-        for txn in transactions:
-            try:
-                txn_date = txn.booked_at.date()
-
-                if txn.currency == functional_currency:
-                    txn.functional_amount = txn.amount
-                else:
-                    exchange_rate = service.get_exchange_rate(
-                        base_currency=txn.currency,
-                        target_currency=functional_currency,
-                        for_date=txn_date
-                    )
-
-                    if exchange_rate:
-                        txn.functional_amount = txn.amount * exchange_rate
-                    else:
-                        txn.functional_amount = None
-            except Exception as e:
-                logger.error(f"Error updating functional amount for transaction {txn.id}: {e}")
-
-        db.commit()
-    except Exception as e:
-        logger.error(f"Error updating functional amounts: {e}")
