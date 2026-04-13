@@ -30,8 +30,9 @@ export default async function SettingsPage({
     ]);
 
   const apiKeys = apiKeysResult.success && apiKeysResult.keys ? apiKeysResult.keys : [];
-  const canCreateApiKeys = !isDemoRestrictedUserEmail(user.email);
-  const canDelete = !isDemoRestrictedUserEmail(user.email);
+  const isDemoUser = isDemoRestrictedUserEmail(user.email);
+  const canCreateApiKeys = !isDemoUser;
+  const canDelete = !isDemoUser;
   const mcpServerUrl = resolveMcpServerUrlForSnippet({
     mcpServerUrl: process.env.MCP_SERVER_URL,
     betterAuthUrl: process.env.BETTER_AUTH_URL || process.env.NEXT_PUBLIC_BETTER_AUTH_URL,
@@ -49,6 +50,7 @@ export default async function SettingsPage({
           mcpServerUrl={mcpServerUrl}
           canCreateApiKeys={canCreateApiKeys}
           canDelete={canDelete}
+          isDemoUser={isDemoUser}
           defaultTab={resolvedSearchParams.tab || "profile"}
           csvImports={csvImports}
           bankConnections={bankConnections}

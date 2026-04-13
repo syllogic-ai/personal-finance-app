@@ -1,13 +1,15 @@
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { Header } from "@/components/layout/header";
-import { requireAuth } from "@/lib/auth-helpers";
+import { getCurrentUserProfile } from "@/lib/actions/settings";
+import { isDemoRestrictedUserEmail } from "@/lib/demo-access";
 import { BankPicker } from "./bank-picker";
 import { RiLoader4Line } from "@remixicon/react";
 
 export default async function ConnectBankPage() {
-  const userId = await requireAuth();
-  if (!userId) redirect("/login");
+  const user = await getCurrentUserProfile();
+  if (!user) redirect("/login");
+  if (isDemoRestrictedUserEmail(user.email)) redirect("/settings");
 
   return (
     <>

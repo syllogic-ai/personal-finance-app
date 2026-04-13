@@ -16,6 +16,7 @@ interface SettingsTabsProps {
   mcpServerUrl: string;
   canCreateApiKeys: boolean;
   canDelete?: boolean;
+  isDemoUser?: boolean;
   defaultTab?: string;
   apiKeys: Array<{
     id: string;
@@ -45,6 +46,7 @@ export function SettingsTabs({
   mcpServerUrl,
   canCreateApiKeys,
   canDelete = true,
+  isDemoUser = false,
   defaultTab = "profile",
   csvImports,
   bankConnections,
@@ -68,10 +70,12 @@ export function SettingsTabs({
           <RiUploadLine className="mr-1.5 h-4 w-4" />
           Import History
         </TabsTrigger>
-        <TabsTrigger value="bank-connections">
-          <RiBankLine className="mr-1.5 h-4 w-4" />
-          Bank Connections
-        </TabsTrigger>
+        {!isDemoUser && (
+          <TabsTrigger value="bank-connections">
+            <RiBankLine className="mr-1.5 h-4 w-4" />
+            Bank Connections
+          </TabsTrigger>
+        )}
       </TabsList>
 
       <TabsContent value="profile">
@@ -94,9 +98,11 @@ export function SettingsTabs({
         <ImportHistoryManager initialImports={csvImports} canDelete={canDelete} />
       </TabsContent>
 
-      <TabsContent value="bank-connections">
-        <BankConnectionsManager connections={bankConnections} />
-      </TabsContent>
+      {!isDemoUser && (
+        <TabsContent value="bank-connections">
+          <BankConnectionsManager connections={bankConnections} />
+        </TabsContent>
+      )}
     </Tabs>
   );
 }
