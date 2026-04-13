@@ -353,6 +353,10 @@ def map_accounts(
     connection.status = "active"
     db.commit()
 
+    # Clear sensitive session data now that mapping is complete
+    connection.raw_session_data = None
+    db.commit()
+
     # Trigger initial sync
     try:
         from tasks.enable_banking_tasks import sync_bank_connection

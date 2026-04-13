@@ -83,6 +83,7 @@ class SyncService:
         candidates = (
             self.db.query(Transaction)
             .filter(
+                Transaction.user_id == self.user_id,
                 Transaction.account_id == account_id,
                 Transaction.amount == amount,
                 Transaction.external_id.is_(None),

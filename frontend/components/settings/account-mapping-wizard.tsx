@@ -93,10 +93,9 @@ export function AccountMappingWizard({
   const currentAccount = !isSummaryStep ? bankAccounts[currentStep] : null;
   const currentMapping = !isSummaryStep ? mappings[currentStep] : null;
 
-  // Accounts already selected in previous steps (for "link" action)
+  // Accounts already selected in other steps (for "link" action)
   const selectedAccountIds = mappings
-    .slice(0, currentStep)
-    .filter((m) => m.action === "link" && m.existing_account_id)
+    .filter((m, i) => i !== currentStep && m.action === "link" && m.existing_account_id)
     .map((m) => m.existing_account_id as string);
 
   const availableLinkableAccounts = linkableAccounts.filter(
