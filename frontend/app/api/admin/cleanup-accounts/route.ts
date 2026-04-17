@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import {
+  users,
   accounts,
   transactions,
   accountBalances,
   bankConnections,
 } from "@/lib/db/schema";
-import { eq, and, like, inArray, sql } from "drizzle-orm";
+import { eq, and, like, inArray } from "drizzle-orm";
 
 /**
  * Temporary admin endpoint to clean up "Unknown Account" entries
@@ -37,15 +38,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "email is required" }, { status: 400 });
     }
 
-    // Find user by email
-    // db.execute() with postgres.js returns a RowList which is array-like directly
-    const userRows = await db.execute(
-      sql`SELECT id, email FROM "user" WHERE email = ${email}`
-    );
+    // Find user by email using Drizzle ORM
+    const userRows = await db
+      .select({ id: users.id, email: users.email })
+      .from(users)
+      .where(eq(users.email, email))
+      .limit(1);
+
     if (!userRows.length) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
-    const userId = (userRows[0] as Record<string, unknown>).id as string;
+    const userId = userRows[0].id;
 
     // Find matching accounts
     const matchingAccounts = await db

@@ -50,9 +50,9 @@ def cleanup_accounts(
     from sqlalchemy import text
     from app.models import Account, BankConnection
 
-    # Find user by email
+    # Find user by email (table is "users" per Drizzle schema)
     user_row = db.execute(
-        text('SELECT id, email FROM "user" WHERE email = :email'),
+        text('SELECT id, email FROM "users" WHERE email = :email'),
         {"email": body.email},
     ).fetchone()
 
