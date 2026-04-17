@@ -106,28 +106,54 @@ class EnableBankingAdapter(BankAdapter):
 
         # Log raw text fields to debug missing descriptions (TEMPORARY - remove after diagnosis)
         _log.info(
-            "[EB_DEBUG] txn=%s amount=%s fields: riu=%r riua=%r ai=%r cn=%r dn=%r keys=%s",
+            "[EB_DEBUG] txn=%s amount=%s fields: riu=%r riua=%r ri=%r ai=%r note=%r refnum=%r "
+            "cn=%r dn=%r creditor=%r debtor=%r keys=%s",
             external_id,
             amount,
             raw.get("remittance_information_unstructured"),
             raw.get("remittance_information_unstructured_array"),
+            raw.get("remittance_information"),
             raw.get("additional_information"),
+            raw.get("note"),
+            raw.get("reference_number"),
             raw.get("creditor_name"),
             raw.get("debtor_name"),
+            raw.get("creditor"),
+            raw.get("debtor"),
             sorted(raw.keys()),
         )
 
-        # Build description from multiple possible EB fields
+        # Resolve nested creditor/debtor names (EB may use objects or flat fields)
+        creditor_name = (
+            raw.get("creditor_name")
+            or (raw.get("creditor") or {}).get("name")
+        )
+        debtor_name = (
+            raw.get("debtor_name")
+            or (raw.get("debtor") or {}).get("name")
+        )
+
+        # Resolve structured remittance_information array (list of strings)
+        remittance_info = raw.get("remittance_information")
+        remittance_info_text = (
+            " ".join(remittance_info) if isinstance(remittance_info, list) and remittance_info
+            else (remittance_info if isinstance(remittance_info, str) else None)
+        )
+
+        # Build description from all possible EB text fields, most specific first
         description = (
             raw.get("remittance_information_unstructured")
-            or raw.get("remittance_information_unstructured_array", [""])[0]
+            or (raw.get("remittance_information_unstructured_array") or [""])[0]
+            or remittance_info_text
             or raw.get("additional_information")
-            or raw.get("creditor_name")
-            or raw.get("debtor_name")
+            or raw.get("note")
+            or creditor_name
+            or debtor_name
+            or raw.get("reference_number")
             or ""
         )
 
-        merchant = raw.get("creditor_name") or raw.get("debtor_name")
+        merchant = creditor_name or debtor_name
 
         return TransactionData(
             external_id=external_id,

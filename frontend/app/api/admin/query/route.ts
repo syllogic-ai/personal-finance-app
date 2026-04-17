@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { users, accounts, transactions } from "@/lib/db/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, isNull, inArray } from "drizzle-orm";
 
-/** Temporary read-only admin query endpoint. Remove after diagnosis. */
+/** Temporary admin endpoint for DB inspection and cleanup. Remove after diagnosis. */
 export async function POST(req: NextRequest) {
   const secret = process.env.INTERNAL_AUTH_SECRET?.trim();
   const auth = req.headers.get("authorization");
@@ -11,7 +11,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { email } = await req.json();
+  const body = await req.json();
+  const { email, action } = body;
   if (!email) return NextResponse.json({ error: "email required" }, { status: 400 });
 
   const userRows = await db
@@ -23,6 +24,33 @@ export async function POST(req: NextRequest) {
   if (!userRows.length) return NextResponse.json({ error: "User not found" }, { status: 404 });
   const userId = userRows[0].id;
 
+  // Cleanup: delete all accounts that have never been synced (no lastSyncedAt) and 0 transactions
+  if (action === "cleanup_unsynced_accounts") {
+    const unsyncedAccounts = await db
+      .select({ id: accounts.id, name: accounts.name, bankConnectionId: accounts.bankConnectionId })
+      .from(accounts)
+      .where(and(eq(accounts.userId, userId), isNull(accounts.lastSyncedAt)));
+
+    // Filter to those with 0 transactions
+    const toDelete: string[] = [];
+    for (const acc of unsyncedAccounts) {
+      const txnRows = await db
+        .select({ id: transactions.id })
+        .from(transactions)
+        .where(eq(transactions.accountId, acc.id))
+        .limit(1);
+      if (txnRows.length === 0) toDelete.push(acc.id);
+    }
+
+    if (toDelete.length === 0) {
+      return NextResponse.json({ deleted: 0, message: "Nothing to clean up" });
+    }
+
+    await db.delete(accounts).where(inArray(accounts.id, toDelete));
+    return NextResponse.json({ deleted: toDelete.length, accountIds: toDelete });
+  }
+
+  // Default: inspect accounts + recent transactions
   const userAccounts = await db
     .select({
       id: accounts.id,
@@ -49,7 +77,7 @@ export async function POST(req: NextRequest) {
         .from(transactions)
         .where(and(eq(transactions.accountId, acc.id), eq(transactions.userId, userId)))
         .orderBy(desc(transactions.bookedAt))
-        .limit(5);
+        .limit(3);
 
       const total = await db
         .select({ count: transactions.id })

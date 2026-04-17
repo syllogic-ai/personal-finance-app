@@ -241,7 +241,9 @@ class SyncService:
                 # Update existing transaction
                 existing_transaction.amount = transaction_data.amount
                 existing_transaction.currency = transaction_data.currency
-                existing_transaction.description = transaction_data.description
+                # Don't overwrite a non-empty description with an empty one (bank may not always send it)
+                if transaction_data.description:
+                    existing_transaction.description = transaction_data.description
                 existing_transaction.merchant = merchant or transaction_data.merchant
                 existing_transaction.booked_at = transaction_data.booked_at
                 existing_transaction.transaction_type = transaction_data.transaction_type
@@ -456,7 +458,9 @@ class SyncService:
             # Update existing transaction
             existing_transaction.amount = transaction_data.amount
             existing_transaction.currency = transaction_data.currency
-            existing_transaction.description = transaction_data.description
+            # Don't overwrite a non-empty description with an empty one (bank may not always send it)
+            if transaction_data.description:
+                existing_transaction.description = transaction_data.description
             existing_transaction.merchant = merchant or transaction_data.merchant
             existing_transaction.booked_at = transaction_data.booked_at
             existing_transaction.transaction_type = transaction_data.transaction_type
