@@ -101,13 +101,25 @@ class EnableBankingAdapter(BankAdapter):
         # EB uses entry_reference as primary ID; fall back to transaction_id
         external_id = raw.get("entry_reference") or raw.get("transaction_id", "")
 
+        # Build description from multiple possible EB fields
+        description = (
+            raw.get("remittance_information_unstructured")
+            or raw.get("remittance_information_unstructured_array", [""])[0]
+            or raw.get("additional_information")
+            or raw.get("creditor_name")
+            or raw.get("debtor_name")
+            or ""
+        )
+
+        merchant = raw.get("creditor_name") or raw.get("debtor_name")
+
         return TransactionData(
             external_id=external_id,
             account_external_id=raw.get("account_id", ""),
             amount=amount,
             currency=raw["transaction_amount"]["currency"],
-            description=raw.get("remittance_information_unstructured", ""),
-            merchant=raw.get("creditor_name") or raw.get("debtor_name"),
+            description=description,
+            merchant=merchant,
             booked_at=datetime.fromisoformat(raw["booking_date"]),
             transaction_type="debit" if amount < 0 else "credit",
             pending=raw.get("status") == "PDNG",

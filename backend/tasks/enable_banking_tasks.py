@@ -127,8 +127,8 @@ def sync_bank_connection(self, connection_id: str):
         connection.last_sync_error = None
         db.commit()
 
-        # Chain to shared post-processing pipeline
-        if all_created_ids:
+        # Chain to shared post-processing pipeline (run if any transactions were touched)
+        if all_created_ids or total_updated > 0:
             post_import_pipeline.delay(
                 user_id=str(connection.user_id),
                 account_ids=synced_account_ids,

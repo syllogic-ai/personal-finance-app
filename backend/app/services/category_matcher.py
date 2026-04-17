@@ -482,8 +482,12 @@ class CategoryMatcher:
             override_category = override.get("category_name")
             
             # Match if description and merchant match (case-insensitive, normalized)
-            desc_match = (not override_desc or not normalized_desc) or override_desc == normalized_desc
-            merchant_match = (not override_merchant or not normalized_merchant) or override_merchant == normalized_merchant
+            # Skip if the transaction has no description/merchant — avoid catch-all matches
+            desc_match = (not override_desc) or (normalized_desc and override_desc == normalized_desc)
+            merchant_match = (not override_merchant) or (normalized_merchant and override_merchant == normalized_merchant)
+            # Require at least one non-empty field to match
+            if not normalized_desc and not normalized_merchant:
+                continue
             
             # Don't check for amount match. It's not always accurate.
             amount_match = True # Ignore amount match
