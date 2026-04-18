@@ -443,7 +443,7 @@ class SyncService:
         all_created_ids: List[str] = []
 
         for account in accounts:
-            created, updated, created_ids = self.sync_transactions(
+            created, updated, created_ids, _updated_ids = self.sync_transactions(
                 adapter,
                 account,
                 start_date=start_date,

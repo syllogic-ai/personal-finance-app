@@ -159,17 +159,26 @@ def _batch_categorize_transactions(db, user_id: str, transaction_ids: List[str])
 
     results, total_tokens, total_cost = matcher.match_categories_batch_llm(batch_input)
 
+    # If no results and no tokens were used, OpenAI is unavailable — bail out without
+    # touching any existing system categories so the non-LLM fallback is preserved.
+    if not results and total_tokens == 0:
+        logger.info(
+            "[POST_IMPORT_PIPELINE] Batch LLM unavailable (no API key?); "
+            "skipping categorization, existing system categories preserved"
+        )
+        return
+
     assigned = 0
     for i, txn in enumerate(transactions):
         if i in results:
             category, _confidence = results[i]
             txn.category_system_id = category.id
             assigned += 1
-        else:
-            # Clear any stale system category if the LLM couldn't categorize
-            txn.category_system_id = None
+        # When LLM ran but returned no match for a transaction, leave the existing
+        # system category intact rather than wiping it.
 
-    db.commit()
+    if assigned > 0:
+        db.commit()
 
     logger.info(
         "[POST_IMPORT_PIPELINE] Batch categorized %d/%d transactions "
