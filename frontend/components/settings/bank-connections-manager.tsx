@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
 import {
   RiBankLine,
   RiRefreshLine,
@@ -39,18 +40,31 @@ interface BankConnectionsManagerProps {
   connections: BankConnectionItem[];
 }
 
+type SyncProgress = {
+  stage: string;
+  accounts_done: number;
+  accounts_total: number;
+  transactions_created: number;
+  transactions_updated: number;
+  started_at?: string;
+};
+
 export function BankConnectionsManager({ connections }: BankConnectionsManagerProps) {
   const router = useRouter();
   const [syncingIds, setSyncingIds] = useState<Set<string>>(new Set());
   const [disconnectingIds, setDisconnectingIds] = useState<Set<string>>(new Set());
   const [pollingIds, setPollingIds] = useState<Set<string>>(new Set());
+  const [syncProgress, setSyncProgress] = useState<Map<string, SyncProgress>>(new Map());
+  const [elapsedSeconds, setElapsedSeconds] = useState<Map<string, number>>(new Map());
   const pollingTimers = useRef<Map<string, NodeJS.Timeout>>(new Map());
+  const elapsedTimers = useRef<Map<string, NodeJS.Timeout>>(new Map());
   const initialSyncTimes = useRef<Map<string, string | null>>(new Map());
 
   // Cleanup all timers on unmount
   useEffect(() => {
     return () => {
       pollingTimers.current.forEach((timer) => clearTimeout(timer));
+      elapsedTimers.current.forEach((timer) => clearInterval(timer));
     };
   }, []);
 
@@ -59,6 +73,11 @@ export function BankConnectionsManager({ connections }: BankConnectionsManagerPr
     if (timer) {
       clearTimeout(timer);
       pollingTimers.current.delete(connectionId);
+    }
+    const elapsedTimer = elapsedTimers.current.get(connectionId);
+    if (elapsedTimer) {
+      clearInterval(elapsedTimer);
+      elapsedTimers.current.delete(connectionId);
     }
     setPollingIds((prev) => {
       const next = new Set(prev);
@@ -70,6 +89,16 @@ export function BankConnectionsManager({ connections }: BankConnectionsManagerPr
       next.delete(connectionId);
       return next;
     });
+    setSyncProgress((prev) => {
+      const next = new Map(prev);
+      next.delete(connectionId);
+      return next;
+    });
+    setElapsedSeconds((prev) => {
+      const next = new Map(prev);
+      next.delete(connectionId);
+      return next;
+    });
   }, []);
 
   const startPolling = useCallback(
@@ -77,10 +106,23 @@ export function BankConnectionsManager({ connections }: BankConnectionsManagerPr
       initialSyncTimes.current.set(connectionId, currentLastSyncedAt);
       setPollingIds((prev) => new Set([...prev, connectionId]));
 
+      // Start elapsed seconds ticker (clear any stale one first)
+      const existingElapsed = elapsedTimers.current.get(connectionId);
+      if (existingElapsed) clearInterval(existingElapsed);
+      setElapsedSeconds((prev) => new Map(prev).set(connectionId, 0));
+      const elapsedInterval = setInterval(() => {
+        setElapsedSeconds((prev) => {
+          const next = new Map(prev);
+          next.set(connectionId, (next.get(connectionId) ?? 0) + 1);
+          return next;
+        });
+      }, 1000);
+      elapsedTimers.current.set(connectionId, elapsedInterval);
+
       let elapsed = 0;
       const poll = async () => {
         elapsed += 3000;
-        if (elapsed > 60000) {
+        if (elapsed > 600000) {
           stopPolling(connectionId);
           return;
         }
@@ -89,6 +131,10 @@ export function BankConnectionsManager({ connections }: BankConnectionsManagerPr
           const resp = await fetch(`/api/enable-banking/status/${connectionId}`);
           if (!resp.ok) throw new Error(`Status ${resp.status}`);
           const data = await resp.json();
+
+          if (data.sync_progress) {
+            setSyncProgress((prev) => new Map(prev).set(connectionId, data.sync_progress));
+          }
 
           const startedAt = initialSyncTimes.current.get(connectionId);
           if (data.last_synced_at && data.last_synced_at !== startedAt) {
@@ -232,8 +278,9 @@ export function BankConnectionsManager({ connections }: BankConnectionsManagerPr
           {activeConnections.map((connection) => (
             <div
               key={connection.id}
-              className="flex items-center justify-between rounded-lg border p-4"
+              className="rounded-lg border p-4"
             >
+              <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
                   <RiBankLine className="h-5 w-5" />
@@ -339,6 +386,32 @@ export function BankConnectionsManager({ connections }: BankConnectionsManagerPr
                   </AlertDialogContent>
                 </AlertDialog>
               </div>
+              </div>
+              {syncingIds.has(connection.id) && (
+                <div className="mt-3 space-y-1.5">
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>
+                      {(() => {
+                        const progress = syncProgress.get(connection.id);
+                        if (progress && progress.accounts_total > 0) {
+                          return `Syncing account ${progress.accounts_done} of ${progress.accounts_total} · ${progress.transactions_created} transactions imported`;
+                        }
+                        return "Preparing sync...";
+                      })()}
+                    </span>
+                    <span>{elapsedSeconds.get(connection.id) ?? 0}s elapsed</span>
+                  </div>
+                  <Progress
+                    value={(() => {
+                      const progress = syncProgress.get(connection.id);
+                      if (progress && progress.accounts_total > 0) {
+                        return (progress.accounts_done / progress.accounts_total) * 100;
+                      }
+                      return 0;
+                    })()}
+                  />
+                </div>
+              )}
             </div>
           ))}
         </div>

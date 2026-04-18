@@ -2,10 +2,13 @@
 Celery tasks for Enable Banking sync and consent management.
 """
 
+import json
 import logging
-from datetime import datetime, timedelta
+import os
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
+import redis
 from sqlalchemy.orm import Session
 
 from celery_app import celery_app
@@ -18,6 +21,31 @@ from app.security.data_encryption import decrypt_with_fallback
 from tasks.post_import_pipeline import post_import_pipeline
 
 logger = logging.getLogger(__name__)
+
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+_redis_client = None
+
+
+def _get_redis():
+    global _redis_client
+    if _redis_client is None:
+        _redis_client = redis.from_url(REDIS_URL, decode_responses=True)
+    return _redis_client
+
+
+def _set_sync_progress(connection_id: str, data: dict) -> None:
+    try:
+        key = f"sync_progress:{connection_id}"
+        _get_redis().setex(key, 3600, json.dumps(data))
+    except Exception as e:
+        logger.warning(f"Failed to write sync progress to Redis: {e}")
+
+
+def _clear_sync_progress(connection_id: str) -> None:
+    try:
+        _get_redis().delete(f"sync_progress:{connection_id}")
+    except Exception:
+        pass
 
 
 @celery_app.task(bind=True, max_retries=3, default_retry_delay=60)
@@ -53,11 +81,11 @@ def sync_bank_connection(self, connection_id: str):
         if connection.last_synced_at is None:
             # First sync: use user-configured lookback
             sync_days = connection.initial_sync_days or 90
-            start_date = (datetime.utcnow() - timedelta(days=sync_days)).date()
+            start_date = (datetime.now(timezone.utc) - timedelta(days=sync_days)).date()
         else:
             # Incremental sync: from last sync minus 1 day overlap
             start_date = (connection.last_synced_at - timedelta(days=1)).date()
-        end_date = datetime.utcnow()
+        end_date = datetime.now(timezone.utc)
 
         sync_service = SyncService(db, user_id=connection.user_id)
 
@@ -71,7 +99,18 @@ def sync_bank_connection(self, connection_id: str):
         all_created_ids: list[str] = []
         synced_account_ids: list[str] = []
 
-        for account in accounts:
+        accounts_total = len(accounts)
+        sync_started_at = datetime.now(timezone.utc).isoformat()
+        _set_sync_progress(connection_id, {
+            "stage": "syncing",
+            "accounts_done": 0,
+            "accounts_total": accounts_total,
+            "transactions_created": 0,
+            "transactions_updated": 0,
+            "started_at": sync_started_at,
+        })
+
+        for i, account in enumerate(accounts):
             account_uid = decrypt_with_fallback(
                 account.external_id_ciphertext,
                 account.external_id,
@@ -109,7 +148,15 @@ def sync_bank_connection(self, connection_id: str):
                 logger.error(f"Failed to sync transactions for account {account.id}: {e}")
                 raise
 
-            account.last_synced_at = datetime.utcnow()
+            account.last_synced_at = datetime.now(timezone.utc)
+            _set_sync_progress(connection_id, {
+                "stage": "syncing",
+                "accounts_done": i + 1,
+                "accounts_total": accounts_total,
+                "transactions_created": total_created,
+                "transactions_updated": total_updated,
+                "started_at": sync_started_at,
+            })
 
         # Recompute functional_balance for all synced accounts
         from sqlalchemy import func as sa_func
@@ -123,9 +170,10 @@ def sync_bank_connection(self, connection_id: str):
             starting_balance = account.starting_balance or Decimal("0")
             account.functional_balance = transaction_sum + starting_balance
 
-        connection.last_synced_at = datetime.utcnow()
+        connection.last_synced_at = datetime.now(timezone.utc)
         connection.last_sync_error = None
         db.commit()
+        _clear_sync_progress(connection_id)
 
         # Chain to shared post-processing pipeline (run if any transactions were touched)
         if all_created_ids or total_updated > 0:
@@ -168,6 +216,7 @@ def sync_bank_connection(self, connection_id: str):
                 db.commit()
         except Exception:
             pass
+        _clear_sync_progress(connection_id)
         raise self.retry(exc=e)
     finally:
         db.close()
@@ -207,7 +256,7 @@ def check_consent_expiry():
     """
     db: Session = SessionLocal()
     try:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         # Mark expired connections
         expired = db.query(BankConnection).filter(

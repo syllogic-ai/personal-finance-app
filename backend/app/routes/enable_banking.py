@@ -9,7 +9,7 @@ import os
 import logging
 import uuid as uuid_mod
 from typing import Optional, List
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import redis
 import json
@@ -50,6 +50,14 @@ class SessionResponse(BaseModel):
     connection_id: str
     accounts_count: int
 
+class SyncProgress(BaseModel):
+    stage: str  # "syncing" | "done"
+    accounts_done: int
+    accounts_total: int
+    transactions_created: int
+    transactions_updated: int
+    started_at: Optional[str] = None
+
 class ConnectionStatusResponse(BaseModel):
     id: str
     aspsp_name: str
@@ -59,6 +67,7 @@ class ConnectionStatusResponse(BaseModel):
     consent_expires_at: Optional[str] = None
     last_sync_error: Optional[str] = None
     accounts_count: int
+    sync_progress: Optional[SyncProgress] = None
 
 class SyncTriggerResponse(BaseModel):
     message: str
@@ -147,7 +156,7 @@ def initiate_auth(
 
     auth_payload = {
         "access": {
-            "valid_until": (datetime.utcnow() + timedelta(days=90)).strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+            "valid_until": (datetime.now(timezone.utc) + timedelta(days=90)).strftime("%Y-%m-%dT%H:%M:%S.000Z"),
         },
         "aspsp": {
             "name": body.aspsp_name,
@@ -215,9 +224,9 @@ def create_session(
         try:
             consent_expires_at = datetime.fromisoformat(consent_valid_until.replace("Z", "+00:00"))
         except (ValueError, TypeError):
-            consent_expires_at = datetime.utcnow() + timedelta(days=90)
+            consent_expires_at = datetime.now(timezone.utc) + timedelta(days=90)
     else:
-        consent_expires_at = datetime.utcnow() + timedelta(days=90)
+        consent_expires_at = datetime.now(timezone.utc) + timedelta(days=90)
 
     # Create bank_connections row (status=pending_setup; accounts mapped in a separate step)
     connection = BankConnection(
@@ -414,6 +423,17 @@ def connection_status(
         Account.bank_connection_id == connection.id,
     ).count()
 
+    # Read live sync progress from Redis (set by Celery worker)
+    sync_progress = None
+    try:
+        r = redis.from_url(REDIS_URL, decode_responses=True)
+        raw = r.get(f"sync_progress:{connection_id}")
+        if raw:
+            data = json.loads(raw)
+            sync_progress = SyncProgress(**data)
+    except Exception:
+        pass
+
     return ConnectionStatusResponse(
         id=str(connection.id),
         aspsp_name=connection.aspsp_name,
@@ -423,6 +443,7 @@ def connection_status(
         consent_expires_at=connection.consent_expires_at.isoformat() if connection.consent_expires_at else None,
         last_sync_error=connection.last_sync_error,
         accounts_count=accounts_count,
+        sync_progress=sync_progress,
     )
 
 
