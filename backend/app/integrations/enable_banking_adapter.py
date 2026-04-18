@@ -165,17 +165,34 @@ class EnableBankingAdapter(BankAdapter):
             else (remittance_info if isinstance(remittance_info, str) else None)
         )
 
-        # Build description from all possible EB text fields, most specific first
+        # Build a rich description by combining all available EB text fields.
+        # Previously used `or` (first non-null wins); now we concatenate so all
+        # structured remittance lines, additional info, and notes are preserved.
+        desc_parts: list[str] = []
+
+        riu = raw.get("remittance_information_unstructured")
+        if riu:
+            desc_parts.append(riu)
+
+        for item in (raw.get("remittance_information_unstructured_array") or []):
+            if item and item not in desc_parts:
+                desc_parts.append(item)
+
+        if remittance_info_text and remittance_info_text not in desc_parts:
+            desc_parts.append(remittance_info_text)
+
+        ai_info = raw.get("additional_information")
+        if ai_info and ai_info not in desc_parts:
+            desc_parts.append(ai_info)
+
+        note = raw.get("note")
+        if note and note not in desc_parts:
+            desc_parts.append(note)
+
         description = (
-            raw.get("remittance_information_unstructured")
-            or (raw.get("remittance_information_unstructured_array") or [""])[0]
-            or remittance_info_text
-            or raw.get("additional_information")
-            or raw.get("note")
-            or creditor_name
-            or debtor_name
-            or raw.get("reference_number")
-            or ""
+            " | ".join(desc_parts)
+            if desc_parts
+            else (creditor_name or debtor_name or raw.get("reference_number") or "")
         )
 
         merchant = creditor_name or debtor_name
@@ -194,6 +211,8 @@ class EnableBankingAdapter(BankAdapter):
             currency=raw["transaction_amount"]["currency"],
             description=description,
             merchant=merchant,
+            creditor=creditor_name,
+            debtor=debtor_name,
             booked_at=datetime.fromisoformat(_date_str) if (_date_str := (
                 raw.get("booking_date")
                 or raw.get("value_date")
