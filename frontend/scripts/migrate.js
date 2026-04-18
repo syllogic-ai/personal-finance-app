@@ -59,7 +59,11 @@ function shouldEnforceDatabaseTls(databaseUrl) {
   const localHosts = new Set(["localhost", "127.0.0.1", "postgres", "db"]);
   try {
     const parsed = new URL(databaseUrl);
-    return !localHosts.has(parsed.hostname.toLowerCase());
+    const hostname = parsed.hostname.toLowerCase();
+    // Railway private-network hostnames (*.railway.internal) are equivalent to
+    // localhost — TLS is not available on the private mesh.
+    if (hostname.endsWith(".railway.internal")) return false;
+    return !localHosts.has(hostname);
   } catch {
     return true;
   }
