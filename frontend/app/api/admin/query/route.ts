@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
     const bankAccountIds = bankAccounts.map((a) => a.id);
 
     // Only clear category_system_id where user hasn't manually overridden (category_id is null)
-    const result = await db
+    await db
       .update(transactions)
       .set({ categorySystemId: null })
       .where(
@@ -77,6 +77,35 @@ export async function POST(req: NextRequest) {
       );
 
     return NextResponse.json({ cleared: true, accountIds: bankAccountIds });
+  }
+
+  // Cleanup: delete ALL transactions from bank-synced accounts so next sync creates them fresh
+  // (runs full pipeline: FX rate, functional amount, balance, subscription detection, categorisation)
+  if (action === "delete_bank_transactions") {
+    const bankAccounts = await db
+      .select({ id: accounts.id, name: accounts.name })
+      .from(accounts)
+      .where(and(eq(accounts.userId, userId), isNotNull(accounts.bankConnectionId)));
+
+    if (bankAccounts.length === 0) {
+      return NextResponse.json({ deleted: 0, message: "No bank-synced accounts found" });
+    }
+
+    const bankAccountIds = bankAccounts.map((a) => a.id);
+
+    const countRows = await db
+      .select({ id: transactions.id })
+      .from(transactions)
+      .where(and(eq(transactions.userId, userId), inArray(transactions.accountId, bankAccountIds)));
+
+    await db
+      .delete(transactions)
+      .where(and(eq(transactions.userId, userId), inArray(transactions.accountId, bankAccountIds)));
+
+    return NextResponse.json({
+      deleted: countRows.length,
+      accounts: bankAccounts.map((a) => ({ id: a.id, name: a.name })),
+    });
   }
 
   // Default: inspect accounts + recent transactions
