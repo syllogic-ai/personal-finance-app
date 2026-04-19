@@ -388,7 +388,10 @@ export async function getSuggestedMappings(
       headers: signatureHeaders,
     });
 
-    if (!resp.ok) return [];
+    if (!resp.ok) {
+      console.warn(`getSuggestedMappings: backend returned ${resp.status} for ${connectionId}`);
+      return [];
+    }
     return await resp.json();
   } catch {
     return [];

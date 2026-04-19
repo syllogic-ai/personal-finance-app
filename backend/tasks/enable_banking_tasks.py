@@ -117,6 +117,7 @@ def sync_bank_connection(self, connection_id: str):
         # Mark sync as in progress before any API calls
         connection.sync_started_at = datetime.now(timezone.utc)
         db.commit()
+        _sync_started_at_cleared = False  # tracks whether the success path already cleared it
 
         client = EnableBankingClient()
         adapter = EnableBankingAdapter(
@@ -247,6 +248,7 @@ def sync_bank_connection(self, connection_id: str):
         connection.sync_started_at = None  # clear atomically with last_synced_at
         connection.last_sync_error = None
         db.commit()
+        _sync_started_at_cleared = True
         _clear_sync_progress(connection_id)
 
         # Chain to shared post-processing pipeline (run if any transactions were touched).
@@ -296,14 +298,15 @@ def sync_bank_connection(self, connection_id: str):
         _clear_sync_progress(connection_id)
         raise self.retry(exc=e)
     finally:
-        # Clear in-progress marker regardless of outcome
-        try:
-            conn = db.query(BankConnection).filter(BankConnection.id == connection_id).first()
-            if conn:
-                conn.sync_started_at = None
-                db.commit()
-        except Exception:
-            pass
+        # Clear in-progress marker if not already cleared by the success path
+        if not _sync_started_at_cleared:
+            try:
+                conn = db.query(BankConnection).filter(BankConnection.id == connection_id).first()
+                if conn:
+                    conn.sync_started_at = None
+                    db.commit()
+            except Exception:
+                pass
         db.close()
 
 
