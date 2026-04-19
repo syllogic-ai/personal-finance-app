@@ -1,16 +1,134 @@
+import re
+from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from typing import List, Optional
 from uuid import UUID
 
 from app.database import get_db
-from app.models import Account
+from app.models import Account, Transaction
 from app.db_helpers import get_user_id
 from app.schemas import AccountCreate, AccountResponse, AccountUpdate
-from app.security.data_encryption import blind_index_candidates, decrypt_with_fallback
+from app.security.data_encryption import (
+    blind_index,
+    blind_index_candidates,
+    decrypt_with_fallback,
+    encrypt_value,
+)
+from app.services.internal_transfer_service import InternalTransferService
 
 router = APIRouter()
+
+
+# ---------------------------------------------------------------------------
+# Pocket account registration
+# ---------------------------------------------------------------------------
+
+_IBAN_RE = re.compile(r"^[A-Z]{2}\d{2}[A-Z0-9]{10,30}$")
+
+
+class CreatePocketRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+    account_type: str = "savings"
+    currency: str = "EUR"
+    starting_balance: Decimal = Decimal("0")
+    iban: str
+
+    @field_validator("iban")
+    @classmethod
+    def _normalize_iban(cls, v: str) -> str:
+        norm = v.replace(" ", "").upper()
+        if not (15 <= len(norm) <= 34) or not _IBAN_RE.match(norm):
+            raise ValueError("Invalid IBAN format")
+        return norm
+
+
+class CreatePocketResponse(BaseModel):
+    account_id: UUID
+    backfilled_count: int
+
+
+@router.post("/pocket", response_model=CreatePocketResponse)
+def create_pocket_account(
+    payload: CreatePocketRequest,
+    user_id: str = Depends(get_user_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Create a manual pocket account identified by IBAN and immediately backfill
+    any pre-existing transactions whose counterparty IBAN matches.
+
+    Pockets are user-owned, manually-registered accounts (provider="manual")
+    used to represent money parked in a non-synced account the user transfers
+    to/from from a synced account. Matching is done via blind-indexed IBAN
+    hash so the plaintext IBAN is never compared directly.
+    """
+    iban_hash = blind_index(payload.iban)
+    if iban_hash is None:
+        raise HTTPException(
+            status_code=500,
+            detail="Encryption not configured — cannot register pocket",
+        )
+
+    # Scope the duplicate check to manual pockets only. If the user's synced
+    # bank accounts ever gain an iban_hash (not today), we still want this
+    # endpoint to refuse only pocket-vs-pocket collisions — not block a
+    # pocket from sharing an IBAN with a synced account.
+    existing = (
+        db.query(Account)
+        .filter(
+            Account.user_id == user_id,
+            Account.iban_hash == iban_hash,
+            Account.provider == "manual",
+        )
+        .first()
+    )
+    if existing is not None:
+        raise HTTPException(
+            status_code=400,
+            detail="A pocket account with this IBAN is already registered",
+        )
+
+    account = Account(
+        user_id=user_id,
+        name=payload.name,
+        account_type=payload.account_type,
+        currency=payload.currency,
+        provider="manual",
+        starting_balance=payload.starting_balance,
+        functional_balance=payload.starting_balance,
+        iban_ciphertext=encrypt_value(payload.iban),
+        iban_hash=iban_hash,
+        is_active=True,
+    )
+    db.add(account)
+    db.flush()
+
+    # Backfill: find existing transactions whose counterparty matches this IBAN
+    candidate_ids = [
+        row[0]
+        for row in db.query(Transaction.id)
+        .filter(
+            Transaction.user_id == user_id,
+            Transaction.counterparty_iban_hash == iban_hash,
+            Transaction.internal_transfer_id.is_(None),
+        )
+        .all()
+    ]
+    # Commit semantics: InternalTransferService.detect_for_transactions commits
+    # internally when it actually persists matches (detected > 0). We still
+    # commit here unconditionally so the new Account row is persisted even on
+    # the zero-match path. A redundant commit on a clean session is a no-op.
+    backfilled = (
+        InternalTransferService(db, user_id=user_id).detect_for_transactions(candidate_ids)
+        if candidate_ids
+        else 0
+    )
+    db.commit()
+
+    return CreatePocketResponse(account_id=account.id, backfilled_count=backfilled)
 
 
 def _serialize_account(account: Account) -> AccountResponse:
