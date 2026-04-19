@@ -1,13 +1,14 @@
 """
 Shared post-import pipeline Celery task.
 
-Runs 6 post-processing steps in order after any transaction import (CSV or Enable Banking):
+Runs 7 post-processing steps in order after any transaction import (CSV or Enable Banking):
   1. FX rate sync
   2. Functional amount calculation
-  3. Batch AI categorization (for transactions without a user-assigned category)
-  4. Balance calculation
-  5. Balance timeseries
-  6. Subscription detection
+  3. Internal transfer detection (create mirrors, flag both sides as non-analytics)
+  4. Batch AI categorization (for transactions without a user-assigned category)
+  5. Balance calculation
+  6. Balance timeseries
+  7. Subscription detection
 """
 import logging
 from datetime import datetime
@@ -24,6 +25,7 @@ from app.services.account_balance_service import AccountBalanceService
 from app.services.subscription_matcher import SubscriptionMatcher
 from app.services.subscription_detector import SubscriptionDetector
 from app.services.category_matcher import CategoryMatcher
+from app.services.internal_transfer_service import InternalTransferService
 
 logger = logging.getLogger(__name__)
 
@@ -120,6 +122,15 @@ def _update_functional_amounts(db, user_id: str, transaction_ids: List[str]) -> 
     db.commit()
 
 
+def _detect_internal_transfers(db, user_id: str, transaction_ids: List[str]) -> int:
+    """Detect counterparty-IBAN matches against the user's manual pocket accounts
+    and create mirror transactions on the pocket side. Returns count detected."""
+    if not transaction_ids:
+        return 0
+    service = InternalTransferService(db, user_id=user_id)
+    return service.detect_for_transactions(transaction_ids)
+
+
 def _batch_categorize_transactions(db, user_id: str, transaction_ids: List[str]) -> None:
     """Batch AI categorize touched transactions that have no user-assigned category.
 
@@ -136,6 +147,9 @@ def _batch_categorize_transactions(db, user_id: str, transaction_ids: List[str])
             Transaction.id.in_(transaction_ids),
             Transaction.user_id == user_id,
             Transaction.category_id.is_(None),  # Preserve user-assigned categories
+            # Skip transactions excluded from analytics — covers internal
+            # transfers (set by step 3) AND user-hidden rows (set via UI).
+            Transaction.include_in_analytics.is_(True),
         )
         .all()
     )
@@ -294,15 +308,20 @@ def _run_post_import_pipeline(
         # Step 2: Functional amount calculation
         _update_functional_amounts(db, user_id, transaction_ids)
 
-        # Step 3: Batch AI categorization (overwrites wrong system categories; preserves user overrides)
+        # Step 3: Internal transfer detection (must run before LLM categorization)
+        detected = _detect_internal_transfers(db, user_id, transaction_ids)
+        logger.info("[POST_IMPORT_PIPELINE] Internal transfers detected: %d", detected)
+
+        # Step 4: Batch AI categorization (overwrites wrong system categories; preserves user overrides)
         _batch_categorize_transactions(db, user_id, transaction_ids)
 
-        # Step 4: Balance calculation
+        # Step 5: Balance calculation
         _calculate_balances(db, user_id, account_ids)
 
-        # Step 5: Balance timeseries
+        # Step 6: Balance timeseries
         _calculate_timeseries(db, user_id, account_ids)
 
+        # Step 7: Subscription detection
         # For initial sync, pass None so the detector scans ALL user transactions
         effective_txn_ids = None if is_initial_sync else transaction_ids
         _detect_subscriptions(db, user_id, effective_txn_ids, account_ids)
