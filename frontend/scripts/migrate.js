@@ -195,11 +195,15 @@ async function main() {
       if (isPgRelationExistsError(err)) {
         console.warn("[migrate] Detected existing schema without migration tracking. Baseline mode...");
         const baselined = await baselineExistingSchema(sql, migrationsFolder);
-        if (baselined) {
-          // Now that the baseline is recorded, apply the remaining migrations.
-          await migrate(db, { migrationsFolder });
-          console.log("[migrate] Migrations complete (after baseline)");
+        if (!baselined) {
+          // Migration tracking already had entries — the "relation exists" error
+          // is a real schema-drift failure, not a first-run baselining issue.
+          // Re-raise so it is NOT masked by the manual-migration step below.
+          throw err;
         }
+        // Baseline recorded; apply the remaining Drizzle migrations.
+        await migrate(db, { migrationsFolder });
+        console.log("[migrate] Migrations complete (after baseline)");
       } else {
         throw err;
       }
