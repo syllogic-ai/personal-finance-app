@@ -103,8 +103,15 @@
     {
       "idx": 14,
       "version": "7",
+      "when": 1745020800000,
+      "tag": "0014_bank_connection_sync_started_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
       "when": 1776556800000,
-      "tag": "0014_oauth_provider_tables",
+      "tag": "0015_oauth_provider_tables",
       "breakpoints": true
     }
   ]
