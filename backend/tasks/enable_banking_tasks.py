@@ -121,16 +121,36 @@ def sync_bank_connection(self, connection_id: str):
                 logger.warning(f"No external_id for account {account.id}, skipping")
                 continue
 
-            # Fetch and update balances
+            # Fetch and update balances.
+            # Priority order of ISO 20022 balance types:
+            #   CLAV/ITAV = (interim) available — most accurate "what you can spend"
+            #   CLBD      = closing booked — authoritative, excludes pending
+            #   XPCD      = expected — booked + pending
+            #   PRCD      = previously closed booked
+            #   OTHR      = bank-defined fallback
+            # ABN AMRO via Enable Banking does not return CLAV/ITAV, so fall through
+            # the priority list and finally pick the first returned balance.
             try:
                 balance_data = adapter.fetch_balances(account_uid)
                 balances = balance_data.get("balances", [])
-                for bal in balances:
-                    bal_type = bal.get("balance_type", "")
-                    if bal_type in ("CLAV", "ITAV"):  # Available balance
-                        account.balance_available = bal["balance_amount"]["amount"]
-                        account.balance_is_anchored = True
+                priority = ("CLAV", "ITAV", "CLBD", "XPCD", "PRCD", "OTHR")
+                chosen = None
+                for pref in priority:
+                    for bal in balances:
+                        if bal.get("balance_type", "").upper() == pref:
+                            chosen = bal
+                            break
+                    if chosen:
                         break
+                if chosen is None and balances:
+                    chosen = balances[0]
+                if chosen is not None:
+                    account.balance_available = chosen["balance_amount"]["amount"]
+                    account.balance_is_anchored = True
+                else:
+                    logger.warning(
+                        f"No balances returned by Enable Banking for account {account.id}"
+                    )
             except Exception as e:
                 logger.warning(f"Failed to fetch balances for account {account.id}: {e}")
 
