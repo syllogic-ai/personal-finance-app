@@ -8,8 +8,9 @@ export default async function HoldingDetailPage({
   params: Promise<{ holdingId: string }>;
 }) {
   const { holdingId } = await params;
-  const today = new Date().toISOString().slice(0, 10);
-  const oneYearAgo = new Date(Date.now() - 365 * 86400e3)
+  const now = new Date();
+  const today = now.toISOString().slice(0, 10);
+  const oneYearAgo = new Date(now.getTime() - 365 * 86400e3)
     .toISOString()
     .slice(0, 10);
   const history = await getHoldingHistory(holdingId, oneYearAgo, today);
