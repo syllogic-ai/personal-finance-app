@@ -43,6 +43,8 @@ class Account(Base):
     external_id = Column(String(255), nullable=True)  # Provider's account ID
     external_id_ciphertext = Column(Text, nullable=True)
     external_id_hash = Column(String(64), nullable=True, index=True)
+    iban_ciphertext = Column(Text, nullable=True)
+    iban_hash = Column(String(64), nullable=True, index=False)  # composite index defined in __table_args__
     bank_connection_id = Column(UUID(as_uuid=True), ForeignKey("bank_connections.id", ondelete="SET NULL"), nullable=True)
     balance_available = Column(Numeric(15, 2), nullable=True)
     starting_balance = Column(Numeric(15, 2), default=Decimal("0"))  # Starting balance for calculation
@@ -76,6 +78,7 @@ class Account(Base):
             postgresql_where=text("external_id_hash IS NOT NULL"),
         ),
         Index("idx_accounts_bank_connection", "bank_connection_id"),
+        Index("idx_accounts_user_iban_hash", "user_id", "iban_hash"),
     )
 
 

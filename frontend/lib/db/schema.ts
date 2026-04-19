@@ -119,6 +119,8 @@ export const accounts = pgTable(
     externalId: varchar("external_id", { length: 255 }), // Provider's account ID
     externalIdCiphertext: text("external_id_ciphertext"),
     externalIdHash: varchar("external_id_hash", { length: 64 }),
+    ibanCiphertext: text("iban_ciphertext"),
+    ibanHash: varchar("iban_hash", { length: 64 }),
     bankConnectionId: uuid("bank_connection_id").references(() => bankConnections.id, { onDelete: "set null" }),
     balanceAvailable: decimal("balance_available", { precision: 15, scale: 2 }),
     startingBalance: decimal("starting_balance", { precision: 15, scale: 2 }).default("0"), // Starting balance for calculation
@@ -142,6 +144,7 @@ export const accounts = pgTable(
       table.provider,
       table.externalIdHash
     ),
+    index("idx_accounts_user_iban_hash").on(table.userId, table.ibanHash),
   ]
 );
 
