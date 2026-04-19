@@ -227,7 +227,7 @@ class CompositeAuthProvider(AuthProvider):
 ```bash
 cd backend && pip install -q pytest-asyncio 2>/dev/null; pytest tests/test_mcp_composite_auth.py -v
 ```
-Expected: 6 passed.
+Expected: 7 passed.
 If `pytest-asyncio` wasn't already listed, add to `requirements-dev.txt` (or `requirements.txt` if no dev file).
 
 - [ ] **Step 1.5: Commit**

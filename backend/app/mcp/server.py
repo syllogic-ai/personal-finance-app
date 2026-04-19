@@ -22,8 +22,12 @@ mcp = FastMCP(
     instructions="""
 Syllogic MCP Server - Access financial data and manage transactions.
 
-All requests require an API key:
-Authorization: Bearer pf_...
+All requests require a bearer token in the Authorization header. Two token
+types are accepted:
+- API keys (`Authorization: Bearer pf_...`) for Claude Desktop / Code and
+  other local clients.
+- OAuth 2.1 access tokens (JWTs) issued by the Syllogic authorization server
+  for Claude on the web, iOS, Android, and any other custom connector.
 
 The `user_id` parameter is optional on all tools but must match the authenticated user.
 

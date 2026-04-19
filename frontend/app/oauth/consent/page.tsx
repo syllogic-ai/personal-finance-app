@@ -1,6 +1,9 @@
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { headers } from "next/headers";
+import { eq } from "drizzle-orm";
 import { auth } from "@/lib/auth";
+import { db } from "@/lib/db";
+import { oauthClient } from "@/lib/db/schema";
 import { ConsentForm } from "./consent-form";
 
 type SearchParams = {
@@ -9,6 +12,11 @@ type SearchParams = {
   redirect_uri?: string;
   state?: string;
   [key: string]: string | string[] | undefined;
+};
+
+const SCOPE_DESCRIPTIONS: Record<string, string> = {
+  "mcp:access":
+    "View and update your financial data via the Syllogic MCP server",
 };
 
 export default async function ConsentPage({
@@ -30,7 +38,21 @@ export default async function ConsentPage({
     redirect(`/login?returnTo=${encodeURIComponent(returnTo)}`);
   }
 
-  const clientName = params.client_id ?? "Unknown client";
+  const clientId = typeof params.client_id === "string" ? params.client_id : "";
+  if (!clientId) notFound();
+
+  const [client] = await db
+    .select({
+      name: oauthClient.name,
+      disabled: oauthClient.disabled,
+    })
+    .from(oauthClient)
+    .where(eq(oauthClient.clientId, clientId))
+    .limit(1);
+
+  if (!client || client.disabled) notFound();
+
+  const clientName = client.name?.trim() || clientId;
   const scopes = (params.scope ?? "").split(" ").filter(Boolean);
 
   return (
@@ -41,10 +63,17 @@ export default async function ConsentPage({
         account. If you approve, it will be able to:
       </p>
       <ul className="list-disc pl-6 text-sm">
-        {scopes.includes("mcp:access") && (
-          <li>View and update your financial data via the Syllogic MCP server</li>
-        )}
         {scopes.length === 0 && <li>Access your Syllogic data</li>}
+        {scopes.map((scope) => (
+          <li key={scope}>
+            {SCOPE_DESCRIPTIONS[scope] ?? (
+              <>
+                <code className="rounded bg-muted px-1 font-mono">{scope}</code>{" "}
+                (additional access)
+              </>
+            )}
+          </li>
+        ))}
       </ul>
       <ConsentForm params={params} />
     </main>
