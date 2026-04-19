@@ -99,6 +99,13 @@
       "when": 1776470400000,
       "tag": "0013_transaction_creditor_debtor",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1776556800000,
+      "tag": "0014_oauth_provider_tables",
+      "breakpoints": true
     }
   ]
 }
