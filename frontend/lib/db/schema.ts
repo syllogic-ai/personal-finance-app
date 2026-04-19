@@ -255,6 +255,9 @@ export const transactions = pgTable(
     merchant: varchar("merchant", { length: 255 }),
     creditor: varchar("creditor", { length: 255 }), // Counterparty name for debits (payee)
     debtor: varchar("debtor", { length: 255 }), // Counterparty name for credits (payer)
+    counterpartyIbanCiphertext: text("counterparty_iban_ciphertext"),
+    counterpartyIbanHash: varchar("counterparty_iban_hash", { length: 64 }),
+    internalTransferId: uuid("internal_transfer_id"),  // FK added in Task 3 when internal_transfers table exists
     categoryId: uuid("category_id").references(() => categories.id), // User-overridden category
     categorySystemId: uuid("category_system_id").references(() => categories.id), // AI-assigned category (never updated by user)
     bookedAt: timestamp("booked_at").notNull(),
@@ -280,6 +283,7 @@ export const transactions = pgTable(
     index("idx_transactions_merchant").on(table.merchant),
     index("idx_transactions_csv_import").on(table.csvImportId),
     unique("transactions_account_external_id").on(table.accountId, table.externalId),
+    index("idx_transactions_user_counterparty_iban").on(table.userId, table.counterpartyIbanHash),
   ]
 );
 

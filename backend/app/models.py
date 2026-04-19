@@ -173,6 +173,9 @@ class Transaction(Base):
     merchant = Column(String(255))
     creditor = Column(String(255), nullable=True)   # Counterparty name for debits (payee)
     debtor = Column(String(255), nullable=True)     # Counterparty name for credits (payer)
+    counterparty_iban_ciphertext = Column(Text, nullable=True)
+    counterparty_iban_hash = Column(String(64), nullable=True)
+    internal_transfer_id = Column(UUID(as_uuid=True), nullable=True)  # FK constraint added in Task 3
     category_id = Column(UUID(as_uuid=True), ForeignKey("categories.id"), nullable=True, index=True)  # User-overridden category
     category_system_id = Column(UUID(as_uuid=True), ForeignKey("categories.id"), nullable=True, index=True)  # AI-assigned category
     booked_at = Column(DateTime, nullable=False, index=True)
@@ -204,6 +207,7 @@ class Transaction(Base):
         Index("idx_transactions_recurring", "recurring_transaction_id"),
         Index("idx_transactions_csv_import", "csv_import_id"),
         UniqueConstraint("account_id", "external_id", name="transactions_account_external_id"),
+        Index("idx_transactions_user_counterparty_iban", "user_id", "counterparty_iban_hash"),
     )
 
 
