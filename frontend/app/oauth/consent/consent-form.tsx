@@ -29,18 +29,21 @@ export function ConsentForm({ params }: Props) {
           ...(scope ? { scope } : {}),
           oauth_query: oauthQuery,
         }),
+        redirect: "manual",
       });
-      if (res.redirected) {
-        window.location.assign(res.url);
-        return;
-      }
       const body = await res.json().catch(() => ({}));
-      if (body.redirect_uri) {
-        window.location.assign(body.redirect_uri);
+      const target =
+        typeof body?.url === "string"
+          ? body.url
+          : typeof body?.redirect_uri === "string"
+            ? body.redirect_uri
+            : undefined;
+      if (target) {
+        window.location.assign(target);
         return;
       }
       if (!res.ok) {
-        throw new Error(body.error ?? `Request failed (${res.status})`);
+        throw new Error(body?.error ?? `Request failed (${res.status})`);
       }
     } catch (err) {
       setError(
