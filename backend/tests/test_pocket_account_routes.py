@@ -166,6 +166,12 @@ def _signed_post(client, user_id: str, path: str, body: dict):
     return client.post(path, headers=headers, json=body)
 
 
+def _signed_delete(client, user_id: str, path: str):
+    """DELETE to an internal-auth-protected endpoint with properly signed headers."""
+    headers = build_internal_auth_headers("DELETE", path, user_id)
+    return client.delete(path, headers=headers)
+
+
 # ---------------------------------------------------------------------------
 # Test 1: happy path — encrypts IBAN, creates pocket, backfills existing txns
 # ---------------------------------------------------------------------------
@@ -381,12 +387,181 @@ def test_create_pocket_account_rejects_invalid_iban() -> None:
         db.close()
 
 
+# ---------------------------------------------------------------------------
+# Task 9: DELETE /api/accounts/internal-transfers/{transfer_id}
+# ---------------------------------------------------------------------------
+
+
+def _make_pocket_account(db, user_id: str, iban: str) -> Account:
+    """Create a manual pocket account with encrypted IBAN + hash."""
+    from app.security.data_encryption import encrypt_value
+
+    acc = Account(
+        user_id=user_id,
+        name="Pocket",
+        account_type="savings",
+        currency="EUR",
+        provider="manual",
+        iban_ciphertext=encrypt_value(iban),
+        iban_hash=blind_index(iban),
+        is_active=True,
+        starting_balance=Decimal("0"),
+    )
+    db.add(acc)
+    db.commit()
+    db.refresh(acc)
+    return acc
+
+
+def test_unlink_internal_transfer_restores_source() -> None:
+    _ensure_schema()
+    db = SessionLocal()
+    user_id: Optional[str] = None
+    try:
+        from app.services.internal_transfer_service import InternalTransferService
+
+        user = _make_user(db)
+        user_id = user.id
+        _make_transfer_category(db, user_id)
+        synced = _make_synced_account(db, user_id, name="Main")
+        pocket = _make_pocket_account(db, user_id, iban=POCKET_IBAN)
+        src = _make_source_transaction(
+            db, user_id, synced.id, counterparty_iban=POCKET_IBAN,
+            amount=Decimal("-9.00"),
+        )
+        # Trigger detection so there's a link to unlink
+        assert InternalTransferService(db, user_id=user_id).detect_for_transactions([src.id]) == 1
+        link = db.query(InternalTransfer).filter_by(user_id=user_id).one()
+
+        client = _client()
+        path = f"/api/accounts/internal-transfers/{link.id}"
+        response = _signed_delete(client, user_id, path)
+        assert response.status_code == 204, f"Expected 204, got {response.status_code}: {response.text}"
+
+        db.refresh(src)
+        assert src.include_in_analytics is True
+        assert src.internal_transfer_id is None
+        # Link is gone
+        assert db.query(InternalTransfer).filter_by(id=link.id).first() is None
+        # Mirror transaction was deleted too
+        assert db.query(Transaction).filter_by(account_id=pocket.id).count() == 0
+    finally:
+        if user_id:
+            _cleanup_user(db, user_id)
+        db.close()
+
+
+# ---------------------------------------------------------------------------
+# Task 10: DELETE /api/accounts/{account_id} with pre-delete cleanup
+# ---------------------------------------------------------------------------
+
+
+def test_delete_pocket_account_restores_linked_sources() -> None:
+    _ensure_schema()
+    db = SessionLocal()
+    user_id: Optional[str] = None
+    try:
+        from app.services.internal_transfer_service import InternalTransferService
+
+        user = _make_user(db)
+        user_id = user.id
+        _make_transfer_category(db, user_id)
+        synced = _make_synced_account(db, user_id, name="Main")
+        pocket = _make_pocket_account(db, user_id, iban=POCKET_IBAN)
+        src = _make_source_transaction(
+            db, user_id, synced.id, counterparty_iban=POCKET_IBAN,
+            amount=Decimal("-4.00"),
+        )
+        InternalTransferService(db, user_id=user_id).detect_for_transactions([src.id])
+        pocket_id = pocket.id
+        assert db.query(InternalTransfer).filter_by(pocket_account_id=pocket_id).count() == 1
+
+        client = _client()
+        path = f"/api/accounts/{pocket_id}"
+        response = _signed_delete(client, user_id, path)
+        assert response.status_code == 204, f"Expected 204, got {response.status_code}: {response.text}"
+
+        # Pocket gone
+        assert db.query(Account).filter_by(id=pocket_id).count() == 0
+        # Source restored
+        db.refresh(src)
+        assert src.include_in_analytics is True
+        assert src.internal_transfer_id is None
+        # Links gone
+        assert db.query(InternalTransfer).filter_by(user_id=user_id).count() == 0
+    finally:
+        if user_id:
+            _cleanup_user(db, user_id)
+        db.close()
+
+
+def test_delete_pocket_account_returns_404_for_other_user() -> None:
+    _ensure_schema()
+    db = SessionLocal()
+    user_a_id: Optional[str] = None
+    user_b_id: Optional[str] = None
+    try:
+        from app.services.internal_transfer_service import InternalTransferService
+
+        user_a = _make_user(db)
+        user_b = _make_user(db)
+        user_a_id = user_a.id
+        user_b_id = user_b.id
+
+        # User B has a pocket with a detected internal transfer — we want to
+        # prove that a cross-user delete attempt CANNOT trigger any mutation
+        # of B's data (ownership check must short-circuit before the service
+        # call).
+        _make_transfer_category(db, user_b_id)
+        b_synced = _make_synced_account(db, user_b_id, name="B's Main")
+        b_pocket = _make_pocket_account(db, user_b_id, iban=POCKET_IBAN)
+        b_src = _make_source_transaction(
+            db, user_b_id, b_synced.id,
+            counterparty_iban=POCKET_IBAN, amount=Decimal("-50.00"),
+        )
+        assert (
+            InternalTransferService(db, user_id=user_b_id)
+            .detect_for_transactions([b_src.id])
+            == 1
+        )
+        b_link_count_before = db.query(InternalTransfer).filter_by(user_id=user_b_id).count()
+        assert b_link_count_before == 1
+
+        client = _client()
+        path = f"/api/accounts/{b_pocket.id}"
+        response = _signed_delete(client, user_a_id, path)
+        assert response.status_code == 404, (
+            f"Expected 404, got {response.status_code}: {response.text}"
+        )
+
+        # Account still exists (owned by user B)
+        assert db.query(Account).filter_by(id=b_pocket.id).count() == 1
+        # B's link was NOT torn down by the cross-user attempt
+        assert (
+            db.query(InternalTransfer).filter_by(user_id=user_b_id).count()
+            == b_link_count_before
+        )
+        # B's source transaction is still in its detected state
+        db.refresh(b_src)
+        assert b_src.include_in_analytics is False
+        assert b_src.internal_transfer_id is not None
+    finally:
+        if user_a_id:
+            _cleanup_user(db, user_a_id)
+        if user_b_id:
+            _cleanup_user(db, user_b_id)
+        db.close()
+
+
 if __name__ == "__main__":
     tests = [
         test_create_pocket_account_encrypts_iban_and_backfills,
         test_create_pocket_account_rejects_duplicate_iban,
         test_create_pocket_account_duplicate_check_ignores_non_manual_providers,
         test_create_pocket_account_rejects_invalid_iban,
+        test_unlink_internal_transfer_restores_source,
+        test_delete_pocket_account_restores_linked_sources,
+        test_delete_pocket_account_returns_404_for_other_user,
     ]
     results = []
     for fn in tests:

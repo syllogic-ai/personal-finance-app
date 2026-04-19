@@ -1,6 +1,6 @@
 import re
 from decimal import Decimal
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
@@ -131,6 +131,33 @@ def create_pocket_account(
     return CreatePocketResponse(account_id=account.id, backfilled_count=backfilled)
 
 
+# ---------------------------------------------------------------------------
+# Internal transfer unlink
+# ---------------------------------------------------------------------------
+
+
+@router.delete(
+    "/internal-transfers/{transfer_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def unlink_internal_transfer(
+    transfer_id: UUID,
+    user_id: str = Depends(get_user_id),
+    db: Session = Depends(get_db),
+):
+    """Unlink a detected internal transfer.
+
+    Deletes the mirror transaction, clears the source's ``internal_transfer_id``
+    and sets ``include_in_analytics=True``, then deletes the ``internal_transfers``
+    row. The ``InternalTransferService.unlink`` method silently no-ops if the id
+    is unknown or belongs to a different user, so we return 204 unconditionally
+    — this is intentional and does not leak info (users can't learn whether a
+    link exists for another user).
+    """
+    InternalTransferService(db, user_id=user_id).unlink(transfer_id)
+    return None
+
+
 def _serialize_account(account: Account) -> AccountResponse:
     return AccountResponse(
         id=account.id,
@@ -249,22 +276,53 @@ def update_account(
     return _serialize_account(account)
 
 
-@router.delete("/{account_id}", status_code=204)
+@router.delete("/{account_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_account(
     account_id: UUID,
-    user_id: Optional[str] = None,
-    db: Session = Depends(get_db)
+    user_id: str = Depends(get_user_id),
+    db: Session = Depends(get_db),
 ):
-    """Delete (deactivate) an account."""
-    user_id = get_user_id(user_id)
-    account = db.query(Account).filter(
-        Account.id == account_id,
-        Account.user_id == user_id
-    ).first()
-    if not account:
+    """Hard-delete an account.
+
+    For pocket accounts (``provider="manual"``) with linked internal transfers,
+    unlink the source transactions first (restoring ``include_in_analytics=True``
+    and clearing ``internal_transfer_id``) so the cascade that follows doesn't
+    leave orphan sources with stale analytics flags. Mirror transactions on the
+    pocket are deleted by the ``ON DELETE CASCADE`` on ``transactions.account_id``
+    when the account row is removed.
+
+    For non-pocket accounts ``unlink_all_for_pocket`` is a no-op (no links point
+    at them by definition).
+    """
+    account = (
+        db.query(Account)
+        .filter(Account.id == account_id, Account.user_id == user_id)
+        .one_or_none()
+    )
+    if account is None:
         raise HTTPException(status_code=404, detail="Account not found")
 
-    account.is_active = False
+    # Unlink any internal transfers pointing to this account before cascade
+    InternalTransferService(db, user_id=user_id).unlink_all_for_pocket(account_id)
+
+    # Explicitly delete the account's transactions. The DB has ON DELETE CASCADE
+    # on transactions.account_id, but SQLAlchemy's default relationship behavior
+    # (no passive_deletes=True on Account.transactions) tries to NULL the
+    # children first, which violates the NOT NULL constraint. Bulk-delete them
+    # ourselves to mirror what the cascade would do.
+    #
+    # NOTE: This bulk delete bypasses ORM-level `before_delete` events on
+    # Transaction. All current Transaction children (transaction_links,
+    # internal_transfers, recurring_transaction refs, csv_import refs) rely on
+    # DB-level ON DELETE CASCADE / SET NULL, so this is safe today. If anyone
+    # later adds a Python-level event listener or cascade="delete-orphan" on
+    # Transaction, this path must switch to per-row deletion.
+    db.query(Transaction).filter(
+        Transaction.user_id == user_id,
+        Transaction.account_id == account_id,
+    ).delete(synchronize_session=False)
+
+    db.delete(account)
     db.commit()
     return None
 
