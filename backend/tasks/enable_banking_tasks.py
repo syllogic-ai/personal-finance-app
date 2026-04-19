@@ -130,7 +130,11 @@ def sync_bank_connection(self, connection_id: str):
         # end_date is shared across all accounts; start_date is computed per-account below
         end_date = datetime.now(timezone.utc)
 
-        # Disable inline LLM during sync — batch AI categorization runs in post_import_pipeline
+        # LLM categorization is intentionally disabled here.
+        # Inline per-transaction LLM calls during sync waste tokens and slow the import.
+        # The post_import_pipeline (step 3) runs a single batch LLM pass over all
+        # touched transactions after sync completes — more efficient and equally accurate.
+        # Do NOT set use_llm_categorization=True here without removing the batch step.
         sync_service = SyncService(db, user_id=connection.user_id, use_llm_categorization=False)
 
         # Get accounts linked to this connection
