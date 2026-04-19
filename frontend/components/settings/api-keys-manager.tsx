@@ -223,13 +223,41 @@ export function ApiKeysManager({
         <CardHeader>
           <CardTitle>API Keys</CardTitle>
           <CardDescription>
-            Manage API keys for accessing your financial data through the MCP
-            server. Use these keys to connect Claude Desktop or other MCP
-            clients.
+            Connect Claude to your financial data. Use the custom connector URL
+            for Claude on web, iOS, or Android (OAuth login). Use an API key
+            below for Claude Desktop, Claude Code, or other local MCP clients.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
+            {/* Custom connector (OAuth) — web and mobile */}
+            <div className="space-y-2 rounded border bg-muted/40 p-3">
+              <Label>Claude on the web, iOS, or Android</Label>
+              <p className="text-xs text-muted-foreground">
+                In Claude settings, open{" "}
+                <strong>Connectors → Add custom connector</strong> and paste this
+                URL. You&apos;ll be redirected here to log in and approve access
+                — no API key needed.
+              </p>
+              <div className="relative min-w-0">
+                <pre className="overflow-x-auto rounded bg-background p-3 pr-10 text-xs">
+                  {mcpServerUrl}
+                </pre>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="absolute right-2 top-2"
+                  onClick={() => copyToClipboard(mcpServerUrl)}
+                >
+                  {copied ? (
+                    <RiCheckLine className="h-4 w-4 text-green-500" />
+                  ) : (
+                    <RiFileCopyLine className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
+            </div>
+
             {/* Key list */}
             {keys.length === 0 ? (
               <div className="flex h-24 items-center justify-center rounded border border-dashed">
