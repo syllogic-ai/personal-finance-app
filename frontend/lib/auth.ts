@@ -1,6 +1,7 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { admin } from "better-auth/plugins";
+import { oauthProvider } from "@better-auth/oauth-provider";
 import { db } from "@/lib/db";
 import * as schema from "@/lib/db/schema";
 
@@ -40,9 +41,24 @@ export const auth = betterAuth({
       session: schema.sessions,
       account: schema.authAccounts,
       verification: schema.verificationTokens,
+      oauthClient: schema.oauthClient,
+      oauthAccessToken: schema.oauthAccessToken,
+      oauthRefreshToken: schema.oauthRefreshToken,
+      oauthConsent: schema.oauthConsent,
     },
   }),
-  plugins: [admin()],
+  plugins: [
+    admin(),
+    oauthProvider({
+      scopes: ["mcp:access"],
+      accessTokenExpiresIn: 60 * 60, // 1 hour
+      refreshTokenExpiresIn: 60 * 60 * 24 * 30, // 30 days
+      allowDynamicClientRegistration: true,
+      allowUnauthenticatedClientRegistration: true,
+      loginPage: "/auth/login",
+      consentPage: "/oauth/consent",
+    }),
+  ],
   emailAndPassword: {
     enabled: true,
     requireEmailVerification: false,
