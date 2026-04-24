@@ -212,7 +212,7 @@ jobs:
           HTTP_PORT=8080
           HTTPS_PORT=8443
 
-          POSTGRES_IMAGE=postgres:16-alpine
+          POSTGRES_IMAGE=pgvector/pgvector:pg16
           POSTGRES_USER=financeuser
           POSTGRES_PASSWORD=financepass
           POSTGRES_DB=finance_db

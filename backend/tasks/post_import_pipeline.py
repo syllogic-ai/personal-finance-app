@@ -177,67 +177,95 @@ def _batch_categorize_transactions(db, user_id: str, transaction_ids: List[str])
         for i, txn in enumerate(transactions)
     ]
 
-    # Tier 2: semantic (embedding) match. Accepts only high-confidence matches
-    # and caches the per-transaction embedding so the LLM tier doesn't re-embed.
+    # Tier 1: user overrides. Checked upfront so downstream tiers only run on
+    # genuinely unassigned rows, and so the persisted method is accurate.
+    override_matches: dict = {}
+    for entry in batch_input:
+        cat = matcher._check_user_override(
+            entry.get("description"),
+            entry.get("merchant"),
+            Decimal(str(entry["amount"])),
+        )
+        if cat is not None:
+            override_matches[entry["index"]] = cat
+
+    # Tier 2: semantic (embedding) match on whatever overrides didn't claim.
+    # Caches the per-transaction embedding so the LLM tier doesn't re-embed.
     embedder = CategoryEmbeddingService(db)
-    # Make sure category anchors exist (no-op once populated).
-    embedder.refresh_category_embeddings(user_id=user_id)
-    embed_matches, txn_vectors = embedder.match_categories_batch(
-        user_id=user_id, transactions=batch_input
+    embedder.refresh_category_embeddings(user_id=user_id)  # no-op once populated
+    post_override = [b for b in batch_input if b["index"] not in override_matches]
+    embed_matches, embed_vectors = embedder.match_categories_batch(
+        user_id=user_id, transactions=post_override
     )
+    # Map per-index vectors so we can cache them on the row.
+    txn_vector_by_index: dict = {
+        entry["index"]: embed_vectors[i]
+        for i, entry in enumerate(post_override)
+        if embed_vectors and i < len(embed_vectors)
+    }
 
-    assigned = 0
-    for i, txn in enumerate(transactions):
-        if txn_vectors and i < len(txn_vectors):
-            txn.embedding = txn_vectors[i]
-        match = embed_matches.get(i)
-        if match is not None:
-            txn.category_system_id = match.category.id
-            txn.categorization_confidence = Decimal(f"{match.confidence:.2f}")
-            txn.categorization_method = "embedding"
-            assigned += 1
-
-    # Only transactions the embedding tier could not confidently place go to the LLM.
-    llm_batch = [b for i, b in enumerate(batch_input) if i not in embed_matches]
-
-    results: dict = {}
+    # Tier 3: LLM on whatever embedding couldn't confidently place.
+    llm_batch = [b for b in post_override if b["index"] not in embed_matches]
+    llm_results: dict = {}
     total_tokens = 0
     total_cost = 0.0
     if llm_batch:
-        results, total_tokens, total_cost = matcher.match_categories_batch_llm(llm_batch)
+        llm_results, total_tokens, total_cost = matcher.match_categories_batch_llm(llm_batch)
 
-    # If LLM returned nothing AND spent no tokens AND the embedding tier also
-    # didn't match anything, assume OpenAI is unavailable — preserve existing
-    # system categories rather than wiping them.
-    if not embed_matches and not results and total_tokens == 0:
+    # If no tier produced anything AND no tokens were spent, assume OpenAI is
+    # unavailable — preserve existing system categories rather than wiping them.
+    if (
+        not override_matches
+        and not embed_matches
+        and not llm_results
+        and total_tokens == 0
+    ):
         logger.info(
             "[POST_IMPORT_PIPELINE] Categorization unavailable (no API key?); "
             "skipping, existing system categories preserved"
         )
         return
 
+    assigned = 0
     for i, txn in enumerate(transactions):
+        # Cache embedding on the row (even if another tier made the call).
+        if i in txn_vector_by_index:
+            txn.embedding = txn_vector_by_index[i]
+
+        if i in override_matches:
+            txn.category_system_id = override_matches[i].id
+            txn.categorization_confidence = Decimal("100.00")
+            txn.categorization_method = "override"
+            assigned += 1
+            continue
+
         if i in embed_matches:
-            continue  # Already assigned by embedding tier
-        if i in results:
-            category, confidence = results[i]
+            match = embed_matches[i]
+            txn.category_system_id = match.category.id
+            txn.categorization_confidence = Decimal(f"{match.confidence:.2f}")
+            txn.categorization_method = "embedding"
+            assigned += 1
+            continue
+
+        if i in llm_results:
+            category, confidence = llm_results[i]
             txn.category_system_id = category.id
             txn.categorization_confidence = Decimal(f"{float(confidence):.2f}")
             txn.categorization_method = "llm"
             assigned += 1
-        # When no tier matched, leave the existing system category intact
-        # rather than wiping it.
+        # When no tier matched, leave the existing system category intact.
 
     if assigned > 0:
         db.commit()
 
     logger.info(
-        "[POST_IMPORT_PIPELINE] Batch categorized %d/%d (embedding: %d, llm: %d, "
-        "tokens: %d, cost: $%.6f)",
+        "[POST_IMPORT_PIPELINE] Batch categorized %d/%d (override: %d, embedding: %d, "
+        "llm: %d, tokens: %d, cost: $%.6f)",
         assigned,
         len(transactions),
+        len(override_matches),
         len(embed_matches),
-        sum(1 for i in range(len(transactions)) if i in results and i not in embed_matches),
+        len(llm_results),
         total_tokens,
         total_cost,
     )

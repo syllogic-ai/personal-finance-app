@@ -111,11 +111,24 @@ class CategoryEmbeddingService:
         if client is None:
             return []
         try:
+            # Pin dimensions to the DB vector column width. Without this,
+            # swapping EMBEDDING_MODEL (e.g. to text-embedding-3-large, native
+            # 3072 dims) would produce vectors that don't fit vector(1536) and
+            # silently corrupt categorization.
             response = client.embeddings.create(
                 model=EMBEDDING_MODEL,
                 input=list(texts),
+                dimensions=EMBEDDING_DIMENSIONS,
             )
-            return [d.embedding for d in response.data]
+            vectors = [d.embedding for d in response.data]
+            for v in vectors:
+                if len(v) != EMBEDDING_DIMENSIONS:
+                    logger.error(
+                        f"Embedding dimension mismatch: got {len(v)}, expected "
+                        f"{EMBEDDING_DIMENSIONS}; refusing to return vectors"
+                    )
+                    return []
+            return vectors
         except Exception as e:
             logger.warning(f"Embedding call failed: {e}")
             return []
