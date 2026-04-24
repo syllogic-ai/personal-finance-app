@@ -798,6 +798,15 @@ class CategoryMatcher:
                 overrides_text += f"- Description: '{desc}', Merchant: '{merch}' → Category: '{cat}'\n"
             overrides_text += "\n"
 
+        # Build account context block and transfer rule
+        account_context = self._build_account_context()
+        account_block = f"\n\n{account_context}\n" if account_context else ""
+        transfer_rule = (
+            "If the transaction description, merchant, or counterparty references any of the "
+            "accounts listed in \"Your accounts\", treat it as an internal transfer and pick the "
+            "transfer category.\n" if account_context else ""
+        )
+
         # Build enhanced prompt
         prompt = f"""Categorize this financial transaction by selecting the most appropriate category.
 
@@ -809,14 +818,14 @@ Transaction details:
 
 Available categories:
 {category_list}
-{overrides_text}{instructions_text}
+{account_block}{overrides_text}{instructions_text}
 Instructions:
 1. Analyze the transaction description and merchant name
 2. Select the MOST SPECIFIC category that matches
-3. Follow any user-specific guidelines and override patterns provided above
-4. If the transaction matches a user override pattern, use that category
-5. Respond with ONLY the exact category name from the list
-6. If no category fits well, respond with "UNKNOWN"
+3. {transfer_rule}4. Follow any user-specific guidelines and override patterns provided above
+5. If the transaction matches a user override pattern, use that category
+6. Respond with ONLY the exact category name from the list
+7. If no category fits well, respond with "UNKNOWN"
 
 Category name:"""
 
@@ -956,6 +965,15 @@ Category name:"""
                 overrides_text += f"- Description: '{desc}', Merchant: '{merch}' → Category: '{cat}'\n"
             overrides_text += "\n"
 
+        # Build account context block and transfer rule
+        account_context = self._build_account_context()
+        account_block = f"\n\n{account_context}\n" if account_context else ""
+        transfer_rule = (
+            "If the transaction description, merchant, or counterparty references any of the "
+            "accounts listed in \"Your accounts\", treat it as an internal transfer and pick the "
+            "transfer category.\n" if account_context else ""
+        )
+
         # Build enhanced prompt
         prompt = f"""Categorize this financial transaction by selecting the most appropriate category.
 
@@ -967,14 +985,14 @@ Transaction details:
 
 Available categories:
 {category_list}
-{overrides_text}{instructions_text}
+{account_block}{overrides_text}{instructions_text}
 Instructions:
 1. Analyze the transaction description and merchant name
 2. Select the MOST SPECIFIC category that matches
-3. Follow any user-specific guidelines and override patterns provided above
-4. If the transaction matches a user override pattern, use that category
-5. Respond with ONLY the exact category name from the list
-6. If no category fits well, respond with "UNKNOWN"
+3. {transfer_rule}4. Follow any user-specific guidelines and override patterns provided above
+5. If the transaction matches a user override pattern, use that category
+6. Respond with ONLY the exact category name from the list
+7. If no category fits well, respond with "UNKNOWN"
 
 Category name:"""
 

@@ -91,3 +91,39 @@ def test_account_context_with_last_four_and_patterns():
     assert "Your accounts" in ctx
     assert "ABN AMRO checking (ends in 4300)" in ctx
     assert 'Revolut Pro (patterns: "Apple Pay Top-Up by *1234", "Revo Pro")' in ctx
+
+
+def test_prompt_includes_account_context_and_transfer_rule(monkeypatch, db_session):
+    import app.services.category_matcher as cm_module
+    captured = {}
+
+    _stub_response = type("R", (), {
+        "choices": [type("X", (), {"message": type("M", (), {"content": "UNKNOWN"})()})()],
+        "usage": type("U", (), {"prompt_tokens": 1, "completion_tokens": 1})(),
+    })
+
+    class StubClient:
+        class chat:
+            class completions:
+                @staticmethod
+                def create(**kwargs):
+                    captured["messages"] = kwargs["messages"]
+                    return _stub_response
+
+    m = cm_module.CategoryMatcher(db=db_session, user_id="tr-user")
+    monkeypatch.setattr(m, "_get_openai_client", lambda: StubClient())
+    monkeypatch.setattr(m, "_load_categories", lambda: {})
+    m._account_cache = [
+        FakeAccount("Revolut Pro", alias_patterns=["Apple Pay Top-Up by *1234"])
+    ]
+    cats = [FakeCategory("Transfers", "Internal transfers", category_type="transfer")]
+    m.match_category_llm(
+        description="Apple Pay Top-Up by *1234",
+        merchant="Revolut",
+        amount=-50.0,
+        available_categories=cats,
+    )
+    prompt = captured["messages"][1]["content"]
+    assert "Your accounts" in prompt
+    assert "Apple Pay Top-Up by *1234" in prompt
+    assert "internal transfer" in prompt.lower()
