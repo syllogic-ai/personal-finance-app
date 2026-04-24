@@ -1,6 +1,9 @@
 """
 Transaction tools for the MCP server.
 """
+import base64
+import json
+from datetime import datetime
 from typing import Optional, Literal
 
 from sqlalchemy import or_, and_, func
@@ -13,6 +16,73 @@ from app.models import Transaction, Account, Category
 # Type alias for match modes
 MatchMode = Literal["contains", "starts_with", "word"]
 
+# Type alias for sort modes
+SortBy = Literal[
+    "booked_at_desc",
+    "booked_at_asc",
+    "amount_desc",
+    "amount_asc",
+    "abs_amount_desc",
+]
+
+
+def _sort_expr(sort_by: SortBy):
+    """Return (primary_col, direction_func) for the given sort mode."""
+    if sort_by == "booked_at_asc":
+        return Transaction.booked_at, lambda c: c.asc()
+    if sort_by == "amount_desc":
+        return Transaction.amount, lambda c: c.desc()
+    if sort_by == "amount_asc":
+        return Transaction.amount, lambda c: c.asc()
+    if sort_by == "abs_amount_desc":
+        return func.abs(Transaction.amount), lambda c: c.desc()
+    return Transaction.booked_at, lambda c: c.desc()  # booked_at_desc default
+
+
+def _encode_cursor(primary_value, txn_id: str) -> str:
+    payload = {"v": str(primary_value), "id": txn_id}
+    return base64.urlsafe_b64encode(json.dumps(payload).encode()).decode()
+
+
+def _decode_cursor(cursor: str) -> tuple[str, str]:
+    payload = json.loads(base64.urlsafe_b64decode(cursor.encode()).decode())
+    return payload["v"], payload["id"]
+
+
+def _paginate_query(query, cursor: Optional[str], sort_by: SortBy, limit: int):
+    """Apply sort and (optionally) cursor filter. Returns ordered, limited query."""
+    primary_col, direction = _sort_expr(sort_by)
+    if cursor:
+        try:
+            v, last_id = _decode_cursor(cursor)
+        except Exception:
+            raise ValueError("Invalid cursor")
+        # Sort-aware cursor filter: rows "after" (primary, id) tuple
+        is_desc = sort_by in ("booked_at_desc", "amount_desc", "abs_amount_desc")
+        if is_desc:
+            query = query.filter(
+                or_(primary_col < v, and_(primary_col == v, Transaction.id < last_id))
+            )
+        else:
+            query = query.filter(
+                or_(primary_col > v, and_(primary_col == v, Transaction.id > last_id))
+            )
+    return query.order_by(direction(primary_col), Transaction.id.desc()).limit(limit)
+
+
+def _build_next_cursor(rows: list, sort_by: SortBy, limit: int) -> Optional[str]:
+    if len(rows) < limit:
+        return None
+    last = rows[-1]
+    # Extract raw primary value for the sort mode
+    if sort_by in ("booked_at_desc", "booked_at_asc"):
+        v = last.booked_at.isoformat()
+    elif sort_by == "abs_amount_desc":
+        v = str(abs(float(last.amount)))
+    else:
+        v = str(float(last.amount))
+    return _encode_cursor(v, str(last.id))
+
 
 def list_transactions(
     user_id: str,
@@ -22,10 +92,14 @@ def list_transactions(
     to_date: Optional[str] = None,
     search: Optional[str] = None,
     limit: int = 50,
-    page: int = 1
-) -> list[dict]:
+    page: int = 1,
+    cursor: Optional[str] = None,
+    sort_by: SortBy = "booked_at_desc",
+    uncategorized: bool = False,
+    category_type: Optional[Literal["expense", "income", "transfer"]] = None,
+) -> dict:
     """
-    List transactions with optional filtering.
+    List transactions with optional filtering, cursor pagination, and sort.
 
     Args:
         user_id: The user's ID
@@ -35,21 +109,25 @@ def list_transactions(
         to_date: End date in ISO format (optional)
         search: Search in description/merchant (optional)
         limit: Max results per page (default: 50, max: 100)
-        page: Page number (default: 1)
+        page: Page number (default: 1) - ignored when cursor is provided
+        cursor: Opaque pagination cursor (preferred over page)
+        sort_by: Sort order - one of booked_at_desc (default),
+            booked_at_asc, amount_desc, amount_asc, abs_amount_desc
+        uncategorized: If True, return only transactions with no category
+        category_type: Filter by resolved category type
+            (expense, income, transfer)
 
     Returns:
-        List of transaction dictionaries with account and category info
+        Dict with:
+        - transactions: list of transaction dicts
+        - page: current page (None when cursor-paginated)
+        - limit: effective page size
+        - next_cursor: opaque cursor for the next page (None when exhausted)
     """
-    # Validate pagination parameters
     page = max(1, page)
     limit = min(max(1, limit), 100)
-    offset = (page - 1) * limit
-
-    # Validate UUID parameters
     account_uuid = validate_uuid(account_id) if account_id else None
     category_uuid = validate_uuid(category_id) if category_id else None
-
-    # Validate date parameters
     from_dt = validate_date(from_date)
     to_dt = validate_date(to_date)
 
@@ -59,11 +137,9 @@ def list_transactions(
             .filter(Transaction.user_id == user_id)
             .options(joinedload(Transaction.account), joinedload(Transaction.category))
         )
-
-        if account_id and account_uuid:
+        if account_uuid:
             query = query.filter(Transaction.account_id == account_uuid)
-
-        if category_id and category_uuid:
+        if category_uuid:
             query = query.filter(
                 (Transaction.category_id == category_uuid) |
                 and_(
@@ -71,17 +147,24 @@ def list_transactions(
                     Transaction.category_system_id == category_uuid
                 )
             )
-
+        if uncategorized:
+            query = query.filter(
+                Transaction.category_id.is_(None),
+                Transaction.category_system_id.is_(None),
+            )
+        if category_type:
+            query = query.join(
+                Category,
+                Category.id == func.coalesce(
+                    Transaction.category_id, Transaction.category_system_id
+                ),
+            ).filter(Category.category_type == category_type)
         if from_dt:
             query = query.filter(Transaction.booked_at >= from_dt)
-
         if to_dt:
             query = query.filter(Transaction.booked_at <= to_dt)
-
         if search:
-            # Limit search string length to prevent excessive memory usage
-            search = search[:500]
-            search_term = f"%{search}%"
+            search_term = f"%{search[:500]}%"
             query = query.filter(
                 or_(
                     Transaction.description.ilike(search_term),
@@ -89,33 +172,44 @@ def list_transactions(
                 )
             )
 
-        transactions = (
-            query.order_by(Transaction.booked_at.desc())
-            .offset(offset)
-            .limit(limit)
-            .all()
-        )
+        if cursor:
+            paginated = _paginate_query(query, cursor, sort_by, limit)
+        else:
+            offset = (page - 1) * limit
+            primary_col, direction = _sort_expr(sort_by)
+            paginated = (
+                query.order_by(direction(primary_col), Transaction.id.desc())
+                .offset(offset)
+                .limit(limit)
+            )
+        transactions_rows = paginated.all()
+        next_cursor = _build_next_cursor(transactions_rows, sort_by, limit)
 
-        return [
-            {
-                "id": str(txn.id),
-                "account_id": str(txn.account_id),
-                "account_name": txn.account.name if txn.account else None,
-                "amount": float(txn.amount),
-                "currency": txn.currency,
-                "description": txn.description,
-                "merchant": txn.merchant,
-                "category_id": str(txn.category_id) if txn.category_id else None,
-                "category_system_id": str(txn.category_system_id) if txn.category_system_id else None,
-                "category_name": txn.category.name if txn.category else None,
-                "booked_at": txn.booked_at.isoformat() if txn.booked_at else None,
-                "pending": txn.pending,
-                "transaction_type": txn.transaction_type,
-                "include_in_analytics": txn.include_in_analytics,
-                "recurring_transaction_id": str(txn.recurring_transaction_id) if txn.recurring_transaction_id else None,
-            }
-            for txn in transactions
-        ]
+        return {
+            "transactions": [
+                {
+                    "id": str(txn.id),
+                    "account_id": str(txn.account_id),
+                    "account_name": txn.account.name if txn.account else None,
+                    "amount": float(txn.amount),
+                    "currency": txn.currency,
+                    "description": txn.description,
+                    "merchant": txn.merchant,
+                    "category_id": str(txn.category_id) if txn.category_id else None,
+                    "category_system_id": str(txn.category_system_id) if txn.category_system_id else None,
+                    "category_name": txn.category.name if txn.category else None,
+                    "booked_at": txn.booked_at.isoformat() if txn.booked_at else None,
+                    "pending": txn.pending,
+                    "transaction_type": txn.transaction_type,
+                    "include_in_analytics": txn.include_in_analytics,
+                    "recurring_transaction_id": str(txn.recurring_transaction_id) if txn.recurring_transaction_id else None,
+                }
+                for txn in transactions_rows
+            ],
+            "page": page if not cursor else None,
+            "limit": limit,
+            "next_cursor": next_cursor,
+        }
 
 
 def get_transaction(user_id: str, transaction_id: str) -> dict | None:
