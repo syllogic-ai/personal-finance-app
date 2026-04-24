@@ -20,6 +20,34 @@ from app.db_helpers import get_user_id
 logger = logging.getLogger(__name__)
 
 
+def _format_category_list_with_hints(categories: List["Category"]) -> str:
+    """Render categories for the LLM prompt with description + keyword hints inline.
+
+    Format per line:
+        - <name> — <description> | hints: <categorization_instructions>
+
+    Description and hints are truncated to keep the prompt compact; this is the
+    signal the LLM uses to match variant spellings/vendor names without a rigid
+    rule engine.
+    """
+    lines: List[str] = []
+    for cat in categories:
+        parts: List[str] = [f"- {cat.name}"]
+        desc = (cat.description or "").strip()
+        if desc:
+            if len(desc) > 200:
+                desc = desc[:197] + "..."
+            parts.append(f"— {desc}")
+        hints = (getattr(cat, "categorization_instructions", None) or "").strip()
+        if hints:
+            hints_flat = " ".join(hints.split())
+            if len(hints_flat) > 400:
+                hints_flat = hints_flat[:397] + "..."
+            parts.append(f"| hints: {hints_flat}")
+        lines.append(" ".join(parts))
+    return "\n".join(lines)
+
+
 @dataclass
 class CategoryMatchResult:
     """
@@ -733,14 +761,14 @@ class CategoryMatcher:
             logger.warning(f"No relevant categories found for {transaction_type_str} transaction")
             return None
 
-        # Build category list for prompt
-        category_list = "\n".join([f"- {cat.name}" for cat in relevant_categories])
+        # Build category list for prompt (enriched with description + keyword hints)
+        category_list = _format_category_list_with_hints(relevant_categories)
 
         # Build enhanced prompt with additional instructions and user overrides
         instructions_text = ""
         if self.additional_instructions:
             instructions_text = "\n\nUser-specific categorization guidelines:\n" + "\n".join([f"- {inst}" for inst in self.additional_instructions]) + "\n"
-        
+
         overrides_text = ""
         if self.user_overrides:
             overrides_text = "\n\nUser-defined category overrides (use these patterns as examples):\n"
@@ -750,7 +778,7 @@ class CategoryMatcher:
                 cat = override.get("category_name", "N/A")
                 overrides_text += f"- Description: '{desc}', Merchant: '{merch}' → Category: '{cat}'\n"
             overrides_text += "\n"
-        
+
         # Build enhanced prompt
         prompt = f"""Categorize this financial transaction by selecting the most appropriate category.
 
@@ -760,16 +788,18 @@ Transaction details:
 - Amount: {abs(amount)} {transaction_type_str.upper()}
 - Type: {transaction_type_str}
 
-Available categories:
+Available categories (name — description; keywords/hints):
 {category_list}
 {overrides_text}{instructions_text}
 Instructions:
 1. Analyze the transaction description and merchant name
-2. Select the MOST SPECIFIC category that matches
-3. Follow any user-specific guidelines and override patterns provided above
-4. If the transaction matches a user override pattern, use that category
-5. Respond with ONLY the exact category name from the list
-6. If no category fits well, respond with "UNKNOWN"
+2. Match against the category descriptions and keyword hints above — a keyword/vendor match is strong evidence
+3. Tolerate spelling variations, spacing, casing, accented characters, and trailing reference codes in the merchant/description
+4. Select the MOST SPECIFIC category that matches
+5. Follow any user-specific guidelines and override patterns provided above
+6. If the transaction matches a user override pattern, use that category
+7. Respond with ONLY the exact category name from the list
+8. If no category fits well, respond with "UNKNOWN"
 
 Category name:"""
 
@@ -891,14 +921,14 @@ Category name:"""
             logger.warning(f"No relevant categories found for {transaction_type_str} transaction")
             return None, 0, 0.0
 
-        # Build category list for prompt
-        category_list = "\n".join([f"- {cat.name}" for cat in relevant_categories])
+        # Build category list for prompt (enriched with description + keyword hints)
+        category_list = _format_category_list_with_hints(relevant_categories)
 
         # Build enhanced prompt with additional instructions and user overrides
         instructions_text = ""
         if self.additional_instructions:
             instructions_text = "\n\nUser-specific categorization guidelines:\n" + "\n".join([f"- {inst}" for inst in self.additional_instructions]) + "\n"
-        
+
         overrides_text = ""
         if self.user_overrides:
             overrides_text = "\n\nUser-defined category overrides (use these patterns as examples):\n"
@@ -908,7 +938,7 @@ Category name:"""
                 cat = override.get("category_name", "N/A")
                 overrides_text += f"- Description: '{desc}', Merchant: '{merch}' → Category: '{cat}'\n"
             overrides_text += "\n"
-        
+
         # Build enhanced prompt
         prompt = f"""Categorize this financial transaction by selecting the most appropriate category.
 
@@ -918,16 +948,18 @@ Transaction details:
 - Amount: {abs(amount)} {transaction_type_str.upper()}
 - Type: {transaction_type_str}
 
-Available categories:
+Available categories (name — description; keywords/hints):
 {category_list}
 {overrides_text}{instructions_text}
 Instructions:
 1. Analyze the transaction description and merchant name
-2. Select the MOST SPECIFIC category that matches
-3. Follow any user-specific guidelines and override patterns provided above
-4. If the transaction matches a user override pattern, use that category
-5. Respond with ONLY the exact category name from the list
-6. If no category fits well, respond with "UNKNOWN"
+2. Match against the category descriptions and keyword hints above — a keyword/vendor match is strong evidence
+3. Tolerate spelling variations, spacing, casing, accented characters, and trailing reference codes in the merchant/description
+4. Select the MOST SPECIFIC category that matches
+5. Follow any user-specific guidelines and override patterns provided above
+6. If the transaction matches a user override pattern, use that category
+7. Respond with ONLY the exact category name from the list
+8. If no category fits well, respond with "UNKNOWN"
 
 Category name:"""
 
@@ -1236,7 +1268,7 @@ Category name:"""
     def match_categories_batch_llm(
         self,
         transactions: List[Dict],
-        max_batch_size: int = 50
+        max_batch_size: int = 15
     ) -> Tuple[Dict[int, Tuple[Category, float]], int, float]:
         """
         Batch categorize multiple transactions in a single LLM call.
@@ -1267,8 +1299,8 @@ Category name:"""
         expense_categories = [c for c in all_categories if c.category_type in ("expense", "transfer")]
         income_categories = [c for c in all_categories if c.category_type in ("income", "transfer")]
 
-        expense_list = "\n".join([f"- {c.name}" for c in expense_categories])
-        income_list = "\n".join([f"- {c.name}" for c in income_categories])
+        expense_list = _format_category_list_with_hints(expense_categories)
+        income_list = _format_category_list_with_hints(income_categories)
         
         logger.info(f"[BATCH LLM] Expense categories ({len(expense_categories)}): {[c.name for c in expense_categories[:10]]}...")
         logger.info(f"[BATCH LLM] Income categories ({len(income_categories)}): {[c.name for c in income_categories[:10]]}...")
@@ -1359,10 +1391,10 @@ Category name:"""
 Transactions:
 {transactions_text}
 
-Available categories for EXPENSE transactions:
+Available categories for EXPENSE transactions (name — description; keywords/hints):
 {expense_list}
 
-Available categories for INCOME transactions:
+Available categories for INCOME transactions (name — description; keywords/hints):
 {income_list}
 {overrides_text}{instructions_text}
 Instructions:
@@ -1370,15 +1402,17 @@ Instructions:
 2. **CRITICAL**: If TYPE is "EXPENSE", you MUST select a category ONLY from the "Available categories for EXPENSE transactions" list above
 3. **CRITICAL**: If TYPE is "INCOME", you MUST select a category ONLY from the "Available categories for INCOME transactions" list above
 4. Do NOT use income categories for expense transactions, and vice versa
-5. Follow any user-specific guidelines and override patterns provided above
-6. If a transaction matches a user override pattern, use that category
-7. Respond with one line per transaction in format: INDEX|CATEGORY_NAME|CONFIDENCE
-8. CONFIDENCE is your confidence percentage (0-100) in the categorization
-9. Use "UNKNOWN|0" if no category fits well
-10. Use EXACT category names from the lists above
+5. Match against the category descriptions and keyword hints above — a keyword/vendor match is strong evidence and should produce HIGH confidence (90+)
+6. Tolerate spelling variations, spacing, casing, accented characters, and trailing reference codes in the merchant/description
+7. Follow any user-specific guidelines and override patterns provided above
+8. If a transaction matches a user override pattern, use that category
+9. Respond with one line per transaction in format: INDEX|CATEGORY_NAME|CONFIDENCE
+10. CONFIDENCE is your confidence percentage (0-100): >=90 when a keyword/vendor directly matches, 70-89 when merchant/description strongly implies the category, 40-69 when inferred, <40 when guessing
+11. Use "UNKNOWN|0" if no category fits well — do NOT guess
+12. Use EXACT category names from the lists above (not the description)
 
 Example response format:
-0|Groceries|85
+0|Groceries|95
 1|Transport|92
 2|UNKNOWN|0
 
