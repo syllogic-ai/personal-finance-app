@@ -200,10 +200,14 @@ def list_transactions(
     search: str | None = None,
     limit: int = 50,
     page: int = 1,
-    user_id: str | None = None
-) -> list[dict]:
+    cursor: str | None = None,
+    sort_by: str = "booked_at_desc",
+    uncategorized: bool = False,
+    category_type: str | None = None,
+    user_id: str | None = None,
+) -> dict:
     """
-    List transactions with optional filtering.
+    List transactions with optional filtering, cursor pagination, and sort.
 
     Args:
         account_id: Filter by account ID (optional)
@@ -212,14 +216,20 @@ def list_transactions(
         to_date: End date in ISO format YYYY-MM-DD (optional)
         search: Search in description/merchant (optional)
         limit: Max results per page (default: 50, max: 100)
-        page: Page number (default: 1)
+        page: Page number (default: 1) - ignored when cursor is provided
+        cursor: Opaque cursor from previous response for stable pagination
+        sort_by: Sort order - booked_at_desc (default), booked_at_asc,
+            amount_desc, amount_asc, abs_amount_desc
+        uncategorized: If True, return only transactions with no category
+        category_type: Filter by resolved category type (expense, income, transfer)
         user_id: The user's ID (optional, defaults to configured user)
 
     Returns:
-        List of transaction dictionaries with account and category info
+        Dict with transactions list, limit, page (or None), and next_cursor
     """
     return transactions.list_transactions(
-        get_mcp_user_id(user_id), account_id, category_id, from_date, to_date, search, limit, page
+        get_mcp_user_id(user_id), account_id, category_id, from_date, to_date, search,
+        limit, page, cursor, sort_by, uncategorized, category_type,
     )
 
 
@@ -246,13 +256,17 @@ def search_transactions(
     ids_only: bool = False,
     limit: int = 50,
     page: int = 1,
-    user_id: str | None = None
+    cursor: str | None = None,
+    sort_by: str = "booked_at_desc",
+    account_id: str | None = None,
+    user_id: str | None = None,
 ) -> dict:
     """
     Search transactions by description or merchant name.
 
     ⚠️ PAGINATION WARNING: Always check `has_more` in the response!
     If true, you MUST call again with page=2, page=3, etc. until has_more=false.
+    Prefer `cursor`/`next_cursor` for stable pagination over large result sets.
 
     Args:
         query: Search query string (case-insensitive)
@@ -263,16 +277,21 @@ def search_transactions(
             - "word": Word boundary match - "Action" matches "Action Store" but NOT "Transaction"
         ids_only: If True, return only transaction IDs (faster, less tokens for bulk ops)
         limit: Max results per page (default: 50, max: 100)
-        page: Page number (default: 1)
+        page: Page number (default: 1) - ignored when cursor is provided
+        cursor: Opaque cursor from previous response for stable pagination
+        sort_by: Sort order - booked_at_desc (default), booked_at_asc,
+            amount_desc, amount_asc, abs_amount_desc
+        account_id: Filter results to a single account (optional)
         user_id: The user's ID (optional, defaults to configured user)
 
     Returns:
         Dict with:
         - transactions: List of matching transactions (or transaction_ids if ids_only=True)
-        - page: Current page number
+        - page: Current page number (None when cursor-paginated)
         - limit: Results per page
         - has_more: Boolean - KEEP PAGINATING until this is false!
         - total_count: Total matches across all pages (use to plan pagination)
+        - next_cursor: Opaque cursor for next page (None when exhausted)
 
     Example - find transactions to recategorize:
         search_transactions(
@@ -283,7 +302,8 @@ def search_transactions(
         )
     """
     return transactions.search_transactions(
-        get_mcp_user_id(user_id), query, exclude_category_id, match_mode, ids_only, limit, page
+        get_mcp_user_id(user_id), query, exclude_category_id, match_mode, ids_only,
+        limit, page, cursor, sort_by, account_id,
     )
 
 
@@ -294,13 +314,20 @@ def search_transactions_multi(
     match_mode: str = "contains",
     ids_only: bool = False,
     max_results: int = 500,
-    user_id: str | None = None
+    cursor: str | None = None,
+    sort_by: str = "booked_at_desc",
+    account_id: str | None = None,
+    user_id: str | None = None,
 ) -> dict:
     """
     Search transactions matching ANY of multiple queries in a single call.
 
     Use this instead of multiple search_transactions calls when you need to find
     transactions from several merchants at once (e.g., for bulk recategorization).
+
+    Pass `cursor=""` (or a real cursor from `next_cursor`) to enable cursor
+    pagination. Without a cursor, all results up to `max_results` are returned
+    in one shot.
 
     Args:
         queries: List of search terms (e.g., ["Jumbo", "Albert Heijn", "ALDI", "LIDL"])
@@ -311,6 +338,10 @@ def search_transactions_multi(
             - "word": Word boundary match (recommended for merchant names)
         ids_only: If True, return only transaction IDs (recommended for bulk updates)
         max_results: Maximum results to return (default: 500, max: 1000)
+        cursor: Opaque cursor; pass "" or a real cursor to enable cursor pagination
+        sort_by: Sort order - booked_at_desc (default), booked_at_asc,
+            amount_desc, amount_asc, abs_amount_desc
+        account_id: Filter results to a single account (optional)
         user_id: The user's ID (optional, defaults to configured user)
 
     Returns:
@@ -319,6 +350,7 @@ def search_transactions_multi(
         - total_count: Total matches found
         - capped: True if results hit max_results limit
         - query_counts: Matches per query (e.g., {"Jumbo": 127, "ALDI": 45})
+        - next_cursor: Opaque cursor for next page (only in cursor mode)
 
     Example - recategorize grocery store transactions:
         # Step 1: Find all grocery transactions not yet categorized
@@ -335,7 +367,8 @@ def search_transactions_multi(
         )
     """
     return transactions.search_transactions_multi(
-        get_mcp_user_id(user_id), queries, exclude_category_id, match_mode, ids_only, max_results
+        get_mcp_user_id(user_id), queries, exclude_category_id, match_mode, ids_only,
+        max_results, cursor, sort_by, account_id,
     )
 
 
