@@ -1,6 +1,8 @@
 """
 Database session management for MCP tools.
 """
+from __future__ import annotations
+
 from contextlib import contextmanager
 from datetime import datetime
 from uuid import UUID

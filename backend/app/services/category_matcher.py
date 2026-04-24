@@ -19,33 +19,9 @@ from app.db_helpers import get_user_id
 # Configure logger
 logger = logging.getLogger(__name__)
 
-
-def _format_category_list_with_hints(categories: List["Category"]) -> str:
-    """Render categories for the LLM prompt with description + keyword hints inline.
-
-    Format per line:
-        - <name> — <description> | hints: <categorization_instructions>
-
-    Description and hints are truncated to keep the prompt compact; this is the
-    signal the LLM uses to match variant spellings/vendor names without a rigid
-    rule engine.
-    """
-    lines: List[str] = []
-    for cat in categories:
-        parts: List[str] = [f"- {cat.name}"]
-        desc = (cat.description or "").strip()
-        if desc:
-            if len(desc) > 200:
-                desc = desc[:197] + "..."
-            parts.append(f"— {desc}")
-        hints = (getattr(cat, "categorization_instructions", None) or "").strip()
-        if hints:
-            hints_flat = " ".join(hints.split())
-            if len(hints_flat) > 400:
-                hints_flat = hints_flat[:397] + "..."
-            parts.append(f"| hints: {hints_flat}")
-        lines.append(" ".join(parts))
-    return "\n".join(lines)
+# Feature flag: enrich LLM prompt with category descriptions and account context.
+# Disable by setting CATEGORIZER_ENRICHED_PROMPT=false in the environment.
+ENRICHED_PROMPT_ENABLED = os.getenv("CATEGORIZER_ENRICHED_PROMPT", "true").lower() == "true"
 
 
 @dataclass
@@ -124,6 +100,9 @@ class CategoryMatcher:
     LLM_MAX_RETRIES = int(os.getenv("CATEGORIZATION_LLM_MAX_RETRIES", "3"))
     LLM_RETRY_DELAY = float(os.getenv("CATEGORIZATION_LLM_RETRY_DELAY", "1.0"))
 
+    # Max length for category descriptions in LLM prompt
+    MAX_CATEGORY_DESCRIPTION_LEN = 200
+
     # OpenAI Pricing (per 1M tokens, as of January 2025)
     # https://openai.com/api/pricing/
     PRICING = {
@@ -158,6 +137,7 @@ class CategoryMatcher:
         self._keyword_rules: Optional[Dict[str, List[str]]] = None
         self._openai_client = None
         self._category_instructions_cache: Optional[List[str]] = None
+        self._account_cache: Optional[list] = None
 
         # Initialize with provided values or empty lists
         self.user_overrides = user_overrides or []
@@ -568,6 +548,118 @@ class CategoryMatcher:
 
         return text
 
+    MAX_CATEGORY_HINTS_LEN = 400
+
+    def _render_category_list(self, categories) -> str:
+        """Render the category list for the LLM prompt.
+
+        Each line is:
+            - <name> — <description> | hints: <categorization_instructions>
+
+        Description and hints are both truncated (description to
+        MAX_CATEGORY_DESCRIPTION_LEN, hints to MAX_CATEGORY_HINTS_LEN) to keep
+        prompt size in check; the prompt-context budget system applies further
+        degradation when needed.
+        """
+        lines = []
+        for cat in categories:
+            parts: list[str] = [f"- {cat.name}"]
+            desc = (cat.description or "").strip()
+            if desc:
+                if len(desc) > self.MAX_CATEGORY_DESCRIPTION_LEN:
+                    desc = desc[: self.MAX_CATEGORY_DESCRIPTION_LEN].rstrip() + "…"
+                parts.append(f"— {desc}")
+            hints = (getattr(cat, "categorization_instructions", None) or "").strip()
+            if hints:
+                hints_flat = " ".join(hints.split())
+                if len(hints_flat) > self.MAX_CATEGORY_HINTS_LEN:
+                    hints_flat = hints_flat[: self.MAX_CATEGORY_HINTS_LEN].rstrip() + "…"
+                parts.append(f"| hints: {hints_flat}")
+            lines.append(" ".join(parts))
+        return "\n".join(lines)
+
+    def _load_accounts(self) -> list:
+        if self._account_cache is not None:
+            return self._account_cache
+        from app.models import Account  # local import if global causes circularity
+        accounts = (
+            self.db.query(Account)
+            .filter(Account.user_id == self.user_id, Account.is_active == True)
+            .all()
+        )
+        self._account_cache = accounts
+        return accounts
+
+    def _build_account_context(self) -> str:
+        accounts = self._account_cache if self._account_cache is not None else self._load_accounts()
+        if not accounts:
+            return ""
+        lines = ["Your accounts (transactions referencing these are internal transfers):"]
+        for acc in accounts:
+            identifiers = []
+            ext = (getattr(acc, "external_id", None) or "").strip()
+            if ext and len(ext) >= 4:
+                identifiers.append(f"ends in {ext[-4:]}")
+            patterns = getattr(acc, "alias_patterns", None) or []
+            if patterns:
+                quoted = ", ".join(f'"{p}"' for p in patterns)
+                identifiers.append(f"patterns: {quoted}")
+            suffix = f" ({'; '.join(identifiers)})" if identifiers else ""
+            lines.append(f"- {acc.name}{suffix}")
+        return "\n".join(lines)
+
+    PROMPT_CONTEXT_BUDGET = 2000
+
+    def _compose_prompt_context(self, relevant_categories) -> tuple[str, str]:
+        """Return (category_list, account_block) sized to fit PROMPT_CONTEXT_BUDGET.
+
+        Degradation order when over budget:
+        1. Truncate each category description to 200 chars (default).
+        2. Drop alias_patterns from accounts (keep name + ends-in).
+        3. Drop all descriptions; names only.
+        """
+        def _wrapped_len(block: str) -> int:
+            """Length of block after adding the '\n\n...\n' wrapper used at return time."""
+            return len(block) + 3 if block else 0
+
+        category_list = self._render_category_list(relevant_categories)
+        account_block = self._build_account_context()
+        total = len(category_list) + _wrapped_len(account_block)
+        if total <= self.PROMPT_CONTEXT_BUDGET:
+            return category_list, f"\n\n{account_block}\n" if account_block else ""
+
+        # Step 2: drop alias_patterns
+        if self._account_cache:
+            thin_accounts = []
+            for acc in self._account_cache:
+                identifiers = []
+                ext = (getattr(acc, "external_id", None) or "").strip()
+                if ext and len(ext) >= 4:
+                    identifiers.append(f"ends in {ext[-4:]}")
+                suffix = f" ({'; '.join(identifiers)})" if identifiers else ""
+                thin_accounts.append(f"- {acc.name}{suffix}")
+            thin_account_block = (
+                "Your accounts (transactions referencing these are internal transfers):\n"
+                + "\n".join(thin_accounts)
+            )
+        else:
+            thin_account_block = ""
+        total = len(category_list) + _wrapped_len(thin_account_block)
+        if total <= self.PROMPT_CONTEXT_BUDGET:
+            return category_list, f"\n\n{thin_account_block}\n" if thin_account_block else ""
+
+        # Step 3: drop all descriptions
+        name_only = "\n".join(f"- {c.name}" for c in relevant_categories)
+        if len(name_only) + len(thin_account_block) <= self.PROMPT_CONTEXT_BUDGET:
+            return name_only, f"\n\n{thin_account_block}\n" if thin_account_block else ""
+
+        # Step 4: drop account block entirely
+        if len(name_only) <= self.PROMPT_CONTEXT_BUDGET:
+            return name_only, ""
+
+        # Step 5: category names alone still exceed budget — truncate to hard limit
+        return name_only[: self.PROMPT_CONTEXT_BUDGET], ""
+
     def _calculate_llm_cost(self, input_tokens: int, output_tokens: int, model: str) -> float:
         """
         Calculate the cost of an LLM API call.
@@ -761,8 +853,20 @@ class CategoryMatcher:
             logger.warning(f"No relevant categories found for {transaction_type_str} transaction")
             return None
 
-        # Build category list for prompt (enriched with description + keyword hints)
-        category_list = _format_category_list_with_hints(relevant_categories)
+        # Build category list and account block for prompt
+        if ENRICHED_PROMPT_ENABLED:
+            category_list, account_block = self._compose_prompt_context(relevant_categories)
+        else:
+            category_list = "\n".join(f"- {c.name}" for c in relevant_categories)
+            account_block = ""
+
+        logger.debug(
+            "categorizer.prompt_context chars: categories=%d accounts=%d total=%d",
+            len(category_list), len(account_block),
+            len(category_list) + len(account_block),
+        )
+        if len(category_list) + len(account_block) > self.PROMPT_CONTEXT_BUDGET:
+            logger.info("categorizer.prompt_budget_hit user_id=%s", self.user_id)
 
         # Build enhanced prompt with additional instructions and user overrides
         instructions_text = ""
@@ -779,6 +883,28 @@ class CategoryMatcher:
                 overrides_text += f"- Description: '{desc}', Merchant: '{merch}' → Category: '{cat}'\n"
             overrides_text += "\n"
 
+        # Build transfer rule (only when account context is present)
+        transfer_rule = (
+            "If the transaction description, merchant, or counterparty references any of the "
+            "accounts listed in \"Your accounts\", treat it as an internal transfer and pick the "
+            "transfer category." if ENRICHED_PROMPT_ENABLED and account_block else ""
+        )
+
+        # Build numbered instructions list dynamically so numbering is always correct
+        instructions = [
+            "Analyze the transaction description and merchant name",
+            "Select the MOST SPECIFIC category that matches",
+        ]
+        if transfer_rule:
+            instructions.append(transfer_rule.rstrip())
+        instructions += [
+            "Follow any user-specific guidelines and override patterns provided above",
+            "If the transaction matches a user override pattern, use that category",
+            "Respond with ONLY the exact category name from the list",
+            'If no category fits well, respond with "UNKNOWN"',
+        ]
+        instructions_block = "\n".join(f"{i+1}. {step}" for i, step in enumerate(instructions))
+
         # Build enhanced prompt
         prompt = f"""Categorize this financial transaction by selecting the most appropriate category.
 
@@ -788,18 +914,11 @@ Transaction details:
 - Amount: {abs(amount)} {transaction_type_str.upper()}
 - Type: {transaction_type_str}
 
-Available categories (name — description; keywords/hints):
+Available categories:
 {category_list}
-{overrides_text}{instructions_text}
+{account_block}{overrides_text}{instructions_text}
 Instructions:
-1. Analyze the transaction description and merchant name
-2. Match against the category descriptions and keyword hints above — a keyword/vendor match is strong evidence
-3. Tolerate spelling variations, spacing, casing, accented characters, and trailing reference codes in the merchant/description
-4. Select the MOST SPECIFIC category that matches
-5. Follow any user-specific guidelines and override patterns provided above
-6. If the transaction matches a user override pattern, use that category
-7. Respond with ONLY the exact category name from the list
-8. If no category fits well, respond with "UNKNOWN"
+{instructions_block}
 
 Category name:"""
 
@@ -921,8 +1040,20 @@ Category name:"""
             logger.warning(f"No relevant categories found for {transaction_type_str} transaction")
             return None, 0, 0.0
 
-        # Build category list for prompt (enriched with description + keyword hints)
-        category_list = _format_category_list_with_hints(relevant_categories)
+        # Build category list and account block for prompt
+        if ENRICHED_PROMPT_ENABLED:
+            category_list, account_block = self._compose_prompt_context(relevant_categories)
+        else:
+            category_list = "\n".join(f"- {c.name}" for c in relevant_categories)
+            account_block = ""
+
+        logger.debug(
+            "categorizer.prompt_context chars: categories=%d accounts=%d total=%d",
+            len(category_list), len(account_block),
+            len(category_list) + len(account_block),
+        )
+        if len(category_list) + len(account_block) > self.PROMPT_CONTEXT_BUDGET:
+            logger.info("categorizer.prompt_budget_hit user_id=%s", self.user_id)
 
         # Build enhanced prompt with additional instructions and user overrides
         instructions_text = ""
@@ -939,6 +1070,28 @@ Category name:"""
                 overrides_text += f"- Description: '{desc}', Merchant: '{merch}' → Category: '{cat}'\n"
             overrides_text += "\n"
 
+        # Build transfer rule (only when account context is present)
+        transfer_rule = (
+            "If the transaction description, merchant, or counterparty references any of the "
+            "accounts listed in \"Your accounts\", treat it as an internal transfer and pick the "
+            "transfer category." if ENRICHED_PROMPT_ENABLED and account_block else ""
+        )
+
+        # Build numbered instructions list dynamically so numbering is always correct
+        instructions = [
+            "Analyze the transaction description and merchant name",
+            "Select the MOST SPECIFIC category that matches",
+        ]
+        if transfer_rule:
+            instructions.append(transfer_rule.rstrip())
+        instructions += [
+            "Follow any user-specific guidelines and override patterns provided above",
+            "If the transaction matches a user override pattern, use that category",
+            "Respond with ONLY the exact category name from the list",
+            'If no category fits well, respond with "UNKNOWN"',
+        ]
+        instructions_block = "\n".join(f"{i+1}. {step}" for i, step in enumerate(instructions))
+
         # Build enhanced prompt
         prompt = f"""Categorize this financial transaction by selecting the most appropriate category.
 
@@ -948,18 +1101,11 @@ Transaction details:
 - Amount: {abs(amount)} {transaction_type_str.upper()}
 - Type: {transaction_type_str}
 
-Available categories (name — description; keywords/hints):
+Available categories:
 {category_list}
-{overrides_text}{instructions_text}
+{account_block}{overrides_text}{instructions_text}
 Instructions:
-1. Analyze the transaction description and merchant name
-2. Match against the category descriptions and keyword hints above — a keyword/vendor match is strong evidence
-3. Tolerate spelling variations, spacing, casing, accented characters, and trailing reference codes in the merchant/description
-4. Select the MOST SPECIFIC category that matches
-5. Follow any user-specific guidelines and override patterns provided above
-6. If the transaction matches a user override pattern, use that category
-7. Respond with ONLY the exact category name from the list
-8. If no category fits well, respond with "UNKNOWN"
+{instructions_block}
 
 Category name:"""
 
@@ -1299,8 +1445,10 @@ Category name:"""
         expense_categories = [c for c in all_categories if c.category_type in ("expense", "transfer")]
         income_categories = [c for c in all_categories if c.category_type in ("income", "transfer")]
 
-        expense_list = _format_category_list_with_hints(expense_categories)
-        income_list = _format_category_list_with_hints(income_categories)
+        # Render with description + keyword hints so the LLM can match
+        # on vendor names and tolerate spelling variants.
+        expense_list = self._render_category_list(expense_categories)
+        income_list = self._render_category_list(income_categories)
         
         logger.info(f"[BATCH LLM] Expense categories ({len(expense_categories)}): {[c.name for c in expense_categories[:10]]}...")
         logger.info(f"[BATCH LLM] Income categories ({len(income_categories)}): {[c.name for c in income_categories[:10]]}...")
@@ -1391,10 +1539,10 @@ Category name:"""
 Transactions:
 {transactions_text}
 
-Available categories for EXPENSE transactions (name — description; keywords/hints):
+Available categories for EXPENSE transactions:
 {expense_list}
 
-Available categories for INCOME transactions (name — description; keywords/hints):
+Available categories for INCOME transactions:
 {income_list}
 {overrides_text}{instructions_text}
 Instructions:
@@ -1402,17 +1550,15 @@ Instructions:
 2. **CRITICAL**: If TYPE is "EXPENSE", you MUST select a category ONLY from the "Available categories for EXPENSE transactions" list above
 3. **CRITICAL**: If TYPE is "INCOME", you MUST select a category ONLY from the "Available categories for INCOME transactions" list above
 4. Do NOT use income categories for expense transactions, and vice versa
-5. Match against the category descriptions and keyword hints above — a keyword/vendor match is strong evidence and should produce HIGH confidence (90+)
-6. Tolerate spelling variations, spacing, casing, accented characters, and trailing reference codes in the merchant/description
-7. Follow any user-specific guidelines and override patterns provided above
-8. If a transaction matches a user override pattern, use that category
-9. Respond with one line per transaction in format: INDEX|CATEGORY_NAME|CONFIDENCE
-10. CONFIDENCE is your confidence percentage (0-100): >=90 when a keyword/vendor directly matches, 70-89 when merchant/description strongly implies the category, 40-69 when inferred, <40 when guessing
-11. Use "UNKNOWN|0" if no category fits well — do NOT guess
-12. Use EXACT category names from the lists above (not the description)
+5. Follow any user-specific guidelines and override patterns provided above
+6. If a transaction matches a user override pattern, use that category
+7. Respond with one line per transaction in format: INDEX|CATEGORY_NAME|CONFIDENCE
+8. CONFIDENCE is your confidence percentage (0-100) in the categorization
+9. Use "UNKNOWN|0" if no category fits well
+10. Use EXACT category names from the lists above
 
 Example response format:
-0|Groceries|95
+0|Groceries|85
 1|Transport|92
 2|UNKNOWN|0
 
