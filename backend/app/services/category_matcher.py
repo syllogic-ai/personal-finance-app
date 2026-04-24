@@ -601,9 +601,13 @@ class CategoryMatcher:
         2. Drop alias_patterns from accounts (keep name + ends-in).
         3. Drop all descriptions; names only.
         """
+        def _wrapped_len(block: str) -> int:
+            """Length of block after adding the '\n\n...\n' wrapper used at return time."""
+            return len(block) + 3 if block else 0
+
         category_list = self._render_category_list(relevant_categories)
         account_block = self._build_account_context()
-        total = len(category_list) + len(account_block)
+        total = len(category_list) + _wrapped_len(account_block)
         if total <= self.PROMPT_CONTEXT_BUDGET:
             return category_list, f"\n\n{account_block}\n" if account_block else ""
 
@@ -623,7 +627,7 @@ class CategoryMatcher:
             )
         else:
             thin_account_block = ""
-        total = len(category_list) + len(thin_account_block)
+        total = len(category_list) + _wrapped_len(thin_account_block)
         if total <= self.PROMPT_CONTEXT_BUDGET:
             return category_list, f"\n\n{thin_account_block}\n" if thin_account_block else ""
 

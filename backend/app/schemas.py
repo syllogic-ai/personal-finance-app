@@ -22,7 +22,7 @@ class AccountUpdate(BaseModel):
     institution: Optional[str] = None
     balance_current: Optional[Decimal] = None
     is_active: Optional[bool] = None
-    alias_patterns: Optional[list[str]] = None
+    alias_patterns: list[str] = Field(default_factory=list)
 
 
 class AccountResponse(AccountBase):

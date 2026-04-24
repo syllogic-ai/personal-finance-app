@@ -88,9 +88,9 @@ def _build_next_cursor(rows: list, sort_by: SortBy, limit: int) -> Optional[str]
     if sort_by in ("booked_at_desc", "booked_at_asc"):
         v = last.booked_at.isoformat()
     elif sort_by == "abs_amount_desc":
-        v = str(abs(float(last.amount)))
+        v = str(abs(last.amount))
     else:
-        v = str(float(last.amount))
+        v = str(last.amount)
     return _encode_cursor(v, str(last.id))
 
 

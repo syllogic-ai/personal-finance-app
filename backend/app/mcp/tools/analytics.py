@@ -66,9 +66,15 @@ def get_spending_by_category(
         account_filter = f" AND t.account_id = '{account_uuid}'"
 
     join_type = "LEFT JOIN" if include_uncategorized else "INNER JOIN"
-    # When include_uncategorized=False, restrict to expense categories only.
-    # With a LEFT JOIN we must omit this filter so null-category rows appear.
-    uncategorized_filter = "" if include_uncategorized else "AND c.category_type = 'expense'"
+    # With INNER JOIN we already exclude null-category rows, so restrict to
+    # expense categories only. With LEFT JOIN we keep all debit rows but still
+    # require categorised rows to be expenses — null-category rows are allowed
+    # via the OR arm so they appear as the "Uncategorized" bucket.
+    uncategorized_filter = (
+        "AND (c.category_type = 'expense' OR c.id IS NULL)"
+        if include_uncategorized
+        else "AND c.category_type = 'expense'"
+    )
 
     with get_db() as db:
         sql = text(f"""
