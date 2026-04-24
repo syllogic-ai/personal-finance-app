@@ -323,13 +323,17 @@ def search_transactions(
     match_mode: MatchMode = "contains",
     ids_only: bool = False,
     limit: int = 50,
-    page: int = 1
+    page: int = 1,
+    cursor: Optional[str] = None,
+    sort_by: SortBy = "booked_at_desc",
+    account_id: Optional[str] = None,
 ) -> dict:
     """
     Search transactions by description or merchant name.
 
     ⚠️ PAGINATION: Check `has_more` in the response! If true, call again with
     page=2, page=3, etc. until has_more=false to get all results.
+    Prefer `cursor`/`next_cursor` for stable pagination over large result sets.
 
     Args:
         user_id: The user's ID
@@ -341,25 +345,30 @@ def search_transactions(
             - "word": Word boundary match - "Action" matches "Action Store" but not "Transaction"
         ids_only: If True, return only transaction IDs (faster for bulk operations)
         limit: Max results per page (default: 50, max: 100)
-        page: Page number (default: 1)
+        page: Page number (default: 1) - ignored when cursor is provided
+        cursor: Opaque pagination cursor (preferred over page)
+        sort_by: Sort order - one of booked_at_desc (default),
+            booked_at_asc, amount_desc, amount_asc, abs_amount_desc
+        account_id: Filter results to a single account (optional)
 
     Returns:
         Dict with:
         - transactions: List of matching transactions (or transaction_ids if ids_only=True)
-        - page: Current page number
+        - page: Current page number (None when cursor-paginated)
         - limit: Results per page
-        - has_more: Boolean - if true, call again with next page!
+        - has_more: Boolean - if true, more results exist
         - total_count: Total number of matching transactions across all pages
+        - next_cursor: Opaque cursor for the next page (None when exhausted)
     """
     page = max(1, page)
     limit = min(max(1, limit), 100)
-    offset = (page - 1) * limit
 
     # Limit search string length to prevent excessive memory usage
     query_str = query[:500] if query else ""
 
-    # Validate exclude_category_id if provided
+    # Validate IDs if provided
     exclude_cat_uuid = validate_uuid(exclude_category_id) if exclude_category_id else None
+    account_uuid = validate_uuid(account_id) if account_id else None
 
     with get_db() as db:
         # Build base query with user filter
@@ -378,17 +387,15 @@ def search_transactions(
                 )
             )
 
+        # Add account filter if specified
+        if account_uuid:
+            base_filter = and_(base_filter, Transaction.account_id == account_uuid)
+
         # Get total count first
         total_count = db.query(func.count(Transaction.id)).filter(base_filter).scalar()
 
-        # Fetch transactions
-        query_obj = (
-            db.query(Transaction)
-            .filter(base_filter)
-            .order_by(Transaction.booked_at.desc())
-            .offset(offset)
-            .limit(limit)
-        )
+        # Build base query object
+        query_obj = db.query(Transaction).filter(base_filter)
 
         # Only load relationships if we need full data
         if not ids_only:
@@ -397,18 +404,30 @@ def search_transactions(
                 joinedload(Transaction.category)
             )
 
-        transactions = query_obj.all()
+        # Apply cursor or offset pagination
+        if cursor:
+            paginated = _paginate_query(query_obj, cursor, sort_by, limit)
+        else:
+            offset = (page - 1) * limit
+            primary_col, direction = _sort_expr(sort_by)
+            paginated = (
+                query_obj.order_by(direction(primary_col), direction(Transaction.id))
+                .offset(offset)
+                .limit(limit)
+            )
 
-        # Check if there are more results beyond this page
-        has_more = (offset + len(transactions)) < total_count
+        rows = paginated.all()
+        next_cursor = _build_next_cursor(rows, sort_by, limit)
+        has_more = next_cursor is not None if cursor else ((page - 1) * limit + len(rows) < total_count)
 
         if ids_only:
             return {
-                "transaction_ids": [str(txn.id) for txn in transactions],
-                "page": page,
+                "transaction_ids": [str(t.id) for t in rows],
+                "page": page if not cursor else None,
                 "limit": limit,
                 "has_more": has_more,
                 "total_count": total_count,
+                "next_cursor": next_cursor,
             }
 
         return {
@@ -425,12 +444,13 @@ def search_transactions(
                     "category_name": txn.category.name if txn.category else None,
                     "booked_at": txn.booked_at.isoformat() if txn.booked_at else None,
                 }
-                for txn in transactions
+                for txn in rows
             ],
-            "page": page,
+            "page": page if not cursor else None,
             "limit": limit,
             "has_more": has_more,
             "total_count": total_count,
+            "next_cursor": next_cursor,
         }
 
 

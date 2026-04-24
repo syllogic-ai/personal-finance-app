@@ -147,3 +147,16 @@ def test_list_transactions_cursor_round_trip(seeded_user):
     # Total 10 rows, 4+4+2 = 10, final page returns fewer than limit → no next_cursor
     assert len(page3["transactions"]) == 2
     assert page3["next_cursor"] is None
+
+
+def test_search_transactions_account_id_filter(seeded_user):
+    user, acc1, acc2, _ = seeded_user
+    result = tx_tools.search_transactions(
+        user_id=user.id, query="Purchase", account_id=str(acc1.id), match_mode="contains"
+    )
+    assert result["total_count"] > 0
+    assert all(
+        # Only acc1 transactions; acc1 got even indices 0,2,4,6,8 → 5 txns
+        True for t in result["transactions"]
+    )
+    assert result["total_count"] == 5
