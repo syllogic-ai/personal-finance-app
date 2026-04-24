@@ -4,6 +4,7 @@ Transaction tools for the MCP server.
 import base64
 import json
 from datetime import datetime
+from decimal import Decimal
 from typing import Optional, Literal
 
 from sqlalchemy import or_, and_, func
@@ -57,6 +58,13 @@ def _paginate_query(query, cursor: Optional[str], sort_by: SortBy, limit: int):
             v, last_id = _decode_cursor(cursor)
         except Exception:
             raise ValueError("Invalid cursor")
+        # Coerce the primary value to a type Postgres can compare against the
+        # primary column: timestamps must not be compared as strings, and
+        # numeric columns are safer as Decimal/float.
+        if sort_by in ("booked_at_desc", "booked_at_asc"):
+            v = datetime.fromisoformat(v)
+        else:
+            v = Decimal(v)
         # Sort-aware cursor filter: rows "after" (primary, id) tuple
         is_desc = sort_by in ("booked_at_desc", "amount_desc", "abs_amount_desc")
         if is_desc:
@@ -67,7 +75,7 @@ def _paginate_query(query, cursor: Optional[str], sort_by: SortBy, limit: int):
             query = query.filter(
                 or_(primary_col > v, and_(primary_col == v, Transaction.id > last_id))
             )
-    return query.order_by(direction(primary_col), Transaction.id.desc()).limit(limit)
+    return query.order_by(direction(primary_col), direction(Transaction.id)).limit(limit)
 
 
 def _build_next_cursor(rows: list, sort_by: SortBy, limit: int) -> Optional[str]:
@@ -178,7 +186,7 @@ def list_transactions(
             offset = (page - 1) * limit
             primary_col, direction = _sort_expr(sort_by)
             paginated = (
-                query.order_by(direction(primary_col), Transaction.id.desc())
+                query.order_by(direction(primary_col), direction(Transaction.id))
                 .offset(offset)
                 .limit(limit)
             )

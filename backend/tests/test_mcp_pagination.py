@@ -54,3 +54,73 @@ def test_list_transactions_sort_by_amount_desc(seeded_user):
     amounts = [r["amount"] for r in result["transactions"]]
     assert amounts == sorted(amounts, reverse=True)
     assert len(result["transactions"]) == 3
+
+
+@pytest.fixture
+def user_with_tied_booked_at(db_session):
+    """Seed a user whose transactions all share the same booked_at timestamp.
+
+    Exercises the tie-breaker in _paginate_query: pagination must visit every
+    row exactly once when the primary sort column is constant across rows.
+    """
+    user = User(id="test-user-ties", email="ties@test.com")
+    db_session.add(user)
+    acc = Account(user_id=user.id, name="ABN", account_type="checking")
+    db_session.add(acc)
+    db_session.flush()
+    same_ts = datetime(2026, 4, 15, 12, 0, 0)
+    for i in range(7):
+        db_session.add(Transaction(
+            user_id=user.id,
+            account_id=acc.id,
+            amount=Decimal(f"-{(i + 1) * 5}"),
+            currency="EUR",
+            description=f"Tied purchase {i}",
+            merchant=f"Merchant {i}",
+            booked_at=same_ts,
+            transaction_type="debit",
+        ))
+    db_session.commit()
+    try:
+        yield user
+    finally:
+        db_session.query(Transaction).filter(Transaction.user_id == user.id).delete()
+        db_session.query(Account).filter(Account.user_id == user.id).delete()
+        db_session.query(User).filter(User.id == user.id).delete()
+        db_session.commit()
+
+
+def test_booked_at_asc_cursor_pagination_with_ties(user_with_tied_booked_at):
+    """Ascending-sort cursor walk must not skip or duplicate rows on ties.
+
+    Regression test: the id tie-breaker must match the primary sort
+    direction. If the secondary order_by is id.desc() but the cursor
+    filter uses `id > last_id` for ascending sorts, rows tied on
+    booked_at silently disappear between pages.
+    """
+    user = user_with_tied_booked_at
+    collected_ids: list[str] = []
+    cursor = None
+    # 7 rows, page size 2 -> need at least 4 iterations; cap to avoid looping forever.
+    for _ in range(10):
+        result = tx_tools.list_transactions(
+            user_id=user.id,
+            sort_by="booked_at_asc",
+            limit=2,
+            cursor=cursor,
+        )
+        page_ids = [t["id"] for t in result["transactions"]]
+        collected_ids.extend(page_ids)
+        cursor = result["next_cursor"]
+        if cursor is None:
+            break
+
+    assert cursor is None, "pagination did not terminate"
+    # No duplicates.
+    assert len(collected_ids) == len(set(collected_ids)), (
+        f"cursor walk produced duplicates: {collected_ids}"
+    )
+    # No gaps - every seeded row is present.
+    assert len(collected_ids) == 7, (
+        f"cursor walk skipped rows; got {len(collected_ids)}/7: {collected_ids}"
+    )
