@@ -750,13 +750,13 @@ class CategoryMatcher:
             return None
 
         # Build category list for prompt
-        category_list = "\n".join([f"- {cat.name}" for cat in relevant_categories])
+        category_list = self._render_category_list(relevant_categories)
 
         # Build enhanced prompt with additional instructions and user overrides
         instructions_text = ""
         if self.additional_instructions:
             instructions_text = "\n\nUser-specific categorization guidelines:\n" + "\n".join([f"- {inst}" for inst in self.additional_instructions]) + "\n"
-        
+
         overrides_text = ""
         if self.user_overrides:
             overrides_text = "\n\nUser-defined category overrides (use these patterns as examples):\n"
@@ -766,7 +766,7 @@ class CategoryMatcher:
                 cat = override.get("category_name", "N/A")
                 overrides_text += f"- Description: '{desc}', Merchant: '{merch}' → Category: '{cat}'\n"
             overrides_text += "\n"
-        
+
         # Build enhanced prompt
         prompt = f"""Categorize this financial transaction by selecting the most appropriate category.
 
@@ -908,13 +908,13 @@ Category name:"""
             return None, 0, 0.0
 
         # Build category list for prompt
-        category_list = "\n".join([f"- {cat.name}" for cat in relevant_categories])
+        category_list = self._render_category_list(relevant_categories)
 
         # Build enhanced prompt with additional instructions and user overrides
         instructions_text = ""
         if self.additional_instructions:
             instructions_text = "\n\nUser-specific categorization guidelines:\n" + "\n".join([f"- {inst}" for inst in self.additional_instructions]) + "\n"
-        
+
         overrides_text = ""
         if self.user_overrides:
             overrides_text = "\n\nUser-defined category overrides (use these patterns as examples):\n"
@@ -924,7 +924,7 @@ Category name:"""
                 cat = override.get("category_name", "N/A")
                 overrides_text += f"- Description: '{desc}', Merchant: '{merch}' → Category: '{cat}'\n"
             overrides_text += "\n"
-        
+
         # Build enhanced prompt
         prompt = f"""Categorize this financial transaction by selecting the most appropriate category.
 

@@ -37,3 +37,35 @@ def test_render_category_list_truncates_long_description():
     long = "A" * 500
     rendered = m._render_category_list([FakeCategory("X", long)])
     assert len(rendered) < 300  # bound: name + " — " + 200 chars max
+
+
+def test_prompt_includes_category_descriptions(monkeypatch, db_session):
+    # Use the real CategoryMatcher with a stub DB; assert prompt contains descriptions.
+    import app.services.category_matcher as cm_module
+    captured = {}
+
+    class StubClient:
+        class chat:
+            class completions:
+                @staticmethod
+                def create(**kwargs):
+                    captured["messages"] = kwargs["messages"]
+                    class R:
+                        choices = [type("X", (), {"message": type("M", (), {"content": "UNKNOWN"})()})()]
+                        usage = type("U", (), {"prompt_tokens": 1, "completion_tokens": 1})()
+                    return R()
+
+    m = cm_module.CategoryMatcher(db=db_session, user_id="prompt-user")
+    monkeypatch.setattr(m, "_get_openai_client", lambda: StubClient())
+    # Also monkeypatch _load_categories so we don't depend on DB having categories
+    monkeypatch.setattr(m, "_load_categories", lambda: {})
+
+    cats = [FakeCategory("Side Projects", "Tools like Cloudflare, Framer, GitHub.")]
+    m.match_category_llm(
+        description="Cloudflare workers",
+        merchant="Cloudflare",
+        amount=-5.0,
+        available_categories=cats,
+    )
+    prompt_text = captured["messages"][1]["content"]
+    assert "Side Projects — Tools like Cloudflare" in prompt_text
