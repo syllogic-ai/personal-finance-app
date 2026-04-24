@@ -462,7 +462,10 @@ def search_transactions_multi(
     exclude_category_id: Optional[str] = None,
     match_mode: MatchMode = "contains",
     ids_only: bool = False,
-    max_results: int = 500
+    max_results: int = 500,
+    cursor: Optional[str] = None,
+    sort_by: SortBy = "booked_at_desc",
+    account_id: Optional[str] = None,
 ) -> dict:
     """
     Search transactions matching ANY of the given queries.
@@ -470,6 +473,10 @@ def search_transactions_multi(
     Returns all matching transactions in a single call (no pagination needed).
     Useful for bulk recategorization workflows where you need to find transactions
     from multiple merchants at once.
+
+    Pass `cursor=""` (or a real cursor from `next_cursor`) to enable cursor
+    pagination. Without a cursor, all results up to `max_results` are returned
+    in one shot (original behavior).
 
     Args:
         user_id: The user's ID
@@ -481,6 +488,11 @@ def search_transactions_multi(
             - "word": Word boundary match
         ids_only: If True, return only transaction IDs (faster for bulk operations)
         max_results: Maximum results to return (default: 500, max: 1000)
+        cursor: Opaque pagination cursor; pass "" or a real cursor to enable
+            cursor mode (opt-in). Omit entirely for legacy all-at-once behavior.
+        sort_by: Sort order - one of booked_at_desc (default),
+            booked_at_asc, amount_desc, amount_asc, abs_amount_desc
+        account_id: Filter results to a single account (optional)
 
     Returns:
         Dict with:
@@ -488,14 +500,16 @@ def search_transactions_multi(
         - total_count: Total matches found
         - capped: True if results were limited by max_results
         - query_counts: Dict mapping each query to its match count
+        - next_cursor: Opaque cursor for next page (only present in cursor mode)
     """
     if not queries:
         return {"error": "Must provide at least one query", "success": False}
 
     max_results = min(max(1, max_results), 1000)
 
-    # Validate exclude_category_id if provided
+    # Validate IDs if provided
     exclude_cat_uuid = validate_uuid(exclude_category_id) if exclude_category_id else None
+    account_uuid = validate_uuid(account_id) if account_id else None
 
     with get_db() as db:
         # Build combined filter for all queries
@@ -524,16 +538,15 @@ def search_transactions_multi(
                 )
             )
 
+        # Add account filter if specified
+        if account_uuid:
+            combined_filter = and_(combined_filter, Transaction.account_id == account_uuid)
+
         # Get total count
         total_count = db.query(func.count(Transaction.id)).filter(combined_filter).scalar()
 
-        # Fetch transactions
-        query_obj = (
-            db.query(Transaction)
-            .filter(combined_filter)
-            .order_by(Transaction.booked_at.desc())
-            .limit(max_results)
-        )
+        # Build query object
+        query_obj = db.query(Transaction).filter(combined_filter)
 
         if not ids_only:
             query_obj = query_obj.options(
@@ -541,7 +554,16 @@ def search_transactions_multi(
                 joinedload(Transaction.category)
             )
 
-        transactions = query_obj.all()
+        # cursor is not None means cursor mode is opted-in (even empty string)
+        cursor_mode = cursor is not None
+        if cursor_mode:
+            paginated = _paginate_query(query_obj, cursor or None, sort_by, max_results)
+        else:
+            primary_col, direction = _sort_expr(sort_by)
+            paginated = query_obj.order_by(direction(primary_col), direction(Transaction.id)).limit(max_results)
+
+        transactions_rows = paginated.all()
+        next_cursor = _build_next_cursor(transactions_rows, sort_by, max_results) if cursor_mode else None
 
         # Count matches per query (for transparency)
         query_counts = {}
@@ -564,12 +586,13 @@ def search_transactions_multi(
 
         result = {
             "total_count": total_count,
-            "capped": len(transactions) < total_count,
+            "capped": len(transactions_rows) < total_count,
             "query_counts": query_counts,
+            "next_cursor": next_cursor,
         }
 
         if ids_only:
-            result["transaction_ids"] = [str(txn.id) for txn in transactions]
+            result["transaction_ids"] = [str(txn.id) for txn in transactions_rows]
         else:
             result["transactions"] = [
                 {
@@ -584,7 +607,7 @@ def search_transactions_multi(
                     "category_name": txn.category.name if txn.category else None,
                     "booked_at": txn.booked_at.isoformat() if txn.booked_at else None,
                 }
-                for txn in transactions
+                for txn in transactions_rows
             ]
 
         return result

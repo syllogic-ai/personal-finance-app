@@ -157,3 +157,27 @@ def test_search_transactions_account_id_filter(seeded_user):
     assert result["total_count"] > 0
     assert all(t["account_id"] == str(acc1.id) for t in result["transactions"])
     assert result["total_count"] == 5
+
+
+def test_search_multi_cursor_opt_in(seeded_user):
+    user, _, _, _ = seeded_user
+    # Default (no cursor) behavior: returns all capped results, no next_cursor
+    r1 = tx_tools.search_transactions_multi(
+        user_id=user.id, queries=["Purchase"], max_results=100
+    )
+    assert r1["total_count"] == 10
+    assert "next_cursor" not in r1 or r1.get("next_cursor") is None
+
+    # Opt-in to cursor mode via limit + cursor loop
+    r2 = tx_tools.search_transactions_multi(
+        user_id=user.id, queries=["Purchase"], max_results=4, cursor=""
+    )
+    assert len(r2["transactions"]) == 4
+    assert r2["next_cursor"] is not None
+    r3 = tx_tools.search_transactions_multi(
+        user_id=user.id, queries=["Purchase"], max_results=4, cursor=r2["next_cursor"]
+    )
+    assert len(r3["transactions"]) == 4
+    assert set(t["id"] for t in r2["transactions"]).isdisjoint(
+        set(t["id"] for t in r3["transactions"])
+    )
