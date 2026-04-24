@@ -96,6 +96,9 @@ class CategoryMatcher:
     LLM_MAX_RETRIES = int(os.getenv("CATEGORIZATION_LLM_MAX_RETRIES", "3"))
     LLM_RETRY_DELAY = float(os.getenv("CATEGORIZATION_LLM_RETRY_DELAY", "1.0"))
 
+    # Max length for category descriptions in LLM prompt
+    MAX_CATEGORY_DESCRIPTION_LEN = 200
+
     # OpenAI Pricing (per 1M tokens, as of January 2025)
     # https://openai.com/api/pricing/
     PRICING = {
@@ -539,6 +542,19 @@ class CategoryMatcher:
         text = re.sub(r'\s+', ' ', text).strip()
 
         return text
+
+    def _render_category_list(self, categories) -> str:
+        """Render the category list for the LLM prompt, with truncated descriptions."""
+        lines = []
+        for cat in categories:
+            desc = (cat.description or "").strip()
+            if desc:
+                if len(desc) > self.MAX_CATEGORY_DESCRIPTION_LEN:
+                    desc = desc[: self.MAX_CATEGORY_DESCRIPTION_LEN].rstrip() + "…"
+                lines.append(f"- {cat.name} — {desc}")
+            else:
+                lines.append(f"- {cat.name}")
+        return "\n".join(lines)
 
     def _calculate_llm_cost(self, input_tokens: int, output_tokens: int, model: str) -> float:
         """
