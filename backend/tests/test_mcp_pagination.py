@@ -155,8 +155,5 @@ def test_search_transactions_account_id_filter(seeded_user):
         user_id=user.id, query="Purchase", account_id=str(acc1.id), match_mode="contains"
     )
     assert result["total_count"] > 0
-    assert all(
-        # Only acc1 transactions; acc1 got even indices 0,2,4,6,8 → 5 txns
-        True for t in result["transactions"]
-    )
+    assert all(t["account_id"] == str(acc1.id) for t in result["transactions"])
     assert result["total_count"] == 5

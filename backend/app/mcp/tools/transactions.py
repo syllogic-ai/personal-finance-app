@@ -1,6 +1,8 @@
 """
 Transaction tools for the MCP server.
 """
+from __future__ import annotations
+
 import base64
 import json
 from datetime import datetime
