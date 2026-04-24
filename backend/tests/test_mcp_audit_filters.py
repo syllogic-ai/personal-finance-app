@@ -102,3 +102,68 @@ def test_top_merchants_mutual_exclusion(audit_data):
         an_tools.get_top_merchants(
             user_id=user.id, category_id=str(expense_cat.id), uncategorized=True,
         )
+
+
+def test_uncategorized_excludes_system_categorized(db_session):
+    """list_transactions(uncategorized=True) must require BOTH category_id IS NULL
+    AND category_system_id IS NULL.  A row with only category_system_id set (AI-
+    assigned, not user-confirmed) must NOT appear in the uncategorized list.
+    """
+    from app.models import Transaction, Account, Category, User
+    from decimal import Decimal
+    from datetime import datetime
+
+    user = User(id="sys-cat-user", email="syscat@test.com")
+    db_session.add(user)
+    acc = Account(user_id=user.id, name="A", account_type="checking")
+    db_session.add(acc)
+    db_session.flush()
+
+    sys_cat = Category(user_id=user.id, name="SysCat", category_type="expense")
+    db_session.add(sys_cat)
+    db_session.flush()
+
+    # Row 1: category_system_id set, category_id NULL → AI-assigned, not uncategorized
+    txn_sys = Transaction(
+        user_id=user.id,
+        account_id=acc.id,
+        amount=Decimal("-15"),
+        currency="EUR",
+        description="AI-categorized txn",
+        merchant="MerchSys",
+        category_id=None,
+        category_system_id=sys_cat.id,
+        booked_at=datetime(2026, 5, 1),
+        transaction_type="debit",
+    )
+    # Row 2: both NULL → truly uncategorized
+    txn_none = Transaction(
+        user_id=user.id,
+        account_id=acc.id,
+        amount=Decimal("-25"),
+        currency="EUR",
+        description="Fully uncategorized txn",
+        merchant="MerchNone",
+        category_id=None,
+        category_system_id=None,
+        booked_at=datetime(2026, 5, 2),
+        transaction_type="debit",
+    )
+    db_session.add_all([txn_sys, txn_none])
+    db_session.commit()
+
+    try:
+        result = tx_tools.list_transactions(user_id=user.id, uncategorized=True, limit=50)
+        ids = {t["id"] for t in result["transactions"]}
+
+        assert str(txn_none.id) in ids, "Truly uncategorized row must be returned"
+        assert str(txn_sys.id) not in ids, (
+            "Row with category_system_id set must NOT be returned as uncategorized"
+        )
+        assert len(result["transactions"]) == 1
+    finally:
+        db_session.query(Transaction).filter(Transaction.user_id == user.id).delete()
+        db_session.query(Category).filter(Category.user_id == user.id).delete()
+        db_session.query(Account).filter(Account.user_id == user.id).delete()
+        db_session.query(User).filter(User.id == user.id).delete()
+        db_session.commit()

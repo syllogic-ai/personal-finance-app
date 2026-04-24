@@ -181,3 +181,53 @@ def test_search_multi_cursor_opt_in(seeded_user):
     assert set(t["id"] for t in r2["transactions"]).isdisjoint(
         set(t["id"] for t in r3["transactions"])
     )
+
+
+def test_amount_asc_cursor_round_trip(seeded_user):
+    """Cursor pagination must visit all rows exactly once with amount_asc sort."""
+    user, _, _, _ = seeded_user
+    collected_ids: list[str] = []
+    cursor = None
+    for _ in range(15):
+        result = tx_tools.list_transactions(
+            user_id=user.id, sort_by="amount_asc", limit=3, cursor=cursor
+        )
+        collected_ids.extend(t["id"] for t in result["transactions"])
+        cursor = result["next_cursor"]
+        if cursor is None:
+            break
+
+    assert cursor is None, "pagination did not terminate"
+    assert len(collected_ids) == len(set(collected_ids)), (
+        f"cursor walk produced duplicates: {collected_ids}"
+    )
+    assert len(collected_ids) == 10, (
+        f"cursor walk skipped rows; got {len(collected_ids)}/10"
+    )
+
+
+def test_abs_amount_desc_cursor_round_trip(seeded_user):
+    """Cursor pagination must visit all rows exactly once with abs_amount_desc sort.
+
+    This exercises the func.abs() branch in _build_next_cursor which encodes
+    str(abs(float(amount))) — a distinct path from the regular amount sorts.
+    """
+    user, _, _, _ = seeded_user
+    collected_ids: list[str] = []
+    cursor = None
+    for _ in range(15):
+        result = tx_tools.list_transactions(
+            user_id=user.id, sort_by="abs_amount_desc", limit=3, cursor=cursor
+        )
+        collected_ids.extend(t["id"] for t in result["transactions"])
+        cursor = result["next_cursor"]
+        if cursor is None:
+            break
+
+    assert cursor is None, "pagination did not terminate"
+    assert len(collected_ids) == len(set(collected_ids)), (
+        f"cursor walk produced duplicates: {collected_ids}"
+    )
+    assert len(collected_ids) == 10, (
+        f"cursor walk skipped rows; got {len(collected_ids)}/10"
+    )
