@@ -1,4 +1,11 @@
-import { getHoldingHistory } from "@/lib/api/investments";
+import { notFound } from "next/navigation";
+import {
+  listHoldings,
+  getHoldingHistory,
+  getPortfolio,
+} from "@/lib/api/investments";
+import { HoldingDetailView } from "@/components/investments/HoldingDetailView";
+import { rangeToDates } from "@/lib/utils/date-ranges";
 
 export const dynamic = "force-dynamic";
 
@@ -8,31 +15,20 @@ export default async function HoldingDetailPage({
   params: Promise<{ holdingId: string }>;
 }) {
   const { holdingId } = await params;
-  const now = new Date();
-  const today = now.toISOString().slice(0, 10);
-  const oneYearAgo = new Date(now.getTime() - 365 * 86400e3)
-    .toISOString()
-    .slice(0, 10);
-  const history = await getHoldingHistory(holdingId, oneYearAgo, today);
+  const { from, to } = rangeToDates("1M");
+  // Backend exposes GET /holdings (list) but not GET /holdings/:id,
+  // so we fetch holdings + portfolio first, validate the ID, then fetch history.
+  // This ensures notFound() is called before getHoldingHistory so an invalid
+  // holdingId never reaches the backend history endpoint.
+  const [holdings, portfolio] = await Promise.all([listHoldings(), getPortfolio()]);
+  const holding = holdings.find((h) => h.id === holdingId);
+  if (!holding) return notFound();
+  const history = await getHoldingHistory(holdingId, from, to);
   return (
-    <div className="p-6 space-y-4">
-      <h1 className="text-xl font-semibold">Holding history</h1>
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="text-left text-muted-foreground">
-            <th>Date</th>
-            <th className="text-right">Value</th>
-          </tr>
-        </thead>
-        <tbody>
-          {history.map((p) => (
-            <tr key={p.date} className="border-t">
-              <td className="py-1">{p.date}</td>
-              <td className="text-right">{p.value}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <HoldingDetailView
+      holding={holding}
+      portfolio={portfolio}
+      initialHistory={history}
+    />
   );
 }

@@ -198,3 +198,18 @@ export async function deleteHolding(holdingId: string): Promise<void> {
   if (!session?.user?.id) throw new Error("Not authenticated");
   await signedFetch("DELETE", `/api/investments/holdings/${holdingId}`);
 }
+
+export async function updateHolding(
+  holdingId: string,
+  payload: { quantity?: string; avg_cost?: string; as_of_date?: string },
+): Promise<void> {
+  const session = await getAuthenticatedSession();
+  if (!session?.user?.id) throw new Error("Not authenticated");
+  const resp = await signedFetch("PATCH", `/api/investments/holdings/${holdingId}`, {
+    body: payload,
+  });
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => "");
+    throw new Error(text || `Request failed: ${resp.status}`);
+  }
+}
