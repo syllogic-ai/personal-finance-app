@@ -38,6 +38,11 @@ describe("getAssetCategory", () => {
   it("falls back to other for unknown types", () => {
     expect(getAssetCategory("zzz")).toBe("other");
   });
+
+  it("returns other for null or undefined input", () => {
+    expect(getAssetCategory(null)).toBe("other");
+    expect(getAssetCategory(undefined)).toBe("other");
+  });
 });
 
 describe("ASSET_CATEGORY_ORDER", () => {

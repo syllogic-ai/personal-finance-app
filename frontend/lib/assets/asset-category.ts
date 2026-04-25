@@ -48,6 +48,7 @@ const ACCOUNT_TYPE_TO_CATEGORY: Record<string, AssetCategoryKey> = {
   vehicle: "vehicle",
 };
 
-export function getAssetCategory(accountType: string): AssetCategoryKey {
+export function getAssetCategory(accountType: string | null | undefined): AssetCategoryKey {
+  if (!accountType) return "other";
   return ACCOUNT_TYPE_TO_CATEGORY[accountType.toLowerCase()] ?? "other";
 }
