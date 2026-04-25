@@ -46,3 +46,53 @@ def test_get_daily_close_returns_quote_for_exact_date():
     assert q.currency == "USD"
     assert q.close == Decimal("234.56")
     assert q.date == date(2026, 4, 18)
+
+
+def test_get_daily_close_falls_back_to_most_recent_prior_close():
+    ts = _ts_daily_response([
+        ("2026-04-15", "230.00"),
+        ("2026-04-16", "231.00"),
+        ("2026-04-17", "232.00"),
+    ])
+    with patch(
+        "app.integrations.price_provider.alpha_vantage_provider.httpx.get"
+    ) as get:
+        get.side_effect = [
+            MagicMock(json=lambda: ts, raise_for_status=lambda: None),
+            MagicMock(json=lambda: _overview_response("USD"), raise_for_status=lambda: None),
+        ]
+        # Asking for Saturday — should pick Friday 2026-04-17
+        q = AlphaVantagePriceProvider(api_key="X").get_daily_close(
+            "AAPL", date(2026, 4, 18)
+        )
+    assert q is not None
+    assert q.date == date(2026, 4, 17)
+    assert q.close == Decimal("232.00")
+
+
+def test_get_daily_close_returns_none_when_no_data():
+    with patch(
+        "app.integrations.price_provider.alpha_vantage_provider.httpx.get"
+    ) as get:
+        get.return_value = MagicMock(
+            json=lambda: {"Time Series (Daily)": {}},
+            raise_for_status=lambda: None,
+        )
+        q = AlphaVantagePriceProvider(api_key="X").get_daily_close(
+            "ZZZZ", date(2026, 4, 18)
+        )
+    assert q is None
+
+
+def test_get_daily_close_returns_none_on_rate_limit():
+    with patch(
+        "app.integrations.price_provider.alpha_vantage_provider.httpx.get"
+    ) as get:
+        get.return_value = MagicMock(
+            json=lambda: {"Note": "Rate limit reached"},
+            raise_for_status=lambda: None,
+        )
+        q = AlphaVantagePriceProvider(api_key="X").get_daily_close(
+            "AAPL", date(2026, 4, 18)
+        )
+    assert q is None
