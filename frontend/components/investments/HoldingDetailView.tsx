@@ -16,7 +16,7 @@ import { Field, Input, btnPrimary } from "./_form-bits";
 const RANGES: Range[] = ["1W", "1M", "3M", "1Y", "ALL"];
 
 function currSym(currency: string) {
-  return currency === "USD" ? "$" : currency === "GBP" ? "£" : "€";
+  return ({ USD: "$", GBP: "£", EUR: "€" } as Record<string, string>)[currency] ?? currency;
 }
 
 function fmt(n: number, digits = 2) {
@@ -45,6 +45,7 @@ export function HoldingDetailView({
   const [asOfDate, setAsOfDate] = useState(holding.as_of_date ?? "");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [chartErr, setChartErr] = useState<string | null>(null);
 
   const series = history
     .map((p) => Number(p.value))
@@ -70,9 +71,15 @@ export function HoldingDetailView({
 
   const onRangeChange = (r: Range) => {
     setRange(r);
+    setChartErr(null);
     startTransition(async () => {
-      const next = await fetchHoldingHistoryRange(holding.id, r);
-      setHistory(next);
+      try {
+        const next = await fetchHoldingHistoryRange(holding.id, r);
+        setHistory(next);
+      } catch {
+        setRange(range);  // revert optimistic update
+        setChartErr("Could not load history.");
+      }
     });
   };
 
@@ -105,7 +112,7 @@ export function HoldingDetailView({
     [
       "Total return",
       totalReturn != null
-        ? `${totalReturn >= 0 ? "▲ +" : "▼ "}${fmt(totalReturn)}%`
+        ? `${totalReturn >= 0 ? "▲ +" : "▼ -"}${fmt(Math.abs(totalReturn))}%`
         : "—",
     ],
     [
@@ -274,6 +281,11 @@ export function HoldingDetailView({
               );
             })}
           </div>
+          {chartErr && (
+            <div style={{ color: T.negative, fontSize: 11, padding: "0 16px 8px" }}>
+              {chartErr}
+            </div>
+          )}
           <div style={{ padding: "8px 16px 16px" }}>
             <PortfolioChart data={series} currencySymbol={portfolioCurrSym} />
           </div>
@@ -284,9 +296,9 @@ export function HoldingDetailView({
           <form
             onSubmit={onSave}
             style={{
+              border: `1px solid ${T.border}`,
               borderTop: `2px solid ${T.primary}`,
               background: T.card,
-              border: `1px solid ${T.border}`,
               padding: 24,
             }}
           >
