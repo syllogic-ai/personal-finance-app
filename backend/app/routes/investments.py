@@ -33,7 +33,7 @@ from app.schemas import (
     ValuationPoint,
 )
 from app.services import credentials_crypto
-from tasks.investment_tasks import sync_investment_account
+from tasks.investment_tasks import sync_investment_account, daily_investment_sync_all
 
 router = APIRouter()
 
@@ -127,6 +127,28 @@ def trigger_sync(
         raise HTTPException(status_code=404, detail="Broker connection not found")
     sync_investment_account.delay(str(conn.account_id))
     return {"status": "queued", "account_id": str(conn.account_id)}
+
+
+@router.post("/sync-all")
+def trigger_sync_all(
+    user_id: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    """Queue a price-refresh sync for every active investment account belonging
+    to the user (manual + brokerage). Protected by the standard user auth."""
+    user_id = get_user_id(user_id)
+    accounts = (
+        db.query(Account)
+        .filter(
+            Account.user_id == user_id,
+            Account.is_active.is_(True),
+            Account.account_type.in_(["investment_manual", "investment_brokerage"]),
+        )
+        .all()
+    )
+    for account in accounts:
+        sync_investment_account.delay(str(account.id))
+    return {"status": "queued", "count": len(accounts)}
 
 
 @router.delete("/broker-connections/{connection_id}", status_code=204)

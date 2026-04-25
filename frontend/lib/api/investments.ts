@@ -199,6 +199,11 @@ export async function deleteHolding(holdingId: string): Promise<void> {
   await signedFetch("DELETE", `/api/investments/holdings/${holdingId}`);
 }
 
+export async function syncAllInvestments(): Promise<{ count: number }> {
+  const resp = await signedFetch("POST", "/api/investments/sync-all");
+  return readJsonOrThrow<{ count: number }>(resp);
+}
+
 export async function updateHolding(
   holdingId: string,
   payload: { quantity?: string; avg_cost?: string; as_of_date?: string },

@@ -4,10 +4,12 @@ import { useRouter } from "next/navigation";
 import { fetchHistoryRange, type Range } from "@/lib/actions/investments";
 import {
   deleteHolding,
+  syncAllInvestments,
   type Holding,
   type PortfolioSummary,
   type ValuationPoint,
 } from "@/lib/api/investments";
+import { RiRefreshLine } from "@remixicon/react";
 import { PortfolioHero } from "./PortfolioHero";
 import { PortfolioChart } from "./PortfolioChart";
 import { PortfolioStatsStrip, computeBestDay } from "./PortfolioStatsStrip";
@@ -31,6 +33,7 @@ export function InvestmentsOverview({
   const [history, setHistory] = useState<ValuationPoint[]>(initialHistory);
   const [pending, startTransition] = useTransition();
   const activeRangeRef = useRef<Range>(initialRange);
+  const [syncing, setSyncing] = useState(false);
 
   const series = useMemo(
     () =>
@@ -78,6 +81,16 @@ export function InvestmentsOverview({
     router.refresh();
   };
 
+  const onSync = async () => {
+    setSyncing(true);
+    try {
+      await syncAllInvestments();
+      setTimeout(() => router.refresh(), 3000);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const sym =
     portfolio.currency === "USD"
       ? "$"
@@ -95,16 +108,44 @@ export function InvestmentsOverview({
           gap: 16,
         }}
       >
-        <PortfolioHero
-          totalValue={totalValue}
-          currency={portfolio.currency}
-          absChange={absChange}
-          pctChange={pctChange}
-          range={range}
-          onRangeChange={onRangeChange}
-          asOf="moments ago"
-          staleCount={staleCount}
-        />
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+          <div style={{ flex: 1 }}>
+            <PortfolioHero
+              totalValue={totalValue}
+              currency={portfolio.currency}
+              absChange={absChange}
+              pctChange={pctChange}
+              range={range}
+              onRangeChange={onRangeChange}
+              asOf="moments ago"
+              staleCount={staleCount}
+            />
+          </div>
+          <button
+            onClick={onSync}
+            disabled={syncing}
+            title="Refresh prices"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "5px 12px",
+              background: "transparent",
+              border: `1px solid ${T.border}`,
+              color: T.mutedFg,
+              cursor: syncing ? "default" : "pointer",
+              fontSize: 11,
+              fontFamily: "inherit",
+              opacity: syncing ? 0.5 : 1,
+            }}
+          >
+            <RiRefreshLine
+              size={12}
+              style={{ animation: syncing ? "spin 1s linear infinite" : "none" }}
+            />
+            {syncing ? "Syncing…" : "Refresh prices"}
+          </button>
+        </div>
         <div
           style={{
             background: T.card,
