@@ -203,7 +203,8 @@ export async function updateHolding(
   holdingId: string,
   payload: { quantity?: string; avg_cost?: string; as_of_date?: string },
 ): Promise<void> {
-  await getAuthenticatedSession();
+  const session = await getAuthenticatedSession();
+  if (!session?.user?.id) throw new Error("Not authenticated");
   const resp = await signedFetch("PATCH", `/api/investments/holdings/${holdingId}`, {
     body: payload,
   });
