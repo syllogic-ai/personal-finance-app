@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { rangeToDates } from "./investments";
+import { rangeToDates, fetchHoldingHistoryRange } from "./investments";
 
 describe("rangeToDates", () => {
   const ref = new Date("2026-04-25T00:00:00Z");
@@ -13,5 +13,11 @@ describe("rangeToDates", () => {
   });
   it("ALL uses a far-back date", () => {
     expect(rangeToDates("ALL", ref).from).toBe("2010-01-01");
+  });
+});
+
+describe("fetchHoldingHistoryRange export", () => {
+  it("is an async function", () => {
+    expect(typeof fetchHoldingHistoryRange).toBe("function");
   });
 });
