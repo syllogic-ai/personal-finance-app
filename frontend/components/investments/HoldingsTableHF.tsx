@@ -223,7 +223,15 @@ export function HoldingsTableHF({
             <tr
               key={h.id}
               className={h.is_stale ? "stale" : ""}
+              tabIndex={0}
+              aria-label={`View details for ${h.symbol}`}
               onClick={() => router.push(`/investments/${h.id}`)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  router.push(`/investments/${h.id}`);
+                }
+              }}
               style={{
                 borderBottom: `1px solid ${T.muted}`,
                 background: h.is_stale ? T.staleBg : undefined,

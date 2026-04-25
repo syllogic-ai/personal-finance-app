@@ -1,5 +1,5 @@
 import { render, screen, fireEvent } from "@testing-library/react";
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { HoldingsTableHF } from "./HoldingsTableHF";
 import type { Holding } from "@/lib/api/investments";
 
@@ -61,6 +61,8 @@ describe("HoldingsTableHF", () => {
 });
 
 describe("HoldingsTableHF row navigation", () => {
+  beforeEach(() => mockPush.mockClear());
+
   it("navigates to holding detail on row click", () => {
     render(
       <HoldingsTableHF
@@ -74,7 +76,6 @@ describe("HoldingsTableHF row navigation", () => {
   });
 
   it("does not navigate when delete button clicked", () => {
-    mockPush.mockClear();
     const onDelete = vi.fn();
     render(
       <HoldingsTableHF
