@@ -1,3 +1,5 @@
+"use server";
+
 export type Range = "1W" | "1M" | "3M" | "1Y" | "ALL";
 
 export function rangeToDates(range: Range, now: Date = new Date()) {
@@ -10,21 +12,18 @@ export function rangeToDates(range: Range, now: Date = new Date()) {
 }
 
 export async function fetchHistoryRange(range: Range) {
-  "use server";
   const { getPortfolioHistory } = await import("@/lib/api/investments");
   const { from, to } = rangeToDates(range);
   return getPortfolioHistory(from, to);
 }
 
 export async function searchSymbolsAction(q: string) {
-  "use server";
   if (!q.trim()) return [];
   const { searchSymbols } = await import("@/lib/api/investments");
   return searchSymbols(q);
 }
 
 export async function fetchHoldingHistoryRange(holdingId: string, range: Range) {
-  "use server";
   const { getHoldingHistory } = await import("@/lib/api/investments");
   const { from, to } = rangeToDates(range);
   return getHoldingHistory(holdingId, from, to);
