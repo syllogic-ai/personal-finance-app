@@ -62,7 +62,7 @@ def list_accounts(
         return results
 
 
-def get_account(user_id: str, account_id: str) -> Optional[dict]:
+def get_account(user_id: str, account_id: str) -> dict | None:
     """
     Get a single account by ID.
 
