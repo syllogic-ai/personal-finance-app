@@ -4,6 +4,7 @@ import {
   getHoldingHistory,
   getPortfolio,
 } from "@/lib/api/investments";
+import { Header } from "@/components/layout/header";
 import { HoldingDetailView } from "@/components/investments/HoldingDetailView";
 import { rangeToDates } from "@/lib/utils/date-ranges";
 
@@ -25,10 +26,15 @@ export default async function HoldingDetailPage({
   if (!holding) return notFound();
   const history = await getHoldingHistory(holdingId, from, to);
   return (
-    <HoldingDetailView
-      holding={holding}
-      portfolio={portfolio}
-      initialHistory={history}
-    />
+    <>
+      <Header title={holding.symbol} />
+      <div className="flex flex-1 flex-col gap-6 p-4 pt-0">
+        <HoldingDetailView
+          holding={holding}
+          portfolio={portfolio}
+          initialHistory={history}
+        />
+      </div>
+    </>
   );
 }
