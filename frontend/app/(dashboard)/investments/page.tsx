@@ -5,7 +5,7 @@ import {
 } from "@/lib/api/investments";
 import { InvestmentsOverview } from "@/components/investments/InvestmentsOverview";
 import { InvestmentsEmpty } from "@/components/investments/InvestmentsEmpty";
-import { rangeToDates } from "@/lib/actions/investments";
+import { rangeToDates } from "@/lib/utils/date-ranges";
 
 export const dynamic = "force-dynamic";
 

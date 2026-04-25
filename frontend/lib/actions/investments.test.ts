@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { rangeToDates, fetchHoldingHistoryRange } from "./investments";
+import { rangeToDates } from "../utils/date-ranges";
+import { fetchHoldingHistoryRange } from "./investments";
 
 describe("rangeToDates", () => {
   const ref = new Date("2026-04-25T00:00:00Z");

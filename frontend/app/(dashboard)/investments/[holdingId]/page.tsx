@@ -5,7 +5,7 @@ import {
   getPortfolio,
 } from "@/lib/api/investments";
 import { HoldingDetailView } from "@/components/investments/HoldingDetailView";
-import { rangeToDates } from "@/lib/actions/investments";
+import { rangeToDates } from "@/lib/utils/date-ranges";
 
 export const dynamic = "force-dynamic";
 
