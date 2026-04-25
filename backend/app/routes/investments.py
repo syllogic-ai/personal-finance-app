@@ -333,11 +333,21 @@ def update_holding(
         raise HTTPException(status_code=400, detail="Only manual holdings can be edited")
 
     payload = updates.model_dump(exclude_unset=True)
+    symbol_changed = "symbol" in payload and payload["symbol"] != holding.symbol
     for field, value in payload.items():
         setattr(holding, field, value)
     db.commit()
     db.refresh(holding)
-    return {"id": str(holding.id), "quantity": str(holding.quantity)}
+
+    # Re-price the account if the symbol was changed so the new symbol
+    # gets fetched from the price provider immediately.
+    if symbol_changed:
+        try:
+            sync_investment_account.delay(str(holding.account_id))
+        except Exception:
+            pass
+
+    return {"id": str(holding.id), "symbol": holding.symbol, "quantity": str(holding.quantity)}
 
 
 @router.delete("/holdings/{holding_id}", status_code=204)

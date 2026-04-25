@@ -1,11 +1,17 @@
 "use client";
-import { useState, useTransition, useRef } from "react";
+import { useState, useTransition, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { fetchHoldingHistoryRange, type Range } from "@/lib/actions/investments";
+import { RiSearchLine } from "@remixicon/react";
+import {
+  fetchHoldingHistoryRange,
+  searchSymbolsAction,
+  type Range,
+} from "@/lib/actions/investments";
 import {
   updateHolding,
   type Holding,
   type PortfolioSummary,
+  type SymbolSearchResult,
   type ValuationPoint,
 } from "@/lib/api/investments";
 import { PortfolioChart } from "./PortfolioChart";
@@ -44,6 +50,11 @@ export function HoldingDetailView({
   const [qty, setQty] = useState(holding.quantity);
   const [avgCost, setAvgCost] = useState(holding.avg_cost ?? "");
   const [asOfDate, setAsOfDate] = useState(holding.as_of_date ?? "");
+  const [symbolEdit, setSymbolEdit] = useState(holding.symbol);
+  const [symbolMatches, setSymbolMatches] = useState<SymbolSearchResult[]>([]);
+  const [symbolConfirmed, setSymbolConfirmed] = useState(true); // existing symbol is assumed valid
+  const [showSymbolResults, setShowSymbolResults] = useState(false);
+  const symbolDebounce = useRef<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [chartErr, setChartErr] = useState<string | null>(null);
@@ -89,12 +100,30 @@ export function HoldingDetailView({
     });
   };
 
+  useEffect(() => {
+    if (symbolDebounce.current) window.clearTimeout(symbolDebounce.current);
+    if (!symbolEdit) {
+      setSymbolMatches([]);
+      return;
+    }
+    symbolDebounce.current = window.setTimeout(async () => {
+      try {
+        const results = await searchSymbolsAction(symbolEdit);
+        setSymbolMatches(results);
+        setSymbolConfirmed(results.some((r) => r.symbol === symbolEdit));
+      } catch {
+        setSymbolMatches([]);
+      }
+    }, 200);
+  }, [symbolEdit]);
+
   const onSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true);
     setErr(null);
     try {
       await updateHolding(holding.id, {
+        ...(symbolEdit !== holding.symbol ? { symbol: symbolEdit } : {}),
         quantity: qty,
         ...(avgCost ? { avg_cost: avgCost } : {}),
         ...(asOfDate ? { as_of_date: asOfDate } : {}),
@@ -312,6 +341,126 @@ export function HoldingDetailView({
               Edit holding
             </div>
             <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+              {/* Symbol – searchable + verified */}
+              <Field
+                label={
+                  symbolMatches.length > 0 ? (
+                    <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      Symbol
+                      {symbolConfirmed ? (
+                        <span
+                          style={{
+                            fontSize: 9,
+                            padding: "1px 5px",
+                            background: "rgba(34,197,94,0.12)",
+                            border: "1px solid rgba(34,197,94,0.4)",
+                            color: "#16a34a",
+                            fontWeight: 600,
+                          }}
+                        >
+                          ✓ verified
+                        </span>
+                      ) : (
+                        <span
+                          style={{
+                            fontSize: 9,
+                            padding: "1px 5px",
+                            background: "rgba(234,179,8,0.12)",
+                            border: "1px solid rgba(234,179,8,0.4)",
+                            color: "#a16207",
+                            fontWeight: 600,
+                          }}
+                        >
+                          ⚠ pick from list
+                        </span>
+                      )}
+                    </span>
+                  ) : (
+                    "Symbol"
+                  )
+                }
+                flex={1.5}
+              >
+                <div style={{ position: "relative" }}>
+                  <RiSearchLine
+                    size={12}
+                    style={{
+                      position: "absolute",
+                      left: 10,
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      color: T.mutedFg,
+                    }}
+                  />
+                  <Input
+                    style={{ paddingLeft: 30 }}
+                    value={symbolEdit}
+                    onChange={(e) => {
+                      setSymbolEdit(e.target.value.toUpperCase());
+                      setSymbolConfirmed(false);
+                    }}
+                    onFocus={() => setShowSymbolResults(true)}
+                    onBlur={() => setTimeout(() => setShowSymbolResults(false), 150)}
+                    placeholder="e.g. VUAA.L"
+                  />
+                  {showSymbolResults && symbolMatches.length > 0 && (
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: "100%",
+                        left: 0,
+                        right: 0,
+                        background: T.card,
+                        border: `1px solid ${T.border}`,
+                        zIndex: 10,
+                        boxShadow: "0 4px 12px -2px rgb(0 0 0 / .08)",
+                      }}
+                    >
+                      {symbolMatches.map((r, i) => (
+                        <div
+                          key={i}
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            setSymbolEdit(r.symbol);
+                            setSymbolConfirmed(true);
+                          }}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 10,
+                            padding: "8px 12px",
+                            borderBottom:
+                              i < symbolMatches.length - 1
+                                ? `1px solid ${T.muted}`
+                                : "none",
+                            cursor: "pointer",
+                            fontSize: 12,
+                          }}
+                        >
+                          <span style={{ fontWeight: 700, minWidth: 60 }}>
+                            {r.symbol}
+                          </span>
+                          <span style={{ flex: 1, color: T.mutedFg, fontSize: 11 }}>
+                            {r.name}
+                          </span>
+                          {r.exchange && (
+                            <span
+                              style={{
+                                fontSize: 10,
+                                padding: "1px 5px",
+                                border: `1px solid ${T.border}`,
+                                color: T.mutedFg,
+                              }}
+                            >
+                              {r.exchange}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </Field>
               <Field label="Quantity" flex={1}>
                 <Input
                   type="number"
