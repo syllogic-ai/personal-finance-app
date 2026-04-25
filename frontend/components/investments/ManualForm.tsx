@@ -33,6 +33,7 @@ export function ManualForm({
   const [newName, setNewName] = useState("My Brokerage");
   const [baseCcy, setBaseCcy] = useState("EUR");
   const [symbol, setSymbol] = useState("");
+  const [symbolConfirmed, setSymbolConfirmed] = useState(false);
   const [matches, setMatches] = useState<SymbolSearchResult[]>([]);
   const [showResults, setShowResults] = useState(false);
   const [qty, setQty] = useState("");
@@ -47,13 +48,18 @@ export function ManualForm({
     if (debounce.current) window.clearTimeout(debounce.current);
     if (!symbol) {
       setMatches([]);
+      setSymbolConfirmed(false);
       return;
     }
     debounce.current = window.setTimeout(async () => {
       try {
-        setMatches(await searchSymbolsAction(symbol));
+        const results = await searchSymbolsAction(symbol);
+        setMatches(results);
+        // Auto-confirm if the typed value exactly matches a returned symbol
+        setSymbolConfirmed(results.some((r) => r.symbol === symbol));
       } catch {
         setMatches([]);
+        setSymbolConfirmed(false);
       }
     }, 200);
   }, [symbol]);
@@ -110,7 +116,47 @@ export function ManualForm({
               <option value={NEW}>+ Create new account…</option>
             </SelectWithChevron>
           </Field>
-          <Field label="Symbol" flex={2}>
+          <Field
+            label={
+              symbol && matches.length > 0 ? (
+                <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  Symbol
+                  {symbolConfirmed ? (
+                    <span
+                      style={{
+                        fontSize: 9,
+                        padding: "1px 5px",
+                        background: "rgba(34,197,94,0.12)",
+                        border: "1px solid rgba(34,197,94,0.4)",
+                        color: "#16a34a",
+                        fontWeight: 600,
+                        letterSpacing: "0.02em",
+                      }}
+                    >
+                      ✓ verified
+                    </span>
+                  ) : (
+                    <span
+                      style={{
+                        fontSize: 9,
+                        padding: "1px 5px",
+                        background: "rgba(234,179,8,0.12)",
+                        border: "1px solid rgba(234,179,8,0.4)",
+                        color: "#a16207",
+                        fontWeight: 600,
+                        letterSpacing: "0.02em",
+                      }}
+                    >
+                      ⚠ pick from list
+                    </span>
+                  )}
+                </span>
+              ) : (
+                "Symbol"
+              )
+            }
+            flex={2}
+          >
             <div style={{ position: "relative" }}>
               <RiSearchLine
                 size={12}
@@ -126,7 +172,10 @@ export function ManualForm({
                 placeholder="Search symbol or name…"
                 style={{ paddingLeft: 30 }}
                 value={symbol}
-                onChange={(e) => setSymbol(e.target.value)}
+                onChange={(e) => {
+                  setSymbol(e.target.value);
+                  setSymbolConfirmed(false);
+                }}
                 onFocus={() => setShowResults(true)}
                 onBlur={() => setTimeout(() => setShowResults(false), 150)}
               />
@@ -149,6 +198,7 @@ export function ManualForm({
                       onMouseDown={(e) => {
                         e.preventDefault();
                         setSymbol(r.symbol);
+                        setSymbolConfirmed(true);
                         if (r.currency) setCurrency(r.currency);
                       }}
                       style={{
