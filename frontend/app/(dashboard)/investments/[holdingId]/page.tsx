@@ -16,6 +16,8 @@ export default async function HoldingDetailPage({
 }) {
   const { holdingId } = await params;
   const { from, to } = rangeToDates("1M");
+  // Backend exposes GET /holdings (list) but not GET /holdings/:id,
+  // so we fetch all and filter client-side until a dedicated endpoint is added.
   const [holdings, history, portfolio] = await Promise.all([
     listHoldings(),
     getHoldingHistory(holdingId, from, to),
