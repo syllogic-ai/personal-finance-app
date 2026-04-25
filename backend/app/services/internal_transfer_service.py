@@ -67,10 +67,9 @@ class InternalTransferService:
         if duplicates:
             logger.warning(
                 "[INTERNAL_TRANSFER] %d IBAN hash(es) map to multiple accounts "
-                "for user %s — those hashes will be skipped to avoid mis-routing: %s",
+                "for user %s — those hashes will be skipped to avoid mis-routing",
                 len(duplicates),
                 self.user_id,
-                duplicates,
             )
         return {h: a for h, a in seen.items() if h not in duplicates}
 
