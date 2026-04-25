@@ -65,12 +65,14 @@ class InternalTransferService:
             else:
                 seen[h] = a
         if duplicates:
+            # Don't log raw hashes — they're pseudo-identifiers tied to a
+            # specific encryption key and shouldn't end up in log aggregators.
+            # Counts + user context are enough to investigate.
             logger.warning(
                 "[INTERNAL_TRANSFER] %d IBAN hash(es) map to multiple accounts "
-                "for user %s — those hashes will be skipped to avoid mis-routing: %s",
+                "for user %s — those hashes will be skipped to avoid mis-routing",
                 len(duplicates),
                 self.user_id,
-                duplicates,
             )
         return {h: a for h, a in seen.items() if h not in duplicates}
 
