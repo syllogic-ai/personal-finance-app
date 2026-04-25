@@ -1,7 +1,10 @@
 import { render, screen, fireEvent } from "@testing-library/react";
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { HoldingsTableHF } from "./HoldingsTableHF";
 import type { Holding } from "@/lib/api/investments";
+
+const mockPush = vi.fn();
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: mockPush, refresh: vi.fn() }) }));
 
 const H: Holding[] = [
   {
@@ -54,5 +57,36 @@ describe("HoldingsTableHF", () => {
       />,
     );
     expect(container.querySelectorAll("tr.stale").length).toBe(1);
+  });
+});
+
+describe("HoldingsTableHF row navigation", () => {
+  it("navigates to holding detail on row click", () => {
+    render(
+      <HoldingsTableHF
+        holdings={H}
+        accountNames={{ a: "Acct" }}
+        accountsCount={1}
+      />,
+    );
+    fireEvent.click(screen.getByText("VUAA"));
+    expect(mockPush).toHaveBeenCalledWith("/investments/1");
+  });
+
+  it("does not navigate when delete button clicked", () => {
+    mockPush.mockClear();
+    const onDelete = vi.fn();
+    render(
+      <HoldingsTableHF
+        holdings={H}
+        accountNames={{ a: "Acct" }}
+        accountsCount={1}
+        onDelete={onDelete}
+      />,
+    );
+    // MSFT (id "2") sorts first by value (2000 > 1000); both are manual so both show Delete
+    fireEvent.click(screen.getAllByTitle("Delete")[0]);
+    expect(onDelete).toHaveBeenCalledWith("2");
+    expect(mockPush).not.toHaveBeenCalled();
   });
 });

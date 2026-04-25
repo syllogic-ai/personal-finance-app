@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   RiAddLine,
   RiArrowDownSLine,
@@ -59,6 +60,7 @@ export function HoldingsTableHF({
   onAddClick?: () => void;
   onDelete?: (id: string) => void;
 }) {
+  const router = useRouter();
   const [filter, setFilter] = useState<Filter>("All");
   const [sortKey, setSortKey] = useState<SortKey>("value");
   const [sortDir, setSortDir] = useState<-1 | 1>(-1);
@@ -221,9 +223,11 @@ export function HoldingsTableHF({
             <tr
               key={h.id}
               className={h.is_stale ? "stale" : ""}
+              onClick={() => router.push(`/investments/${h.id}`)}
               style={{
                 borderBottom: `1px solid ${T.muted}`,
                 background: h.is_stale ? T.staleBg : undefined,
+                cursor: "pointer",
               }}
             >
               <td style={{ padding: "11px 18px" }}>
@@ -299,7 +303,7 @@ export function HoldingsTableHF({
               <td style={{ padding: "11px 10px", textAlign: "center" }}>
                 {onDelete && h.source === "manual" && (
                   <button
-                    onClick={() => onDelete(h.id)}
+                    onClick={(e) => { e.stopPropagation(); onDelete(h.id); }}
                     title="Delete"
                     style={{
                       background: "transparent",
