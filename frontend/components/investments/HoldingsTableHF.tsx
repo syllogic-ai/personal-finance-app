@@ -293,18 +293,18 @@ export function HoldingsTableHF({
                         onClick={(e) => e.stopPropagation()}
                       >
                         <DropdownMenuItem
-                          onSelect={() => router.push(`/investments/${h.id}`)}
+                          onClick={() => router.push(`/investments/${h.id}`)}
                         >
                           View details
                         </DropdownMenuItem>
                         {h.source === "manual" && (
                           <>
-                            <DropdownMenuItem onSelect={() => setEditingId(h.id)}>
+                            <DropdownMenuItem onClick={() => setEditingId(h.id)}>
                               Edit
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
-                              onSelect={() => setDeletingId(h.id)}
+                              onClick={() => setDeletingId(h.id)}
                               className="text-destructive focus:text-destructive"
                             >
                               Delete
