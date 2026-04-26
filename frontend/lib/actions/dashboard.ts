@@ -3,7 +3,6 @@
 import { db } from "@/lib/db";
 import { accounts, transactions, categories, users, properties, vehicles, accountBalances, transactionLinks } from "@/lib/db/schema";
 import { getAuthenticatedSession } from "@/lib/auth-helpers";
-import { getCachedUserAccounts } from "@/lib/data/cached";
 import { eq, sql, gte, lte, and, desc, inArray, isNull } from "drizzle-orm";
 import { buildConservativeSankey } from "@/lib/dashboard/sankey";
 import {
@@ -18,6 +17,7 @@ import {
   ASSET_CATEGORY_ORDER,
   getAssetCategory,
 } from "@/lib/assets/asset-category";
+import { getPortfolio } from "@/lib/api/investments";
 
 async function getUserCurrency(userId: string): Promise<string> {
   const result = await db
@@ -73,7 +73,24 @@ async function getLatestTransactionDate(userId: string, accountIds?: string[]): 
 
 // Get user accounts for filter dropdown
 export async function getUserAccounts() {
-  return getCachedUserAccounts();
+  const session = await getAuthenticatedSession();
+
+  if (!session?.user?.id) {
+    return [];
+  }
+
+  const result = await db
+    .select({
+      id: accounts.id,
+      name: accounts.name,
+      institution: accounts.institution,
+      accountType: accounts.accountType,
+    })
+    .from(accounts)
+    .where(and(eq(accounts.userId, session.user.id), eq(accounts.isActive, true)))
+    .orderBy(accounts.name);
+
+  return result;
 }
 
 // Get available months/years for the date selector
@@ -782,7 +799,7 @@ export async function getAssetsOverview(): Promise<AssetsOverviewData> {
     };
   }
 
-  const [userAccounts, userProperties, userVehicles, currency] = await Promise.all([
+  const [userAccounts, userProperties, userVehicles, currency, portfolio] = await Promise.all([
     db
       .select({
         id: accounts.id,
@@ -819,6 +836,7 @@ export async function getAssetsOverview(): Promise<AssetsOverviewData> {
       .from(vehicles)
       .where(and(eq(vehicles.userId, session.user.id), eq(vehicles.isActive, true))),
     getUserCurrency(session.user.id),
+    getPortfolio().catch(() => null),
   ]);
 
   // Group accounts by asset category
@@ -900,6 +918,33 @@ export async function getAssetsOverview(): Promise<AssetsOverviewData> {
         currency: vehicle.currency || currency,
         initial: vehicle.name.charAt(0).toUpperCase(),
       });
+    }
+  }
+
+  // Process investment accounts from portfolio
+  if (portfolio?.accounts?.length) {
+    for (const invAccount of portfolio.accounts) {
+      const value = typeof invAccount.balance === "number"
+        ? invAccount.balance
+        : parseFloat(String(invAccount.balance) || "0");
+
+      if (value > 0) {
+        total += value;
+
+        if (!categoryMap.has("investment")) {
+          categoryMap.set("investment", []);
+        }
+
+        categoryMap.get("investment")!.push({
+          id: invAccount.id,
+          name: invAccount.name,
+          institution: invAccount.type || null,
+          value,
+          percentage: 0,
+          currency: portfolio.currency || currency,
+          initial: invAccount.name.charAt(0).toUpperCase(),
+        });
+      }
     }
   }
 
