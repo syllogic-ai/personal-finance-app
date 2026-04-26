@@ -462,6 +462,37 @@ def portfolio_summary(
     )
 
 
+@router.get("/holdings/{holding_id}/history", response_model=list[ValuationPoint])
+def holding_history(
+    holding_id: UUID,
+    days: int = Query(30, ge=1, le=3650),
+    user_id: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    user_id = get_user_id(user_id)
+    holding = (
+        db.query(Holding)
+        .filter(Holding.id == holding_id, Holding.user_id == user_id)
+        .first()
+    )
+    if not holding:
+        raise HTTPException(status_code=404, detail="Holding not found")
+    cutoff = date.today() - timedelta(days=days)
+    rows = (
+        db.query(HoldingValuation)
+        .filter(
+            HoldingValuation.holding_id == holding_id,
+            HoldingValuation.date >= cutoff,
+        )
+        .order_by(HoldingValuation.date.asc())
+        .all()
+    )
+    return [
+        ValuationPoint(date=r.date, value=Decimal(r.value_user_currency))
+        for r in rows
+    ]
+
+
 @router.get("/portfolio/history", response_model=list[ValuationPoint])
 def portfolio_history(
     days: int = Query(30, ge=1, le=3650),
