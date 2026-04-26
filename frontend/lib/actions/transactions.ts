@@ -316,7 +316,11 @@ export async function updateTransactionCategory(
   }
 }
 
-export { getUserAccounts } from "@/lib/actions/dashboard";
+import { getUserAccounts as _dashboardGetUserAccounts } from "@/lib/actions/dashboard";
+
+export async function getUserAccounts() {
+  return _dashboardGetUserAccounts();
+}
 
 // Note: getUserCategories has been consolidated in lib/actions/categories.ts
 // Use: import { getUserCategories } from "@/lib/actions/categories"
