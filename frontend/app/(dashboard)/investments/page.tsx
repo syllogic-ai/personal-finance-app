@@ -19,7 +19,7 @@ export default async function InvestmentsPage() {
     return (
       <>
         <Header title="Investments" />
-        <div className="flex h-[calc(100vh-3rem)] flex-col gap-4 overflow-y-auto p-4 pt-0">
+        <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
           <InvestmentsEmpty />
         </div>
       </>
