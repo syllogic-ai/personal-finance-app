@@ -10,6 +10,7 @@ import {
   RiWallet3Line,
   RiArrowUpDownLine,
   RiLoopRightLine,
+  RiLineChartLine,
   RiArrowRightSLine,
   RiArrowLeftSLine,
 } from "@remixicon/react";
@@ -65,6 +66,11 @@ const navItems = [
     title: "Subscriptions",
     href: "/subscriptions",
     icon: RiLoopRightLine,
+  },
+  {
+    title: "Investments",
+    href: "/investments",
+    icon: RiLineChartLine,
   },
   {
     title: "Assets",
@@ -173,7 +179,10 @@ export function AppSidebar({ initialUser }: AppSidebarProps) {
         <SidebarGroup>
           <SidebarMenu>
             {navItems.map((item) => {
-              const isActive = pathname === item.href;
+              const isActive =
+                item.href === "/"
+                  ? pathname === "/"
+                  : pathname === item.href || pathname.startsWith(item.href + "/");
               return (
                 <SidebarMenuItem key={item.href}>
                   <SidebarMenuButton

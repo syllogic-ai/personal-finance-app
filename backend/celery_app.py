@@ -14,7 +14,12 @@ celery_app = Celery(
     broker=REDIS_URL,
     backend=REDIS_URL,
     include=["tasks.csv_import_tasks", "tasks.demo_tasks", "tasks.enable_banking_tasks", "tasks.post_import_pipeline", "tasks.investment_tasks"],
+    set_as_current=True,
 )
+# Ensure @shared_task instances bind to this Celery instance instead of any
+# transient default app created by other imports. Required for the API service
+# to publish tasks via Redis (without this it falls back to amqp://).
+celery_app.set_default()
 
 
 def _env_bool(name: str, default: bool = False) -> bool:

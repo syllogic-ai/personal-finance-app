@@ -1,22 +1,27 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { RiSearchLine } from "@remixicon/react";
 import {
   addManualHolding,
   createManualAccount,
   type InvestmentAccount,
   type SymbolSearchResult,
 } from "@/lib/api/investments";
-import { searchSymbolsAction } from "@/lib/actions/investments";
-import { T } from "./_tokens";
+import { Button } from "@/components/ui/button";
+import { SymbolSearchInput } from "./SymbolSearchInput";
+import { Card, CardContent } from "@/components/ui/card";
 import {
-  Field,
-  Input,
-  SelectWithChevron,
-  btnGhost,
-  btnPrimary,
-} from "./_form-bits";
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  ToggleGroup,
+  ToggleGroupItem,
+} from "@/components/ui/toggle-group";
+import { Field, Input } from "./_form-bits";
 
 const NEW = "__new__";
 type Inst = "etf" | "equity" | "cash";
@@ -34,35 +39,12 @@ export function ManualForm({
   const [baseCcy, setBaseCcy] = useState("EUR");
   const [symbol, setSymbol] = useState("");
   const [symbolConfirmed, setSymbolConfirmed] = useState(false);
-  const [matches, setMatches] = useState<SymbolSearchResult[]>([]);
-  const [showResults, setShowResults] = useState(false);
   const [qty, setQty] = useState("");
   const [type, setType] = useState<Inst>("etf");
   const [currency, setCurrency] = useState("EUR");
   const [avgCost, setAvgCost] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const debounce = useRef<number | null>(null);
-
-  useEffect(() => {
-    if (debounce.current) window.clearTimeout(debounce.current);
-    if (!symbol) {
-      setMatches([]);
-      setSymbolConfirmed(false);
-      return;
-    }
-    debounce.current = window.setTimeout(async () => {
-      try {
-        const results = await searchSymbolsAction(symbol);
-        setMatches(results);
-        // Auto-confirm if the typed value exactly matches a returned symbol
-        setSymbolConfirmed(results.some((r) => r.symbol === symbol));
-      } catch {
-        setMatches([]);
-        setSymbolConfirmed(false);
-      }
-    }, 200);
-  }, [symbol]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -88,262 +70,161 @@ export function ManualForm({
     }
   };
 
+  const symbolLabel = symbol ? (
+    <span className="flex items-center gap-1.5">
+      Symbol
+      {symbolConfirmed ? (
+        <span className="rounded border border-emerald-500/40 bg-emerald-500/10 px-1.5 py-px text-[9px] font-semibold tracking-wide text-emerald-700 dark:text-emerald-400">
+          ✓ verified
+        </span>
+      ) : (
+        <span className="rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-px text-[9px] font-semibold tracking-wide text-amber-700 dark:text-amber-400">
+          ⚠ pick from list
+        </span>
+      )}
+    </span>
+  ) : (
+    "Symbol"
+  );
+
   return (
-    <form
-      onSubmit={submit}
-      style={{
-        borderTop: `2px solid ${T.primary}`,
-        background: T.card,
-        border: `1px solid ${T.border}`,
-        padding: 24,
-      }}
-    >
-      <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 18 }}>
-        Add a holding
-      </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        <div style={{ display: "flex", gap: 14 }}>
-          <Field label="Account" flex={1.2}>
-            <SelectWithChevron
-              value={accountId}
-              onChange={(e) => setAccountId(e.target.value)}
-            >
-              {accounts.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name} · {a.base_currency}
-                </option>
-              ))}
-              <option value={NEW}>+ Create new account…</option>
-            </SelectWithChevron>
-          </Field>
-          <Field
-            label={
-              symbol && matches.length > 0 ? (
-                <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  Symbol
-                  {symbolConfirmed ? (
-                    <span
-                      style={{
-                        fontSize: 9,
-                        padding: "1px 5px",
-                        background: "rgba(34,197,94,0.12)",
-                        border: "1px solid rgba(34,197,94,0.4)",
-                        color: "#16a34a",
-                        fontWeight: 600,
-                        letterSpacing: "0.02em",
-                      }}
-                    >
-                      ✓ verified
-                    </span>
-                  ) : (
-                    <span
-                      style={{
-                        fontSize: 9,
-                        padding: "1px 5px",
-                        background: "rgba(234,179,8,0.12)",
-                        border: "1px solid rgba(234,179,8,0.4)",
-                        color: "#a16207",
-                        fontWeight: 600,
-                        letterSpacing: "0.02em",
-                      }}
-                    >
-                      ⚠ pick from list
-                    </span>
-                  )}
-                </span>
-              ) : (
-                "Symbol"
-              )
-            }
-            flex={2}
-          >
-            <div style={{ position: "relative" }}>
-              <RiSearchLine
-                size={12}
-                style={{
-                  position: "absolute",
-                  left: 10,
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  color: T.mutedFg,
-                }}
-              />
-              <Input
-                placeholder="Search symbol or name…"
-                style={{ paddingLeft: 30 }}
+    <Card className="border-t-2 border-t-primary">
+      <CardContent className="p-6 space-y-4">
+        <form onSubmit={submit} className="space-y-4">
+          <div className="text-sm font-semibold">Add a holding</div>
+          <div className="flex gap-3">
+            <Field label="Account" className="flex-[1.2_1_0%]">
+              <Select
+                value={accountId}
+                onValueChange={(v) => v && setAccountId(v)}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {accounts.map((a) => (
+                    <SelectItem key={a.id} value={a.id}>
+                      {a.name} · {a.base_currency}
+                    </SelectItem>
+                  ))}
+                  <SelectItem value={NEW}>+ Create new account…</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field label={symbolLabel} className="flex-[2_1_0%]">
+              <SymbolSearchInput
                 value={symbol}
-                onChange={(e) => {
-                  setSymbol(e.target.value);
+                onChange={(v) => {
+                  setSymbol(v);
                   setSymbolConfirmed(false);
                 }}
-                onFocus={() => setShowResults(true)}
-                onBlur={() => setTimeout(() => setShowResults(false), 150)}
+                onSelect={(r: SymbolSearchResult) => {
+                  setSymbol(r.symbol);
+                  setSymbolConfirmed(true);
+                  if (r.currency) setCurrency(r.currency);
+                }}
+                placeholder="Search symbol or name…"
               />
-              {showResults && matches.length > 0 && (
-                <div
-                  style={{
-                    position: "absolute",
-                    top: "100%",
-                    left: 0,
-                    right: 0,
-                    background: T.card,
-                    border: `1px solid ${T.border}`,
-                    zIndex: 10,
-                    boxShadow: "0 4px 12px -2px rgb(0 0 0 / .08)",
-                  }}
-                >
-                  {matches.map((r, i) => (
-                    <div
-                      key={i}
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        setSymbol(r.symbol);
-                        setSymbolConfirmed(true);
-                        if (r.currency) setCurrency(r.currency);
-                      }}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 10,
-                        padding: "9px 12px",
-                        borderBottom:
-                          i < matches.length - 1
-                            ? `1px solid ${T.muted}`
-                            : "none",
-                        cursor: "pointer",
-                      }}
-                    >
-                      <span
-                        style={{ fontWeight: 700, fontSize: 12, minWidth: 44 }}
-                      >
-                        {r.symbol}
-                      </span>
-                      <span
-                        style={{ flex: 1, fontSize: 11, color: T.mutedFg }}
-                      >
-                        {r.name}
-                      </span>
-                      {r.exchange && (
-                        <span
-                          style={{
-                            fontSize: 10,
-                            padding: "1px 5px",
-                            border: `1px solid ${T.border}`,
-                            color: T.mutedFg,
-                          }}
-                        >
-                          {r.exchange}
-                        </span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </Field>
-        </div>
-        {accountId === NEW && (
-          <div style={{ display: "flex", gap: 14 }}>
-            <Field label="New account name" flex={2}>
-              <Input
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-              />
-            </Field>
-            <Field label="Base currency" flex={1}>
-              <SelectWithChevron
-                value={baseCcy}
-                onChange={(e) => setBaseCcy(e.target.value)}
-              >
-                <option>EUR</option>
-                <option>USD</option>
-                <option>GBP</option>
-              </SelectWithChevron>
             </Field>
           </div>
-        )}
-        <div style={{ display: "flex", gap: 14 }}>
-          <Field label="Quantity" flex={1}>
-            <Input
-              type="number"
-              placeholder="0.00"
-              value={qty}
-              onChange={(e) => setQty(e.target.value)}
-            />
-          </Field>
-          <Field label="Instrument type" flex={1}>
-            <div style={{ display: "flex", gap: 0 }}>
-              {(["etf", "equity", "cash"] as Inst[]).map((t, i) => {
-                const active = type === t;
-                return (
-                  <button
-                    type="button"
+          {accountId === NEW && (
+            <div className="flex gap-3">
+              <Field label="New account name" className="flex-[2_1_0%]">
+                <Input
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                />
+              </Field>
+              <Field label="Base currency" className="flex-1">
+                <Select
+                  value={baseCcy}
+                  onValueChange={(v) => v && setBaseCcy(v)}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="EUR">EUR</SelectItem>
+                    <SelectItem value="USD">USD</SelectItem>
+                    <SelectItem value="GBP">GBP</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
+            </div>
+          )}
+          <div className="flex gap-3">
+            <Field label="Quantity" className="flex-1">
+              <Input
+                type="number"
+                placeholder="0.00"
+                value={qty}
+                onChange={(e) => setQty(e.target.value)}
+              />
+            </Field>
+            <Field label="Instrument type" className="flex-1">
+              <ToggleGroup
+                multiple={false}
+                value={[type]}
+                onValueChange={(v) => v[0] && setType(v[0] as Inst)}
+                variant="outline"
+                size="sm"
+              >
+                {(["etf", "equity", "cash"] as Inst[]).map((t) => (
+                  <ToggleGroupItem
                     key={t}
-                    onClick={() => setType(t)}
-                    style={{
-                      padding: "6px 14px",
-                      fontSize: 12,
-                      fontFamily: "inherit",
-                      border: `1px solid ${active ? T.primary : T.border}`,
-                      background: active ? T.primary : T.card,
-                      color: active ? T.primaryFg : T.mutedFg,
-                      cursor: "pointer",
-                      marginLeft: i === 0 ? 0 : -1,
-                      textTransform: "capitalize",
-                    }}
+                    value={t}
+                    className="capitalize flex-1"
                   >
                     {t === "etf" ? "ETF" : t}
-                  </button>
-                );
-              })}
-            </div>
-          </Field>
-          <Field label="Currency" flex={1}>
-            <SelectWithChevron
-              value={currency}
-              onChange={(e) => setCurrency(e.target.value)}
+                  </ToggleGroupItem>
+                ))}
+              </ToggleGroup>
+            </Field>
+            <Field label="Currency" className="flex-1">
+              <Select
+                value={currency}
+                onValueChange={(v) => v && setCurrency(v)}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="EUR">EUR</SelectItem>
+                  <SelectItem value="USD">USD</SelectItem>
+                  <SelectItem value="GBP">GBP</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field
+              label={
+                <>
+                  Avg cost{" "}
+                  <span className="font-normal text-muted-foreground normal-case tracking-normal">
+                    (optional)
+                  </span>
+                </>
+              }
+              className="flex-1"
             >
-              <option>EUR</option>
-              <option>USD</option>
-              <option>GBP</option>
-            </SelectWithChevron>
-          </Field>
-          <Field
-            label={
-              <>
-                Avg cost{" "}
-                <span style={{ fontWeight: 400, color: T.mutedFg }}>
-                  (optional)
-                </span>
-              </>
-            }
-            flex={1}
-          >
-            <Input
-              type="number"
-              placeholder="—"
-              value={avgCost}
-              onChange={(e) => setAvgCost(e.target.value)}
-            />
-          </Field>
-        </div>
-        {err && <div style={{ color: T.negative, fontSize: 11 }}>{err}</div>}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "flex-end",
-            gap: 8,
-            marginTop: 4,
-          }}
-        >
-          <button type="button" onClick={onCancel} style={btnGhost}>
-            Cancel
-          </button>
-          <button type="submit" disabled={busy} style={btnPrimary}>
-            {busy ? "Adding…" : "Add holding"}
-          </button>
-        </div>
-      </div>
-    </form>
+              <Input
+                type="number"
+                placeholder="—"
+                value={avgCost}
+                onChange={(e) => setAvgCost(e.target.value)}
+              />
+            </Field>
+          </div>
+          {err && <div className="text-destructive text-xs">{err}</div>}
+          <div className="flex justify-end gap-2 pt-1">
+            <Button type="button" variant="outline" onClick={onCancel}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={busy}>
+              {busy ? "Adding…" : "Add holding"}
+            </Button>
+          </div>
+        </form>
+      </CardContent>
+    </Card>
   );
 }

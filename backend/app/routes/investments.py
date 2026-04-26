@@ -279,6 +279,7 @@ def create_manual_holding(
         user_id=user_id,
         account_id=account.id,
         symbol=payload.symbol,
+        provider_symbol=payload.provider_symbol or None,
         name=name,
         currency=payload.currency,
         instrument_type=payload.instrument_type,
@@ -342,6 +343,7 @@ def list_holdings(
                 id=h.id,
                 account_id=h.account_id,
                 symbol=h.symbol,
+                provider_symbol=h.provider_symbol,
                 name=h.name,
                 currency=h.currency,
                 instrument_type=h.instrument_type,
@@ -379,15 +381,18 @@ def update_holding(
         raise HTTPException(status_code=400, detail="Only manual holdings can be edited")
 
     payload = updates.model_dump(exclude_unset=True)
-    symbol_changed = "symbol" in payload and payload["symbol"] != holding.symbol
+    lookup_changed = (
+        ("symbol" in payload and payload["symbol"] != holding.symbol)
+        or ("provider_symbol" in payload and payload["provider_symbol"] != holding.provider_symbol)
+    )
     for field, value in payload.items():
         setattr(holding, field, value)
     db.commit()
     db.refresh(holding)
 
-    # Re-price the account if the symbol was changed so the new symbol
+    # Re-price the account if the lookup symbol changed so the new ticker
     # gets fetched from the price provider immediately.
-    if symbol_changed:
+    if lookup_changed:
         background_tasks.add_task(_run_sync_in_process, holding.account_id)
 
     return {"id": str(holding.id), "symbol": holding.symbol, "quantity": str(holding.quantity)}
@@ -513,6 +518,37 @@ def portfolio_summary(
         allocation_by_type=allocation_by_type,
         allocation_by_currency=allocation_by_currency,
     )
+
+
+@router.get("/holdings/{holding_id}/history", response_model=list[ValuationPoint])
+def holding_history(
+    holding_id: UUID,
+    days: int = Query(30, ge=1, le=3650),
+    user_id: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    user_id = get_user_id(user_id)
+    holding = (
+        db.query(Holding)
+        .filter(Holding.id == holding_id, Holding.user_id == user_id)
+        .first()
+    )
+    if not holding:
+        raise HTTPException(status_code=404, detail="Holding not found")
+    cutoff = date.today() - timedelta(days=days)
+    rows = (
+        db.query(HoldingValuation)
+        .filter(
+            HoldingValuation.holding_id == holding_id,
+            HoldingValuation.date >= cutoff,
+        )
+        .order_by(HoldingValuation.date.asc())
+        .all()
+    )
+    return [
+        ValuationPoint(date=r.date, value=Decimal(r.value_user_currency))
+        for r in rows
+    ]
 
 
 @router.get("/portfolio/history", response_model=list[ValuationPoint])
