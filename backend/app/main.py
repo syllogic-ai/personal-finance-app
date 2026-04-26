@@ -10,6 +10,12 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 
+# Import celery_app FIRST so its broker/backend config (REDIS_URL) is registered
+# as the current Celery app BEFORE any module imports tasks via @shared_task —
+# otherwise the tasks bind to Celery's default amqp:// broker and publishes
+# fail with "Connection refused".
+from celery_app import celery_app  # noqa: F401, E402
+
 from app.database import engine, Base
 from app.db_helpers import (
     authenticate_internal_request_from_headers,

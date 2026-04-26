@@ -101,32 +101,32 @@ export function InvestmentsOverview({
 
   const sym = currencySymbol(portfolio.currency);
 
+  const refreshButton = (
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={onSync}
+      disabled={syncing}
+      title="Refresh prices"
+    >
+      <RiRefreshLine className={syncing ? "size-3 animate-spin" : "size-3"} />
+      {syncing ? "Syncing…" : "Refresh prices"}
+    </Button>
+  );
+
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-start gap-3">
-        <div className="flex-1">
-          <PortfolioHero
-            totalValue={totalValue}
-            currency={portfolio.currency}
-            absChange={absChange}
-            pctChange={pctChange}
-            range={range}
-            onRangeChange={onRangeChange}
-            asOf={null}
-            staleCount={staleCount}
-          />
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onSync}
-          disabled={syncing}
-          title="Refresh prices"
-        >
-          <RiRefreshLine className={syncing ? "size-3 animate-spin" : "size-3"} />
-          {syncing ? "Syncing…" : "Refresh prices"}
-        </Button>
-      </div>
+      <PortfolioHero
+        totalValue={totalValue}
+        currency={portfolio.currency}
+        absChange={absChange}
+        pctChange={pctChange}
+        range={range}
+        onRangeChange={onRangeChange}
+        asOf={null}
+        staleCount={staleCount}
+        headerAction={refreshButton}
+      />
 
       <Card className={pending ? "opacity-70 transition-opacity" : "transition-opacity"}>
         <CardContent className="p-4">

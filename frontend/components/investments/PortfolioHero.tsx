@@ -24,6 +24,7 @@ export function PortfolioHero({
   onRangeChange,
   asOf,
   staleCount,
+  headerAction,
 }: {
   totalValue: number;
   currency: string;
@@ -33,6 +34,7 @@ export function PortfolioHero({
   onRangeChange: (r: Range) => void;
   asOf: string | null;
   staleCount: number;
+  headerAction?: React.ReactNode;
 }) {
   const positive = absChange >= 0;
   const sym = currencySymbol(currency);
@@ -42,8 +44,11 @@ export function PortfolioHero({
   return (
     <Card>
       <CardContent className="flex flex-col gap-2 p-6">
-        <div className="text-xs uppercase tracking-wider text-muted-foreground">
-          Portfolio value
+        <div className="flex items-start justify-between gap-3">
+          <div className="text-xs uppercase tracking-wider text-muted-foreground">
+            Portfolio value
+          </div>
+          {headerAction}
         </div>
         <div className="flex items-baseline gap-3 flex-wrap">
           <span className="text-4xl font-bold tabular-nums">

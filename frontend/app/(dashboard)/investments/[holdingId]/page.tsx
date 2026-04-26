@@ -28,7 +28,7 @@ export default async function HoldingDetailPage({
   return (
     <>
       <Header title={holding.symbol} />
-      <div className="flex flex-1 flex-col gap-6 p-4 pt-0">
+      <div className="flex h-[calc(100vh-3rem)] flex-col gap-4 overflow-y-auto p-4 pt-0">
         <HoldingDetailView
           holding={holding}
           portfolio={portfolio}
