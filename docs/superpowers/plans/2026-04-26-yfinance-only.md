@@ -23,7 +23,7 @@
 | `backend/.env` | Remove `SYLLOGIC_PRICE_PROVIDER`, `SYLLOGIC_PRICE_PROVIDER_API_KEY` (lines 72–73) |
 | `backend/.env.example` | Remove same vars + their comment block (lines 57–60) |
 
-**No code changes** in: `PriceService`, `HoldingValuationService`, `ExchangeRateService`, Celery tasks, REST routes, Pydantic schemas, frontend.
+**No changes needed for this migration in:** `ExchangeRateService` (already on yfinance), Celery beat schedule, frontend. Adjacent work on this branch (`provider_symbol`, ON CONFLICT, BackgroundTasks, edit-symbol) touches the other modules but is independent of the provider switch.
 
 ---
 
@@ -177,13 +177,13 @@ Remove these two lines (currently at lines 72–73) from `backend/.env`:
 
 ```
 SYLLOGIC_PRICE_PROVIDER=alpha_vantage
-SYLLOGIC_PRICE_PROVIDER_API_KEY=2K4J0ZC4WU9242CJ
+SYLLOGIC_PRICE_PROVIDER_API_KEY=<REDACTED>
 ```
 
 Use the Edit tool with `old_string`:
 ```
 SYLLOGIC_PRICE_PROVIDER=alpha_vantage
-SYLLOGIC_PRICE_PROVIDER_API_KEY=2K4J0ZC4WU9242CJ
+SYLLOGIC_PRICE_PROVIDER_API_KEY=<REDACTED>
 ```
 and `new_string`: empty string.
 

@@ -53,9 +53,13 @@ and the investments API all consume the Protocol.
 | `backend/.env` | Remove `SYLLOGIC_PRICE_PROVIDER`, `SYLLOGIC_PRICE_PROVIDER_API_KEY` |
 | `backend/.env.example` | Remove same vars |
 
-**No code changes needed in:** `PriceService`, `HoldingValuationService`,
-`ExchangeRateService` (already uses yfinance), Celery tasks, REST routes,
-schemas, frontend.
+**No changes needed for the provider migration itself in:** `ExchangeRateService`
+(already uses yfinance), Celery beat schedule, frontend.
+
+(Adjacent work on this branch — `provider_symbol`, ON CONFLICT upsert,
+BackgroundTasks, edit-symbol — touches `PriceService`, `HoldingValuationService`,
+REST routes, schemas, and frontend, but is independent of this migration's goal
+of making yfinance the sole provider.)
 
 ## Data Flow (unchanged)
 
@@ -85,8 +89,8 @@ Already in place; no new code:
 1. Delete `SYLLOGIC_PRICE_PROVIDER` and `SYLLOGIC_PRICE_PROVIDER_API_KEY`
    from Railway production env vars (manual user action)
 2. Restart backend + Celery worker on Railway (auto on env change)
-3. Click "Refresh prices" on `/investments` once — queues
-   `sync_investment_account` for each manual account, repopulating
+3. Click "Refresh prices" on `/investments` once — queues a sync for
+   every active investment account (manual + brokerage), repopulating
    prices via yfinance
 
 ## Out of Scope
