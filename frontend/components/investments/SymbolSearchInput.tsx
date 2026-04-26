@@ -33,8 +33,12 @@ export function SymbolSearchInput({
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (!value.trim() || value.length < 2) {
+      // Invalidate any in-flight request so its late response can't
+      // repaint the dropdown after the input is cleared.
+      latestRequestRef.current++;
       setResults([]);
       setOpen(false);
+      setLoading(false);
       return;
     }
     debounceRef.current = setTimeout(async () => {
