@@ -90,8 +90,10 @@ export function InvestmentsOverview({
     setSyncing(true);
     try {
       await syncAllInvestmentsAction();
-      toast.success("Prices refreshed");
-      router.refresh();
+      toast.success("Prices refreshing — updates in a moment");
+      // Give the in-process background sync ~10 s to complete before
+      // refreshing. The sync runs in the FastAPI worker after responding.
+      setTimeout(() => router.refresh(), 10_000);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Sync failed");
     } finally {

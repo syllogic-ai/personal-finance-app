@@ -273,6 +273,7 @@ class HoldingCreate(BaseModel):
 
 
 class HoldingUpdate(BaseModel):
+    symbol: Optional[str] = None
     quantity: Optional[Decimal] = None
     as_of_date: Optional[_date_date] = None
     avg_cost: Optional[Decimal] = None

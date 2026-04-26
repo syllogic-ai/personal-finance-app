@@ -26,6 +26,7 @@ export function EditHoldingDialog({
   holding: Holding;
 }) {
   const router = useRouter();
+  const [symbol, setSymbol] = useState(holding.symbol);
   const [qty, setQty] = useState(holding.quantity);
   const [avgCost, setAvgCost] = useState(holding.avg_cost ?? "");
   const [asOfDate, setAsOfDate] = useState(holding.as_of_date ?? "");
@@ -39,6 +40,7 @@ export function EditHoldingDialog({
     setErr(null);
     try {
       await updateHolding(holding.id, {
+        ...(symbol !== holding.symbol ? { symbol } : {}),
         quantity: qty,
         ...(avgCost ? { avg_cost: avgCost } : {}),
         ...(asOfDate ? { as_of_date: asOfDate } : {}),
@@ -63,6 +65,18 @@ export function EditHoldingDialog({
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={onSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="symbol">Symbol</Label>
+            <SymbolSearchInput
+              id="symbol"
+              value={symbol}
+              onChange={setSymbol}
+              onSelect={(r: SymbolSearchResult) => setSymbol(r.symbol)}
+            />
+            <p className="text-xs text-muted-foreground">
+              Changing the symbol triggers an automatic re-pricing on save.
+            </p>
+          </div>
           <div className="space-y-2">
             <Label htmlFor="qty">Quantity</Label>
             <Input

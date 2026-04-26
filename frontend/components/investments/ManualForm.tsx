@@ -38,6 +38,7 @@ export function ManualForm({
   const [newName, setNewName] = useState("My Brokerage");
   const [baseCcy, setBaseCcy] = useState("EUR");
   const [symbol, setSymbol] = useState("");
+  const [symbolConfirmed, setSymbolConfirmed] = useState(false);
   const [qty, setQty] = useState("");
   const [type, setType] = useState<Inst>("etf");
   const [currency, setCurrency] = useState("EUR");
@@ -69,6 +70,23 @@ export function ManualForm({
     }
   };
 
+  const symbolLabel = symbol ? (
+    <span className="flex items-center gap-1.5">
+      Symbol
+      {symbolConfirmed ? (
+        <span className="rounded border border-emerald-500/40 bg-emerald-500/10 px-1.5 py-px text-[9px] font-semibold tracking-wide text-emerald-700 dark:text-emerald-400">
+          ✓ verified
+        </span>
+      ) : (
+        <span className="rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-px text-[9px] font-semibold tracking-wide text-amber-700 dark:text-amber-400">
+          ⚠ pick from list
+        </span>
+      )}
+    </span>
+  ) : (
+    "Symbol"
+  );
+
   return (
     <Card className="border-t-2 border-t-primary">
       <CardContent className="p-6 space-y-4">
@@ -93,12 +111,16 @@ export function ManualForm({
                 </SelectContent>
               </Select>
             </Field>
-            <Field label="Symbol" className="flex-[2_1_0%]">
+            <Field label={symbolLabel} className="flex-[2_1_0%]">
               <SymbolSearchInput
                 value={symbol}
-                onChange={setSymbol}
+                onChange={(v) => {
+                  setSymbol(v);
+                  setSymbolConfirmed(false);
+                }}
                 onSelect={(r: SymbolSearchResult) => {
                   setSymbol(r.symbol);
+                  setSymbolConfirmed(true);
                   if (r.currency) setCurrency(r.currency);
                 }}
                 placeholder="Search symbol or name…"
