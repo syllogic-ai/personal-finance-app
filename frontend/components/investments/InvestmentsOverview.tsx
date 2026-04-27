@@ -50,7 +50,26 @@ export function InvestmentsOverview({
   const absChange = last - first;
   const pctChange = first > 0 ? (absChange / first) * 100 : 0;
   const totalValue = Number(portfolio.total_value);
-  const costBasis = totalValue - absChange;
+
+  // Real cost basis & unrealized P&L from per-holding cost_basis_user_currency
+  // (server-side derived from FIFO avg_cost × FX). Falls back to the chart-
+  // range delta only if no holding has cost basis yet (e.g. fresh account
+  // with no FX data).
+  const costBasisFromHoldings = holdings.reduce<number | null>((acc, h) => {
+    const c = h.cost_basis_user_currency;
+    if (c == null) return acc;
+    const v = Number(c);
+    if (!Number.isFinite(v)) return acc;
+    return (acc ?? 0) + v;
+  }, null);
+  const valueFromHoldings = holdings.reduce<number>((acc, h) => {
+    const v = Number(h.current_value_user_currency ?? 0);
+    return Number.isFinite(v) ? acc + v : acc;
+  }, 0);
+  const costBasis =
+    costBasisFromHoldings != null ? costBasisFromHoldings : totalValue - absChange;
+  const unrealizedPnl =
+    costBasisFromHoldings != null ? valueFromHoldings - costBasisFromHoldings : absChange;
   const accountNames = Object.fromEntries(
     portfolio.accounts.map((a) => [a.id, a.name]),
   );
@@ -135,7 +154,7 @@ export function InvestmentsOverview({
           <PortfolioChart data={series} currencySymbol={sym} />
           <PortfolioStatsStrip
             costBasis={costBasis}
-            unrealizedPnl={absChange}
+            unrealizedPnl={unrealizedPnl}
             returnPct={pctChange}
             holdingsCount={holdings.length}
             accountsCount={portfolio.accounts.length}
