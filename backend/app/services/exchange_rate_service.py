@@ -621,9 +621,22 @@ class ExchangeRateService:
                 )
                 stored_any = True
             if stored_any:
+                # Re-check at the exact date (uses the existing 7d backward window).
                 rate = self.get_exchange_rate(base_currency, target_currency, for_date)
                 if rate is not None:
                     return rate
+                # Also try forward dates: if the only rates returned by yfinance
+                # were for days after for_date (e.g. as_of is a Sunday and only
+                # Monday's rate came back), the backward window won't see them.
+                for days_forward in range(1, 6):
+                    candidate = for_date + timedelta(days=days_forward)
+                    rate = self.get_exchange_rate(base_currency, target_currency, candidate)
+                    if rate is not None:
+                        logger.info(
+                            f"Using forward FX fallback (+{days_forward}d) for "
+                            f"{base_currency}/{target_currency} originally requested for {for_date}"
+                        )
+                        return rate
         except Exception as e:
             logger.warning(
                 f"yfinance fallback failed for {base_currency}/{target_currency} "
