@@ -53,23 +53,34 @@ export function InvestmentsOverview({
 
   // Real cost basis & unrealized P&L from per-holding cost_basis_user_currency
   // (server-side derived from FIFO avg_cost × FX). Falls back to the chart-
-  // range delta only if no holding has cost basis yet (e.g. fresh account
-  // with no FX data).
-  const costBasisFromHoldings = holdings.reduce<number | null>((acc, h) => {
-    const c = h.cost_basis_user_currency;
-    if (c == null) return acc;
-    const v = Number(c);
-    if (!Number.isFinite(v)) return acc;
-    return (acc ?? 0) + v;
-  }, null);
-  const valueFromHoldings = holdings.reduce<number>((acc, h) => {
+  // range delta only when cost basis is unavailable for ALL active positions
+  // — using partial cost basis would understate it and overstate P&L.
+  //
+  // "Active position" = one that contributes to total value. Fully-closed
+  // positions (qty=0, avg_cost=null, value=0) are expected to have null cost
+  // and contribute zero to both sides; we deliberately ignore them in the
+  // completeness check.
+  let activePositions = 0;
+  let activeWithCost = 0;
+  let costBasisFromHoldings = 0;
+  let valueFromHoldings = 0;
+  for (const h of holdings) {
     const v = Number(h.current_value_user_currency ?? 0);
-    return Number.isFinite(v) ? acc + v : acc;
-  }, 0);
-  const costBasis =
-    costBasisFromHoldings != null ? costBasisFromHoldings : totalValue - absChange;
-  const unrealizedPnl =
-    costBasisFromHoldings != null ? valueFromHoldings - costBasisFromHoldings : absChange;
+    if (!Number.isFinite(v) || v === 0) continue;
+    activePositions += 1;
+    valueFromHoldings += v;
+    const c = h.cost_basis_user_currency;
+    if (c != null) {
+      const cn = Number(c);
+      if (Number.isFinite(cn)) {
+        costBasisFromHoldings += cn;
+        activeWithCost += 1;
+      }
+    }
+  }
+  const useHoldingsBased = activePositions > 0 && activeWithCost === activePositions;
+  const costBasis = useHoldingsBased ? costBasisFromHoldings : totalValue - absChange;
+  const unrealizedPnl = useHoldingsBased ? valueFromHoldings - costBasisFromHoldings : absChange;
   const accountNames = Object.fromEntries(
     portfolio.accounts.map((a) => [a.id, a.name]),
   );
