@@ -175,3 +175,117 @@ def test_import_trades_validates_each_trade(db_session, investment_account):
     assert len(result["errors"]) == 5
     # Each error references its index
     assert {e["index"] for e in result["errors"]} == {0, 1, 2, 3, 4}
+
+
+def _trade(symbol, d, side, qty, price, currency="USD", external_id=None):
+    t = {
+        "symbol": symbol,
+        "trade_date": d,
+        "side": side,
+        "quantity": qty,
+        "price": price,
+        "currency": currency,
+    }
+    if external_id is not None:
+        t["external_id"] = external_id
+    return t
+
+
+def test_import_trades_inserts_and_dedups(db_session, investment_account):
+    payload = [
+        _trade("AAPL", "2024-01-10", "buy", "10", "150"),
+        _trade("AAPL", "2024-06-01", "sell", "5", "200"),
+    ]
+
+    first = import_trades(
+        db_session,
+        user_id=investment_account["user_id"],
+        account_id=investment_account["account_id"],
+        trades=payload,
+        dry_run=False,
+    )
+    assert first["inserted"] == 2
+    assert first["skipped_duplicate"] == 0
+    assert first["errors"] == []
+    assert set(first["affected_symbols"]) == {"AAPL"}
+
+    second = import_trades(
+        db_session,
+        user_id=investment_account["user_id"],
+        account_id=investment_account["account_id"],
+        trades=payload,
+        dry_run=False,
+    )
+    assert second["inserted"] == 0
+    assert second["skipped_duplicate"] == 2
+
+    # Persisted rows
+    rows = (
+        db_session.query(BrokerTrade)
+        .filter(BrokerTrade.account_id == investment_account["account_id"])
+        .all()
+    )
+    assert len(rows) == 2
+
+
+def test_import_trades_assigns_distinct_external_ids_for_same_day_duplicates(
+    db_session, investment_account
+):
+    """Two genuine identical trades on the same day must both be stored."""
+    payload = [
+        _trade("AAPL", "2024-01-10", "buy", "10", "150"),
+        _trade("AAPL", "2024-01-10", "buy", "10", "150"),
+    ]
+    result = import_trades(
+        db_session,
+        user_id=investment_account["user_id"],
+        account_id=investment_account["account_id"],
+        trades=payload,
+        dry_run=False,
+    )
+    assert result["inserted"] == 2
+    rows = (
+        db_session.query(BrokerTrade)
+        .filter(BrokerTrade.account_id == investment_account["account_id"])
+        .all()
+    )
+    assert {r.external_id for r in rows} != {None}
+    assert len({r.external_id for r in rows}) == 2
+
+
+def test_import_trades_dry_run_rolls_back(db_session, investment_account):
+    payload = [_trade("AAPL", "2024-01-10", "buy", "10", "150")]
+    result = import_trades(
+        db_session,
+        user_id=investment_account["user_id"],
+        account_id=investment_account["account_id"],
+        trades=payload,
+        dry_run=True,
+    )
+    assert result["inserted"] == 1  # reported as if inserted
+    rows = (
+        db_session.query(BrokerTrade)
+        .filter(BrokerTrade.account_id == investment_account["account_id"])
+        .all()
+    )
+    assert rows == []  # but actually rolled back
+
+
+def test_import_trades_caller_supplied_external_id_wins(db_session, investment_account):
+    payload = [
+        _trade("AAPL", "2024-01-10", "buy", "10", "150", external_id="BROKER-CONFIRM-001"),
+    ]
+    result = import_trades(
+        db_session,
+        user_id=investment_account["user_id"],
+        account_id=investment_account["account_id"],
+        trades=payload,
+        dry_run=False,
+    )
+    assert result["inserted"] == 1
+    row = (
+        db_session.query(BrokerTrade)
+        .filter(BrokerTrade.account_id == investment_account["account_id"])
+        .one()
+    )
+    assert row.external_id == "BROKER-CONFIRM-001"

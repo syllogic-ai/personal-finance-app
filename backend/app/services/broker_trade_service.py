@@ -150,10 +150,59 @@ def import_trades(
             "affected_symbols": [],
         }
 
-    # Step 4 (next task) implements the actual insert + holding recompute.
+    # Generate external_ids for trades that didn't provide one.
+    # Group by collision key to assign per-batch ordinals.
+    by_key: dict[tuple, int] = defaultdict(int)
+    for vt in validated:
+        if vt.external_id:
+            continue
+        key = (vt.trade_date, vt.symbol.upper(), vt.side, _normalize_quantity(vt.quantity), _normalize_quantity(vt.price))
+        ordinal = by_key[key]
+        by_key[key] += 1
+        vt.external_id = _generate_external_id(
+            trade_date=vt.trade_date,
+            symbol=vt.symbol,
+            side=vt.side,
+            quantity=vt.quantity,
+            price=vt.price,
+            ordinal=ordinal,
+        )
+
+    # Bulk insert with ON CONFLICT DO NOTHING; RETURNING tells us which rows actually inserted.
+    rows = [
+        {
+            "account_id": account.id,
+            "symbol": vt.symbol.upper(),
+            "trade_date": vt.trade_date,
+            "side": vt.side,
+            "quantity": vt.quantity,
+            "price": vt.price,
+            "currency": vt.currency,
+            "fees": vt.fees,
+            "external_id": vt.external_id,
+        }
+        for vt in validated
+    ]
+
+    stmt = (
+        pg_insert(BrokerTrade.__table__)
+        .values(rows)
+        .on_conflict_do_nothing(index_elements=["account_id", "external_id"])
+        .returning(BrokerTrade.__table__.c.id, BrokerTrade.__table__.c.symbol)
+    )
+    inserted_rows = db.execute(stmt).fetchall()
+    inserted = len(inserted_rows)
+    skipped = len(validated) - inserted
+    affected_symbols = sorted({vt.symbol.upper() for vt in validated})
+
+    if dry_run:
+        db.rollback()
+    else:
+        db.commit()
+
     return {
-        "inserted": 0,
-        "skipped_duplicate": 0,
+        "inserted": inserted,
+        "skipped_duplicate": skipped,
         "errors": errors,
-        "affected_symbols": [],
+        "affected_symbols": affected_symbols,
     }
