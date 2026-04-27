@@ -18,9 +18,18 @@ from app.mcp.dependencies import get_db, validate_date
 from app.models import (
     Account,
     AccountBalance,
+    BrokerTrade,
     Holding,
     HoldingValuation,
     User,
+)
+from app.services.broker_trade_service import import_trades as _import_trades_service
+from app.services.broker_trade_service import ImportError as _BrokerImportError
+from app.services.exchange_rate_service import ExchangeRateService
+from app.services.pnl_service import (
+    Trade,
+    realized_pnl_from_trades,
+    unrealized_pnl_from_trades,
 )
 
 
@@ -243,3 +252,182 @@ def search_symbol_impl(db: Session, user_id: str, query: str) -> list[dict]:
 def search_symbol(user_id: str, query: str) -> list[dict]:
     with get_db() as db:
         return search_symbol_impl(db, user_id, query)
+
+
+def import_broker_trades_impl(
+    db: Session,
+    user_id: str,
+    account_id: str,
+    trades: list[dict],
+    dry_run: bool = False,
+) -> dict:
+    try:
+        return _import_trades_service(
+            db=db,
+            user_id=user_id,
+            account_id=account_id,
+            trades=trades,
+            dry_run=dry_run,
+        )
+    except _BrokerImportError as e:
+        return {
+            "inserted": 0,
+            "skipped_duplicate": 0,
+            "errors": [{"index": -1, "trade": None, "reason": str(e)}],
+            "affected_symbols": [],
+        }
+
+
+def import_broker_trades(
+    user_id: str,
+    account_id: str,
+    trades: list[dict],
+    dry_run: bool = False,
+) -> dict:
+    with get_db() as db:
+        return import_broker_trades_impl(db, user_id, account_id, trades, dry_run)
+
+
+def _user_base_currency(db: Session, user_id: str) -> str:
+    user = db.query(User).filter(User.id == user_id).first()
+    return getattr(user, "functional_currency", "EUR") if user else "EUR"
+
+
+def _trades_for_user(
+    db: Session,
+    user_id: str,
+    account_id: Optional[str] = None,
+    symbol: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+) -> list[Trade]:
+    """Load BrokerTrade rows scoped to the user, return as pure-engine `Trade` objects."""
+    account_ids_subq = (
+        db.query(Account.id)
+        .filter(Account.user_id == user_id)
+        .subquery()
+    )
+    q = db.query(BrokerTrade).filter(BrokerTrade.account_id.in_(account_ids_subq))
+    if account_id:
+        q = q.filter(BrokerTrade.account_id == account_id)
+    if symbol:
+        q = q.filter(BrokerTrade.symbol == symbol.upper())
+    if start_date:
+        q = q.filter(BrokerTrade.trade_date >= validate_date(start_date))
+    if end_date:
+        q = q.filter(BrokerTrade.trade_date <= validate_date(end_date))
+    rows = q.order_by(BrokerTrade.trade_date).all()
+    return [
+        Trade(
+            symbol=r.symbol,
+            trade_date=r.trade_date,
+            side=r.side,
+            quantity=Decimal(r.quantity),
+            price=Decimal(r.price),
+            currency=r.currency,
+            fees=Decimal(r.fees or 0),
+        )
+        for r in rows
+    ]
+
+
+def get_realized_pnl_impl(
+    db: Session,
+    user_id: str,
+    account_id: Optional[str] = None,
+    symbol: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+) -> list[dict]:
+    base = _user_base_currency(db, user_id)
+    trades = _trades_for_user(db, user_id, account_id, symbol, start_date, end_date)
+    if not trades:
+        return []
+    fx = ExchangeRateService(db)
+    rows = realized_pnl_from_trades(trades, base_currency=base, fx_service=fx)
+    return [_jsonify_pnl_row(r) for r in rows]
+
+
+def get_realized_pnl(
+    user_id: str,
+    account_id: Optional[str] = None,
+    symbol: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+) -> list[dict]:
+    with get_db() as db:
+        return get_realized_pnl_impl(db, user_id, account_id, symbol, start_date, end_date)
+
+
+def get_unrealized_pnl_impl(
+    db: Session,
+    user_id: str,
+    account_id: Optional[str] = None,
+    symbol: Optional[str] = None,
+) -> list[dict]:
+    base = _user_base_currency(db, user_id)
+    trades = _trades_for_user(db, user_id, account_id, symbol)
+    if not trades:
+        return []
+
+    # Latest valuation per symbol — pick most recent HoldingValuation joined to Holding
+    holdings_q = db.query(Holding).filter(Holding.user_id == user_id)
+    if account_id:
+        holdings_q = holdings_q.filter(Holding.account_id == account_id)
+    if symbol:
+        holdings_q = holdings_q.filter(Holding.symbol == symbol.upper())
+    holdings = holdings_q.all()
+
+    valuations = _latest_valuations_for_user(db, user_id)
+    latest_prices: dict[str, Decimal] = {}
+    latest_dates: list[date] = []
+    for h in holdings:
+        v = valuations.get(h.id)
+        if v is not None and v.price is not None:
+            latest_prices[h.symbol] = Decimal(v.price)
+            latest_dates.append(v.date)
+
+    as_of = max(latest_dates) if latest_dates else date.today()
+
+    fx = ExchangeRateService(db)
+    rows = unrealized_pnl_from_trades(
+        trades,
+        base_currency=base,
+        fx_service=fx,
+        latest_prices=latest_prices,
+        as_of_date=as_of,
+    )
+    return [_jsonify_pnl_row(r) for r in rows]
+
+
+def get_unrealized_pnl(
+    user_id: str,
+    account_id: Optional[str] = None,
+    symbol: Optional[str] = None,
+) -> list[dict]:
+    with get_db() as db:
+        return get_unrealized_pnl_impl(db, user_id, account_id, symbol)
+
+
+def _dec_str(v: Decimal) -> str:
+    """Stringify a Decimal, stripping trailing zeros (e.g. '500' not '500.0000000000000000')."""
+    normalized = v.normalize()
+    # normalize() can produce scientific notation for very large/small values; use 'f' format
+    return format(normalized, "f")
+
+
+def _jsonify_pnl_row(row: dict) -> dict:
+    """Convert Decimals to strings recursively for JSON-friendly output."""
+    out = {}
+    for k, v in row.items():
+        if isinstance(v, Decimal):
+            out[k] = _dec_str(v)
+        elif isinstance(v, list):
+            out[k] = [
+                {kk: (_dec_str(vv) if isinstance(vv, Decimal) else vv) for kk, vv in item.items()}
+                if isinstance(item, dict) else item
+                for item in v
+            ]
+        else:
+            out[k] = v
+    return out
