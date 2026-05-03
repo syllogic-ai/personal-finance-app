@@ -836,6 +836,62 @@ export const routineRuns = pgTable(
 );
 
 // ============================================================================
+// Investment Plans
+// ============================================================================
+
+export const investmentPlans = pgTable(
+  "investment_plans",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: text("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    name: varchar("name", { length: 255 }).notNull(),
+    description: text("description"),
+    totalMonthly: decimal("total_monthly", { precision: 15, scale: 2 }).notNull(),
+    currency: char("currency", { length: 3 }).notNull().default("EUR"),
+    slots: jsonb("slots").$type<unknown[]>().notNull().default([]),
+    cron: varchar("cron", { length: 100 }).notNull(),
+    timezone: varchar("timezone", { length: 64 }).notNull().default("UTC"),
+    scheduleHuman: text("schedule_human").notNull(),
+    recipientEmail: varchar("recipient_email", { length: 320 }),
+    model: varchar("model", { length: 100 }).notNull().default("claude-sonnet-4-6"),
+    enabled: boolean("enabled").notNull().default(true),
+    nextRunAt: timestamp("next_run_at"),
+    lastRunAt: timestamp("last_run_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (t) => [
+    index("idx_investment_plans_user").on(t.userId),
+    index("idx_investment_plans_due").on(t.enabled, t.nextRunAt),
+  ]
+);
+
+export const investmentPlanRuns = pgTable(
+  "investment_plan_runs",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    planId: uuid("plan_id").references(() => investmentPlans.id, { onDelete: "cascade" }).notNull(),
+    userId: text("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    status: varchar("status", { length: 20 }).notNull().default("queued"),
+    planSnapshot: jsonb("plan_snapshot").notNull(),
+    modelSnapshot: varchar("model_snapshot", { length: 100 }).notNull(),
+    output: jsonb("output"),
+    transcript: jsonb("transcript"),
+    emailMessageId: varchar("email_message_id", { length: 255 }),
+    errorMessage: text("error_message"),
+    costCents: integer("cost_cents"),
+    executionMarks: jsonb("execution_marks").notNull().default({}),
+    startedAt: timestamp("started_at"),
+    completedAt: timestamp("completed_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (t) => [
+    index("idx_investment_plan_runs_plan").on(t.planId, t.createdAt),
+    index("idx_investment_plan_runs_user").on(t.userId, t.createdAt),
+  ]
+);
+
+// ============================================================================
 // Relations
 // ============================================================================
 
@@ -856,6 +912,8 @@ export const usersRelations = relations(users, ({ many }) => ({
   people: many(people),
   routines: many(routines),
   routineRuns: many(routineRuns),
+  investmentPlans: many(investmentPlans),
+  investmentPlanRuns: many(investmentPlanRuns),
 }));
 
 export const apiKeysRelations = relations(apiKeys, ({ one }) => ({
@@ -1116,6 +1174,16 @@ export const routinesRelations = relations(routines, ({ one, many }) => ({
 export const routineRunsRelations = relations(routineRuns, ({ one }) => ({
   routine: one(routines, { fields: [routineRuns.routineId], references: [routines.id] }),
   user: one(users, { fields: [routineRuns.userId], references: [users.id] }),
+}));
+
+export const investmentPlansRelations = relations(investmentPlans, ({ one, many }) => ({
+  user: one(users, { fields: [investmentPlans.userId], references: [users.id] }),
+  runs: many(investmentPlanRuns),
+}));
+
+export const investmentPlanRunsRelations = relations(investmentPlanRuns, ({ one }) => ({
+  plan: one(investmentPlans, { fields: [investmentPlanRuns.planId], references: [investmentPlans.id] }),
+  user: one(users, { fields: [investmentPlanRuns.userId], references: [users.id] }),
 }));
 
 // ============================================================================

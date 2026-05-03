@@ -141,6 +141,13 @@
       "when": 1777831390704,
       "tag": "0021_routines",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1746316800000,
+      "tag": "0022_investment_plans",
+      "breakpoints": true
     }
   ]
 }

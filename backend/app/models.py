@@ -890,3 +890,60 @@ class RoutineRun(Base):
         Index("idx_routine_runs_routine", "routine_id", "created_at"),
         Index("idx_routine_runs_user", "user_id", "created_at"),
     )
+
+
+class InvestmentPlan(Base):
+    __tablename__ = "investment_plans"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(Text, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    total_monthly = Column(Numeric(15, 2), nullable=False)
+    currency = Column(String(3), nullable=False, default="EUR")
+    slots = Column(JSONB, nullable=False, default=list)
+    cron = Column(String(100), nullable=False)
+    timezone = Column(String(64), nullable=False, default="UTC")
+    schedule_human = Column(Text, nullable=False)
+    recipient_email = Column(String(320), nullable=True)
+    model = Column(String(100), nullable=False, default="claude-sonnet-4-6")
+    enabled = Column(Boolean, nullable=False, default=True)
+    next_run_at = Column(DateTime, nullable=True)
+    last_run_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    user = relationship("User", backref="investment_plans")
+    runs = relationship("InvestmentPlanRun", back_populates="plan", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        Index("idx_investment_plans_user", "user_id"),
+        Index("idx_investment_plans_due", "enabled", "next_run_at"),
+    )
+
+
+class InvestmentPlanRun(Base):
+    __tablename__ = "investment_plan_runs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    plan_id = Column(UUID(as_uuid=True), ForeignKey("investment_plans.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(Text, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    status = Column(String(20), nullable=False, default="queued")
+    plan_snapshot = Column(JSONB, nullable=False)
+    model_snapshot = Column(String(100), nullable=False)
+    output = Column(JSONB, nullable=True)
+    transcript = Column(JSONB, nullable=True)
+    email_message_id = Column(String(255), nullable=True)
+    error_message = Column(Text, nullable=True)
+    cost_cents = Column(Integer, nullable=True)
+    execution_marks = Column(JSONB, nullable=False, default=dict)
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    plan = relationship("InvestmentPlan", back_populates="runs")
+
+    __table_args__ = (
+        Index("idx_investment_plan_runs_plan", "plan_id", "created_at"),
+        Index("idx_investment_plan_runs_user", "user_id", "created_at"),
+    )
