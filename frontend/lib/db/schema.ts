@@ -14,6 +14,7 @@ import {
   numeric,
   date,
   uniqueIndex,
+  primaryKey,
 } from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
 
@@ -698,6 +699,90 @@ export const holdingValuations = pgTable("holding_valuations", {
 }));
 
 // ============================================================================
+// People & Household Ownership
+// ============================================================================
+
+export const people = pgTable(
+  "people",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: text("user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    name: varchar("name", { length: 255 }).notNull(),
+    // 'self' = auto-created person representing the operator (one per user)
+    // 'member' = anyone else in the household
+    kind: varchar("kind", { length: 20 }).notNull().default("member"),
+    color: varchar("color", { length: 7 }),
+    // Storage path inside the configured storage provider (e.g. "people/<id>.jpg").
+    // null = no avatar; UI falls back to a colored initial badge.
+    avatarPath: text("avatar_path"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (t) => [
+    index("idx_people_user").on(t.userId),
+    uniqueIndex("people_user_self_uq")
+      .on(t.userId)
+      .where(sql`${t.kind} = 'self'`),
+  ]
+);
+
+export const accountOwners = pgTable(
+  "account_owners",
+  {
+    accountId: uuid("account_id")
+      .references(() => accounts.id, { onDelete: "cascade" })
+      .notNull(),
+    personId: uuid("person_id")
+      .references(() => people.id, { onDelete: "cascade" })
+      .notNull(),
+    share: decimal("share", { precision: 5, scale: 4 }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.accountId, t.personId] }),
+    index("idx_account_owners_person").on(t.personId),
+  ]
+);
+
+export const propertyOwners = pgTable(
+  "property_owners",
+  {
+    propertyId: uuid("property_id")
+      .references(() => properties.id, { onDelete: "cascade" })
+      .notNull(),
+    personId: uuid("person_id")
+      .references(() => people.id, { onDelete: "cascade" })
+      .notNull(),
+    share: decimal("share", { precision: 5, scale: 4 }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.propertyId, t.personId] }),
+    index("idx_property_owners_person").on(t.personId),
+  ]
+);
+
+export const vehicleOwners = pgTable(
+  "vehicle_owners",
+  {
+    vehicleId: uuid("vehicle_id")
+      .references(() => vehicles.id, { onDelete: "cascade" })
+      .notNull(),
+    personId: uuid("person_id")
+      .references(() => people.id, { onDelete: "cascade" })
+      .notNull(),
+    share: decimal("share", { precision: 5, scale: 4 }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.vehicleId, t.personId] }),
+    index("idx_vehicle_owners_person").on(t.personId),
+  ]
+);
+
+// ============================================================================
 // Relations
 // ============================================================================
 
@@ -715,6 +800,7 @@ export const usersRelations = relations(users, ({ many }) => ({
   apiKeys: many(apiKeys),
   transactionLinks: many(transactionLinks),
   bankConnections: many(bankConnections),
+  people: many(people),
 }));
 
 export const apiKeysRelations = relations(apiKeys, ({ one }) => ({
@@ -755,6 +841,7 @@ export const accountsRelations = relations(accounts, ({ one, many }) => ({
   csvImports: many(csvImports),
   balances: many(accountBalances),
   recurringTransactions: many(recurringTransactions),
+  owners: many(accountOwners),
 }));
 
 export const bankConnectionsRelations = relations(bankConnections, ({ one, many }) => ({
@@ -895,18 +982,20 @@ export const csvImportsRelations = relations(csvImports, ({ one, many }) => ({
   transactions: many(transactions),
 }));
 
-export const propertiesRelations = relations(properties, ({ one }) => ({
+export const propertiesRelations = relations(properties, ({ one, many }) => ({
   user: one(users, {
     fields: [properties.userId],
     references: [users.id],
   }),
+  owners: many(propertyOwners),
 }));
 
-export const vehiclesRelations = relations(vehicles, ({ one }) => ({
+export const vehiclesRelations = relations(vehicles, ({ one, many }) => ({
   user: one(users, {
     fields: [vehicles.userId],
     references: [users.id],
   }),
+  owners: many(vehicleOwners),
 }));
 
 export const exchangeRatesRelations = relations(exchangeRates, () => ({}));
@@ -940,6 +1029,28 @@ export const transactionLinksRelations = relations(transactionLinks, ({ one }) =
 export const companyLogosRelations = relations(companyLogos, ({ many }) => ({
   accounts: many(accounts),
   recurringTransactions: many(recurringTransactions),
+}));
+
+export const peopleRelations = relations(people, ({ one, many }) => ({
+  user: one(users, { fields: [people.userId], references: [users.id] }),
+  accountOwners: many(accountOwners),
+  propertyOwners: many(propertyOwners),
+  vehicleOwners: many(vehicleOwners),
+}));
+
+export const accountOwnersRelations = relations(accountOwners, ({ one }) => ({
+  account: one(accounts, { fields: [accountOwners.accountId], references: [accounts.id] }),
+  person: one(people, { fields: [accountOwners.personId], references: [people.id] }),
+}));
+
+export const propertyOwnersRelations = relations(propertyOwners, ({ one }) => ({
+  property: one(properties, { fields: [propertyOwners.propertyId], references: [properties.id] }),
+  person: one(people, { fields: [propertyOwners.personId], references: [people.id] }),
+}));
+
+export const vehicleOwnersRelations = relations(vehicleOwners, ({ one }) => ({
+  vehicle: one(vehicles, { fields: [vehicleOwners.vehicleId], references: [vehicles.id] }),
+  person: one(people, { fields: [vehicleOwners.personId], references: [people.id] }),
 }));
 
 // ============================================================================
