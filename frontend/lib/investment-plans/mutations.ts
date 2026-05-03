@@ -3,6 +3,7 @@ import { investmentPlans, investmentPlanRuns } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 import type { SlotConfig } from "./schema";
 import { validateSlots } from "./schema";
+import { nextFireAfter } from "@/lib/scheduling/next-run";
 
 export type PlanInput = {
   name: string;
@@ -20,6 +21,7 @@ export type PlanInput = {
 
 export async function createPlan(userId: string, input: PlanInput) {
   validateSlots(input.slots, input.totalMonthly);
+  const nextRunAt = nextFireAfter(input.cron, input.timezone);
   const [row] = await db.insert(investmentPlans).values({
     userId,
     name: input.name,
@@ -33,6 +35,7 @@ export async function createPlan(userId: string, input: PlanInput) {
     recipientEmail: input.recipientEmail ?? null,
     model: input.model ?? "claude-sonnet-4-6",
     enabled: input.enabled ?? true,
+    ...(nextRunAt ? { nextRunAt } : {}),
   }).returning();
   return row;
 }
@@ -40,6 +43,15 @@ export async function createPlan(userId: string, input: PlanInput) {
 export async function updatePlan(userId: string, id: string, patch: Partial<PlanInput>) {
   if (patch.slots !== undefined && patch.totalMonthly !== undefined) {
     validateSlots(patch.slots, patch.totalMonthly);
+  }
+  let nextRunAtPatch: { nextRunAt: Date } | Record<string, never> = {};
+  if (patch.cron !== undefined || patch.timezone !== undefined) {
+    const cron = patch.cron ?? "";
+    const tz = patch.timezone ?? "UTC";
+    if (cron) {
+      const next = nextFireAfter(cron, tz);
+      if (next) nextRunAtPatch = { nextRunAt: next };
+    }
   }
   const [row] = await db.update(investmentPlans)
     .set({
@@ -54,6 +66,7 @@ export async function updatePlan(userId: string, id: string, patch: Partial<Plan
       ...(patch.recipientEmail !== undefined ? { recipientEmail: patch.recipientEmail } : {}),
       ...(patch.model !== undefined ? { model: patch.model } : {}),
       ...(patch.enabled !== undefined ? { enabled: patch.enabled } : {}),
+      ...nextRunAtPatch,
       updatedAt: new Date(),
     })
     .where(and(eq(investmentPlans.id, id), eq(investmentPlans.userId, userId)))

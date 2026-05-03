@@ -3,8 +3,9 @@ from __future__ import annotations
 
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import UUID
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from celery import shared_task
 from croniter import croniter
@@ -17,11 +18,25 @@ log = logging.getLogger(__name__)
 
 
 def _next_fire_after(cron: str, tz_name: str, after_utc: datetime) -> datetime:
-    # croniter is timezone-naive; we operate in UTC for v1. A future improvement:
-    # use zoneinfo to interpret cron in the routine's tz. For weekly schedules
-    # the difference is at most a few hours and acceptable.
-    itr = croniter(cron, after_utc.replace(tzinfo=None))
-    return itr.get_next(datetime)
+    """Compute the next firing time in UTC, interpreting `cron` in the routine's tz.
+
+    Uses zoneinfo so DST and non-UTC zones are honored. Falls back to UTC if
+    the timezone name is invalid (defensive — should be validated upstream).
+    """
+    try:
+        tz = ZoneInfo(tz_name)
+    except (ZoneInfoNotFoundError, Exception):
+        tz = ZoneInfo("UTC")
+    # Interpret `after_utc` as a UTC instant, project into the local tz, run croniter
+    # there, then convert back to UTC.
+    if after_utc.tzinfo is None:
+        after_utc = after_utc.replace(tzinfo=timezone.utc)
+    after_local = after_utc.astimezone(tz)
+    # croniter is timezone-naive; pass a naive local datetime, get a naive local result.
+    itr = croniter(cron, after_local.replace(tzinfo=None))
+    next_local_naive = itr.get_next(datetime)
+    next_local = next_local_naive.replace(tzinfo=tz)
+    return next_local.astimezone(timezone.utc).replace(tzinfo=None)
 
 
 @shared_task(name="scheduled.poll_due")
