@@ -15,10 +15,14 @@ const cache = new Map<string, Person[]>();
 
 async function loadPeople(): Promise<Person[]> {
   if (cache.has("all")) return cache.get("all")!;
-  const r = await fetch("/api/people");
-  const j = await r.json();
-  cache.set("all", j.people);
-  return j.people;
+  try {
+    const r = await fetch("/api/people");
+    const j = await r.json();
+    cache.set("all", j.people);
+    return j.people;
+  } catch {
+    return [];
+  }
 }
 
 const ownersCache = new Map<string, { personId: string; share: number | null }[]>();
@@ -26,10 +30,14 @@ const ownersCache = new Map<string, { personId: string; share: number | null }[]
 async function loadOwners(entityType: EntityType, entityId: string) {
   const key = `${entityType}:${entityId}`;
   if (ownersCache.has(key)) return ownersCache.get(key)!;
-  const r = await fetch(`/api/owners/${entityType}/${entityId}`);
-  const j = await r.json();
-  ownersCache.set(key, j.owners);
-  return j.owners;
+  try {
+    const r = await fetch(`/api/owners/${entityType}/${entityId}`);
+    const j = await r.json();
+    ownersCache.set(key, j.owners);
+    return j.owners;
+  } catch {
+    return [];
+  }
 }
 
 /**
