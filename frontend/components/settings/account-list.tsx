@@ -151,17 +151,26 @@ export function AccountList({ accounts, onAccountUpdated }: AccountListProps) {
       });
 
       if (result.success) {
-        // Update owners (best-effort)
-        if (editOwners.length > 0) {
-          try {
-            await fetch(`/api/owners/account/${editingAccount.id}`, {
-              method: "PUT",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ owners: editOwners }),
-            });
-          } catch {
-            toast.error("Account updated, but failed to save ownership.");
+        // Update owners — require at least one owner
+        if (editOwners.length === 0) {
+          toast.error("Select at least one owner.");
+          setIsLoading(false);
+          return;
+        }
+        try {
+          const ownersResp = await fetch(`/api/owners/account/${editingAccount.id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ owners: editOwners }),
+          });
+          if (!ownersResp.ok) {
+            const text = await ownersResp.text().catch(() => "request failed");
+            throw new Error(`Failed to save owners: ${text.slice(0, 200)}`);
           }
+        } catch (ownersErr) {
+          toast.error((ownersErr as Error).message || "Account updated, but failed to save ownership.");
+          setIsLoading(false);
+          return;
         }
         toast.success("Account updated successfully");
         setEditingAccount(null);

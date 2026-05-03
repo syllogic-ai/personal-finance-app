@@ -273,17 +273,26 @@ export function AssetManagement({
       });
 
       if (result.success) {
-        // Update owners (best-effort — don't roll back entity update on failure)
-        if (editAccountOwners.length > 0) {
-          try {
-            await fetch(`/api/owners/account/${editingAccount.id}`, {
-              method: "PUT",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ owners: editAccountOwners }),
-            });
-          } catch {
-            toast.error("Account updated, but failed to save ownership.");
+        // Update owners — require at least one owner
+        if (editAccountOwners.length === 0) {
+          toast.error("Select at least one owner.");
+          setIsLoading(false);
+          return;
+        }
+        try {
+          const ownersResp = await fetch(`/api/owners/account/${editingAccount.id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ owners: editAccountOwners }),
+          });
+          if (!ownersResp.ok) {
+            const text = await ownersResp.text().catch(() => "request failed");
+            throw new Error(`Failed to save owners: ${text.slice(0, 200)}`);
           }
+        } catch (ownersErr) {
+          toast.error((ownersErr as Error).message || "Account updated, but failed to save ownership.");
+          setIsLoading(false);
+          return;
         }
         toast.success("Account updated");
         setEditingAccount(null);
@@ -372,17 +381,26 @@ export function AssetManagement({
       });
 
       if (result.success) {
-        // Update owners (best-effort)
-        if (editPropertyOwners.length > 0) {
-          try {
-            await fetch(`/api/owners/property/${editingProperty.id}`, {
-              method: "PUT",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ owners: editPropertyOwners }),
-            });
-          } catch {
-            toast.error("Property updated, but failed to save ownership.");
+        // Update owners — require at least one owner
+        if (editPropertyOwners.length === 0) {
+          toast.error("Select at least one owner.");
+          setIsLoading(false);
+          return;
+        }
+        try {
+          const ownersResp = await fetch(`/api/owners/property/${editingProperty.id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ owners: editPropertyOwners }),
+          });
+          if (!ownersResp.ok) {
+            const text = await ownersResp.text().catch(() => "request failed");
+            throw new Error(`Failed to save owners: ${text.slice(0, 200)}`);
           }
+        } catch (ownersErr) {
+          toast.error((ownersErr as Error).message || "Property updated, but failed to save ownership.");
+          setIsLoading(false);
+          return;
         }
         toast.success("Property updated");
         setEditingProperty(null);
@@ -455,17 +473,26 @@ export function AssetManagement({
       });
 
       if (result.success) {
-        // Update owners (best-effort)
-        if (editVehicleOwners.length > 0) {
-          try {
-            await fetch(`/api/owners/vehicle/${editingVehicle.id}`, {
-              method: "PUT",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ owners: editVehicleOwners }),
-            });
-          } catch {
-            toast.error("Vehicle updated, but failed to save ownership.");
+        // Update owners — require at least one owner
+        if (editVehicleOwners.length === 0) {
+          toast.error("Select at least one owner.");
+          setIsLoading(false);
+          return;
+        }
+        try {
+          const ownersResp = await fetch(`/api/owners/vehicle/${editingVehicle.id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ owners: editVehicleOwners }),
+          });
+          if (!ownersResp.ok) {
+            const text = await ownersResp.text().catch(() => "request failed");
+            throw new Error(`Failed to save owners: ${text.slice(0, 200)}`);
           }
+        } catch (ownersErr) {
+          toast.error((ownersErr as Error).message || "Vehicle updated, but failed to save ownership.");
+          setIsLoading(false);
+          return;
         }
         toast.success("Vehicle updated");
         setEditingVehicle(null);
