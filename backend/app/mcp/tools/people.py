@@ -6,6 +6,7 @@ from __future__ import annotations
 from app.mcp.dependencies import get_db
 from app.models import Account, Person, Property, Vehicle
 from app.services.ownership_service import attribute_amount, get_owners
+from app.mcp.tools.investments import INVESTMENT_ACCOUNT_TYPES
 
 
 def list_people(user_id: str) -> list[dict]:
@@ -89,7 +90,7 @@ def get_household_summary(
                     continue
                 balance = float(a.functional_balance or 0)
                 amt = attribute_amount(balance, owners, pid)
-                if (a.account_type or "").lower() in ("investment", "brokerage"):
+                if (a.account_type or "") in INVESTMENT_ACCOUNT_TYPES:
                     investments += amt
                 else:
                     cash += amt

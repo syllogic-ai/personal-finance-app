@@ -21,7 +21,7 @@ def seeded_user_with_investment_account(db_session):
     db_session.add(self_p)
     db_session.flush()
     acct = Account(
-        user_id=uid, name="IBKR", account_type="investment", currency="EUR",
+        user_id=uid, name="IBKR", account_type="investment_brokerage", currency="EUR",
         functional_balance=1234, balance_available=1234,
     )
     db_session.add(acct)

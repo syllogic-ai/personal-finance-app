@@ -9,6 +9,7 @@ from typing import Any
 
 from app.database import SessionLocal
 from app.models import Account, BrokerTrade, Holding
+from app.mcp.tools.investments import INVESTMENT_ACCOUNT_TYPES
 
 
 def collect_grounding(user_id: str, days: int = 30) -> dict[str, list[dict]]:
@@ -27,7 +28,7 @@ def collect_grounding(user_id: str, days: int = 30) -> dict[str, list[dict]]:
         accts = (
             db.query(Account)
             .filter(Account.user_id == user_id, Account.is_active.is_(True))
-            .filter(Account.account_type.in_(("investment", "investment_brokerage", "investment_manual")))
+            .filter(Account.account_type.in_(INVESTMENT_ACCOUNT_TYPES))
             .all()
         )
         cash_snapshot: list[dict] = []
