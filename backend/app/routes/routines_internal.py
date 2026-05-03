@@ -69,10 +69,12 @@ def parse_schedule_text(text: str) -> dict[str, str]:
     msg = _call_anthropic(text)
     for block in getattr(msg, "content", []):
         if getattr(block, "type", None) == "tool_use" and getattr(block, "name", None) == "emit_schedule":
-            payload = block.input
-            cron = (payload["cron"] or "").strip()
-            tz = (payload["timezone"] or "").strip()
-            human = payload["human_readable"]
+            payload = block.input or {}
+            cron = (payload.get("cron") or "").strip()
+            tz = (payload.get("timezone") or "").strip()
+            human = (payload.get("human_readable") or "").strip()
+            if not cron or not tz or not human:
+                raise ValueError(f"emit_schedule missing required keys; got {sorted(payload.keys())}")
             if len(cron.split()) != 5:
                 raise ValueError(f"cron must be 5-field; got {cron!r}")
             try:
