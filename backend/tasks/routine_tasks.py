@@ -145,31 +145,21 @@ def run_investment_plan(plan_id: str) -> str:
     """Run the agent and POST the structured output to the frontend renderer."""
     run = investment_plan_runner.run_investment_plan(plan_id)
     if run.status == "succeeded" and run.output is not None:
-        recipient = (run.plan_snapshot or {}).get("recipientEmail")
-        if not recipient:
-            db = SessionLocal()
-            try:
-                plan = db.query(InvestmentPlan).filter(InvestmentPlan.id == run.plan_id).first()
-                recipient = plan.recipient_email if plan else None
-            finally:
-                db.close()
-        if recipient:
-            try:
-                url = _frontend_url("/api/internal/digests/render-and-send-plan")
-                path = "/api/internal/digests/render-and-send-plan"
-                response = internal_http.signed_post(
-                    url, path=path, user_id=str(run.user_id),
-                    json_body={"planId": str(run.plan_id), "runId": str(run.id),
-                               "recipientEmail": recipient, "output": run.output},
-                )
-                if response.status_code == 200:
-                    payload = response.json()
-                    _mark_sent_plan(run.id, payload.get("messageId"))
-                else:
-                    _mark_send_failed_plan(run.id, f"HTTP {response.status_code}: {response.text[:500]}")
-            except Exception as exc:
-                log.exception("plan render-and-send failed")
-                _mark_send_failed_plan(run.id, str(exc))
+        try:
+            url = _frontend_url("/api/internal/digests/render-and-send-plan")
+            path = "/api/internal/digests/render-and-send-plan"
+            response = internal_http.signed_post(
+                url, path=path, user_id=str(run.user_id),
+                json_body={"planId": str(run.plan_id), "runId": str(run.id), "output": run.output},
+            )
+            if response.status_code == 200:
+                payload = response.json()
+                _mark_sent_plan(run.id, payload.get("messageId"))
+            else:
+                _mark_send_failed_plan(run.id, f"HTTP {response.status_code}: {response.text[:500]}")
+        except Exception as exc:
+            log.exception("plan render-and-send failed")
+            _mark_send_failed_plan(run.id, str(exc))
     return run.status
 
 

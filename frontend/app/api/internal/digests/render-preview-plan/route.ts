@@ -24,9 +24,10 @@ const MONTHS = [
 ];
 
 export async function POST(req: NextRequest) {
-  const auth = verifyInternalRequest(req, "/api/internal/digests/render-preview-plan");
+  const rawBody = await req.text();
+  const auth = verifyInternalRequest(req, "/api/internal/digests/render-preview-plan", rawBody);
   if (!auth.ok) return unauthorizedInternal(auth.reason);
-  const { output } = bodySchema.parse(await req.json());
+  const { output } = bodySchema.parse(JSON.parse(rawBody));
   const now = new Date();
   const monthLabel = `${MONTHS[now.getMonth()]} ${now.getFullYear()}`;
   const html = await render(

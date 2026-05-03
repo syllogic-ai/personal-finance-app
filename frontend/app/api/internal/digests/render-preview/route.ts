@@ -11,10 +11,11 @@ const bodySchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
-  const auth = verifyInternalRequest(req, "/api/internal/digests/render-preview");
+  const rawBody = await req.text();
+  const auth = verifyInternalRequest(req, "/api/internal/digests/render-preview", rawBody);
   if (!auth.ok) return unauthorizedInternal(auth.reason);
 
-  const { output } = bodySchema.parse(await req.json());
+  const { output } = bodySchema.parse(JSON.parse(rawBody));
   const html = await render(React.createElement(Digest, { output }));
   return new Response(html, { headers: { "content-type": "text/html; charset=utf-8" } });
 }

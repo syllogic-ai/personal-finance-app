@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 
 const MAX_AGE_SECONDS = 60;
@@ -8,9 +8,11 @@ function constantTimeEqualHex(a: string, b: string): boolean {
   return timingSafeEqual(Buffer.from(a, "hex"), Buffer.from(b, "hex"));
 }
 
+/** Verify an internal request whose signature covers the body hash too. Pass the raw body text. */
 export function verifyInternalRequest(
   req: NextRequest,
   path: string,
+  rawBody: string,
 ): { ok: true; userId: string } | { ok: false; reason: string } {
   const userId = req.headers.get("x-syllogic-user-id")?.trim();
   const ts = req.headers.get("x-syllogic-timestamp")?.trim();
@@ -23,8 +25,9 @@ export function verifyInternalRequest(
 
   const secret = process.env.INTERNAL_AUTH_SECRET;
   if (!secret) return { ok: false, reason: "secret not configured" };
+  const bodyHex = createHash("sha256").update(rawBody ?? "").digest("hex");
   const expected = createHmac("sha256", secret)
-    .update([req.method.toUpperCase(), path, userId, ts].join("\n"))
+    .update([req.method.toUpperCase(), path, userId, ts, bodyHex].join("\n"))
     .digest("hex");
   if (!constantTimeEqualHex(expected, sig)) return { ok: false, reason: "bad signature" };
   return { ok: true, userId };

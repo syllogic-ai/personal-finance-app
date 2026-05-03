@@ -3,13 +3,13 @@ import { z } from "zod";
 import { Resend } from "resend";
 import { verifyInternalRequest, unauthorizedInternal } from "@/lib/internal/verify";
 import { investmentPlanOutputSchema } from "@/lib/investment-plans/schema";
+import { getPlan } from "@/lib/investment-plans";
 import { InvestmentPlanMonthly } from "@/emails/investment-plan-monthly";
 import React from "react";
 
 const bodySchema = z.object({
   planId: z.string().uuid(),
   runId: z.string().uuid(),
-  recipientEmail: z.string().email(),
   output: investmentPlanOutputSchema,
 });
 
@@ -29,10 +29,15 @@ const MONTHS = [
 ];
 
 export async function POST(req: NextRequest) {
-  const auth = verifyInternalRequest(req, "/api/internal/digests/render-and-send-plan");
+  const rawBody = await req.text();
+  const auth = verifyInternalRequest(req, "/api/internal/digests/render-and-send-plan", rawBody);
   if (!auth.ok) return unauthorizedInternal(auth.reason);
 
-  const body = bodySchema.parse(await req.json());
+  const body = bodySchema.parse(JSON.parse(rawBody));
+
+  const plan = await getPlan(auth.userId, body.planId);
+  if (!plan) return NextResponse.json({ error: "plan not found" }, { status: 404 });
+  if (!plan.recipientEmail) return NextResponse.json({ error: "plan has no recipient" }, { status: 400 });
 
   const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.RESEND_FROM_EMAIL;
@@ -52,7 +57,7 @@ export async function POST(req: NextRequest) {
 
   const { data, error } = await resend.emails.send({
     from,
-    to: body.recipientEmail,
+    to: plan.recipientEmail,
     subject,
     react: React.createElement(InvestmentPlanMonthly, {
       output: body.output,

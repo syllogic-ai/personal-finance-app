@@ -14,10 +14,11 @@ const bodySchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
-  const auth = verifyInternalRequest(req, "/api/internal/digests/render-and-send");
+  const rawBody = await req.text();
+  const auth = verifyInternalRequest(req, "/api/internal/digests/render-and-send", rawBody);
   if (!auth.ok) return unauthorizedInternal(auth.reason);
 
-  const body = bodySchema.parse(await req.json());
+  const body = bodySchema.parse(JSON.parse(rawBody));
   const routine = await getRoutine(auth.userId, body.routineId);
   if (!routine) return NextResponse.json({ error: "routine not found" }, { status: 404 });
 

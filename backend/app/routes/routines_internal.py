@@ -9,22 +9,13 @@ from fastapi import APIRouter, HTTPException, Request, status
 from croniter import croniter
 
 from app.database import SessionLocal
-from app.db_helpers import authenticate_internal_request_from_headers
+from app.db_helpers import authenticate_internal_request_with_body
 from app.models import Routine
 from app.services import anthropic_client
 from app.schemas_routines import ParseScheduleRequest, ParseScheduleResponse
 
 
 router = APIRouter(prefix="/internal", tags=["internal"])
-
-
-def _verify(request: Request) -> str:
-    path = request.url.path
-    if request.url.query:
-        path = f"{path}?{request.url.query}"
-    return authenticate_internal_request_from_headers(
-        request.method, path, dict(request.headers)
-    )
 
 
 _PARSE_SYSTEM_PROMPT = """\
@@ -74,24 +65,35 @@ def _call_anthropic(text: str):
 
 
 def parse_schedule_text(text: str) -> dict[str, str]:
+    import zoneinfo as _zoneinfo
     msg = _call_anthropic(text)
     for block in getattr(msg, "content", []):
         if getattr(block, "type", None) == "tool_use" and getattr(block, "name", None) == "emit_schedule":
             payload = block.input
-            cron = payload["cron"]
-            tz = payload["timezone"]
+            cron = (payload["cron"] or "").strip()
+            tz = (payload["timezone"] or "").strip()
             human = payload["human_readable"]
+            if len(cron.split()) != 5:
+                raise ValueError(f"cron must be 5-field; got {cron!r}")
             try:
                 croniter(cron, datetime.utcnow())
             except Exception as exc:
                 raise ValueError(f"model emitted invalid cron {cron!r}: {exc}") from exc
+            try:
+                _zoneinfo.ZoneInfo(tz)
+            except Exception as exc:
+                raise ValueError(f"model emitted invalid IANA timezone {tz!r}") from exc
             return {"cron": cron, "timezone": tz, "humanReadable": human}
     raise ValueError("Anthropic response did not include a tool_use block")
 
 
 @router.post("/routines/parse-schedule", response_model=ParseScheduleResponse)
-async def parse_schedule(request: Request, body: ParseScheduleRequest) -> ParseScheduleResponse:
-    _verify(request)
+async def parse_schedule(request: Request) -> ParseScheduleResponse:
+    body_bytes = await request.body()
+    authenticate_internal_request_with_body(
+        request.method, request.url.path, dict(request.headers), body_bytes
+    )
+    body = ParseScheduleRequest.model_validate_json(body_bytes)
     try:
         out = parse_schedule_text(body.text)
     except ValueError as exc:
@@ -101,7 +103,10 @@ async def parse_schedule(request: Request, body: ParseScheduleRequest) -> ParseS
 
 @router.post("/routines/{routine_id}/test-run")
 async def test_run(request: Request, routine_id: str):
-    user_id = _verify(request)
+    body_bytes = await request.body()
+    user_id = authenticate_internal_request_with_body(
+        request.method, request.url.path, dict(request.headers), body_bytes
+    )
     db = SessionLocal()
     try:
         routine = db.query(Routine).filter(
@@ -125,7 +130,10 @@ from pydantic import BaseModel as _PBaseModel
 
 @router.post("/investment-plans/{plan_id}/test-run")
 async def investment_plan_test_run(request: Request, plan_id: str):
-    user_id = _verify(request)
+    body_bytes = await request.body()
+    user_id = authenticate_internal_request_with_body(
+        request.method, request.url.path, dict(request.headers), body_bytes
+    )
     db = SessionLocal()
     try:
         plan = db.query(InvestmentPlan).filter(
@@ -146,8 +154,12 @@ class SymbolSearchRequest(_PBaseModel):
 
 
 @router.post("/symbols/search")
-async def symbols_search(request: Request, body: SymbolSearchRequest) -> list[dict]:
-    user_id = _verify(request)
+async def symbols_search(request: Request) -> list[dict]:
+    body_bytes = await request.body()
+    user_id = authenticate_internal_request_with_body(
+        request.method, request.url.path, dict(request.headers), body_bytes
+    )
+    body = SymbolSearchRequest.model_validate_json(body_bytes)
     if not body.query.strip():
         return []
     return investment_tools.search_symbol(user_id, body.query.strip())
