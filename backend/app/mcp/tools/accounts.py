@@ -7,12 +7,14 @@ from app.mcp.dependencies import get_db, validate_uuid, validate_date
 from app.mcp.tools._asset_class import account_type_to_asset_class
 from app.models import Account, AccountBalance
 from app.security.data_encryption import decrypt_with_fallback
+from app.services.ownership_service import attribute_amount, entity_ids_for_people, get_owners
 
 
 def list_accounts(
     user_id: str,
     include_inactive: bool = False,
     asset_class: Optional[str] = None,
+    person_ids: Optional[list[str]] = None,
 ) -> list[dict]:
     """
     List all accounts for a user.
@@ -22,6 +24,10 @@ def list_accounts(
         include_inactive: Whether to include inactive accounts (default: False)
         asset_class: Optional asset-class filter, e.g. "cash", "savings",
             "investment", "crypto", "property", "vehicle", "other".
+        person_ids: Optional list of person UUIDs. When provided, only returns
+            accounts owned by any of the specified people. When exactly one
+            person_id is given, also adds an `attributed_balance` field
+            share-weighted to that person's ownership fraction.
 
     Returns:
         List of account dictionaries with id, name, type, institution, currency,
@@ -33,10 +39,29 @@ def list_accounts(
         if not include_inactive:
             query = query.filter(Account.is_active == True)
 
+        # Apply person_ids ownership filter
+        filter_by_person = person_ids is not None and len(person_ids) > 0
+        single_person = filter_by_person and len(person_ids) == 1
+        allowed_account_ids = None
+        if filter_by_person:
+            allowed_account_ids = set(
+                str(uid) for uid in entity_ids_for_people(db, "account", person_ids)
+            )
+            if not allowed_account_ids:
+                return []
+            query = query.filter(Account.id.in_(allowed_account_ids))
+
         accounts = query.order_by(Account.name).all()
 
-        results = [
-            {
+        # Cache owners per account when we need share-weighting
+        owners_cache: dict = {}
+        if single_person:
+            for account in accounts:
+                owners_cache[str(account.id)] = get_owners(db, "account", account.id)
+
+        results = []
+        for account in accounts:
+            row = {
                 "id": str(account.id),
                 "name": account.name,
                 "account_type": account.account_type,
@@ -52,8 +77,14 @@ def list_accounts(
                 "last_synced_at": account.last_synced_at.isoformat() if account.last_synced_at else None,
                 "created_at": account.created_at.isoformat() if account.created_at else None,
             }
-            for account in accounts
-        ]
+            if single_person:
+                owners = owners_cache[str(account.id)]
+                row["owners"] = owners
+                full_balance = float(account.functional_balance or account.balance_available or 0)
+                row["attributed_balance"] = attribute_amount(
+                    full_balance, owners, person_ids[0]
+                )
+            results.append(row)
 
         if asset_class is not None:
             normalized = asset_class.lower()
@@ -110,7 +141,8 @@ def get_account_balance_history(
     user_id: str,
     account_id: str,
     from_date: Optional[str] = None,
-    to_date: Optional[str] = None
+    to_date: Optional[str] = None,
+    person_ids: Optional[list[str]] = None,
 ) -> list[dict]:
     """
     Get daily balance history for an account.
@@ -120,6 +152,8 @@ def get_account_balance_history(
         account_id: The account's ID
         from_date: Start date (ISO format, optional)
         to_date: End date (ISO format, optional)
+        person_ids: Optional list of person UUIDs. When provided, returns an
+            empty list if the account is not owned by any of those people.
 
     Returns:
         List of balance snapshots with date, balance in account currency, and functional currency
@@ -140,6 +174,14 @@ def get_account_balance_history(
 
         if not account:
             return []
+
+        # Apply person_ids ownership filter (filter-only; no attribution on history)
+        if person_ids is not None and len(person_ids) > 0:
+            allowed_ids = set(
+                str(uid) for uid in entity_ids_for_people(db, "account", person_ids)
+            )
+            if str(account_uuid) not in allowed_ids:
+                return []
 
         query = db.query(AccountBalance).filter(
             AccountBalance.account_id == account_uuid
