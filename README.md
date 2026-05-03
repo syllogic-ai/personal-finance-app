@@ -181,6 +181,10 @@ Full variable reference is available in [`deploy/compose/.env.example`](deploy/c
 
 Both services share a single PostgreSQL database. The frontend handles all CRUD via Server Actions; the backend handles data enrichment, bank sync, and background jobs.
 
+### People & ownership
+
+Syllogic models a household as a set of `people` belonging to one user. Accounts, properties, and vehicles can have one or more owners with optional shares (a `NULL` share means equal split). Holdings inherit ownership from their account. The Syllogic MCP read tools accept `person_ids` to scope results and attribute share-weighted amounts. See [docs/superpowers/specs/2026-05-03-people-household-ownership-design.md](docs/superpowers/specs/2026-05-03-people-household-ownership-design.md).
+
 ## Development
 
 Quick start for contributors:
