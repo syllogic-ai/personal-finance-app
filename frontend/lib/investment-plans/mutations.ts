@@ -41,8 +41,18 @@ export async function createPlan(userId: string, input: PlanInput) {
 }
 
 export async function updatePlan(userId: string, id: string, patch: Partial<PlanInput>) {
-  if (patch.slots !== undefined && patch.totalMonthly !== undefined) {
-    validateSlots(patch.slots, patch.totalMonthly);
+  if (patch.slots !== undefined || patch.totalMonthly !== undefined) {
+    // Need to validate against the merged final state.
+    let nextSlots: SlotConfig[] | undefined = patch.slots;
+    let nextTotal: number | undefined = patch.totalMonthly;
+    if (nextSlots === undefined || nextTotal === undefined) {
+      const [current] = await db.select().from(investmentPlans)
+        .where(and(eq(investmentPlans.id, id), eq(investmentPlans.userId, userId))).limit(1);
+      if (!current) return undefined;
+      if (nextSlots === undefined) nextSlots = (current.slots as SlotConfig[]) ?? [];
+      if (nextTotal === undefined) nextTotal = Number(current.totalMonthly);
+    }
+    validateSlots(nextSlots, nextTotal);
   }
   let nextRunAtPatch: { nextRunAt: Date } | Record<string, never> = {};
   if (patch.cron !== undefined || patch.timezone !== undefined) {
