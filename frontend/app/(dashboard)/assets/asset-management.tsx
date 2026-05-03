@@ -68,6 +68,7 @@ import { UpdateBalanceDialog } from "@/components/accounts/update-balance-dialog
 import { PROPERTY_TYPES, VEHICLE_TYPES } from "@/components/assets/types";
 import { AccountLogo } from "@/components/ui/account-logo";
 import { OwnersField, type OwnerValue } from "@/components/household/owners-field";
+import { OwnerBadges } from "@/components/household/owner-badges";
 import type { Account, Property, Vehicle } from "@/lib/db/schema";
 
 type Person = { id: string; name: string; kind: string; color?: string | null; avatarUrl?: string | null };
@@ -538,7 +539,10 @@ export function AssetManagement({
                       className="!size-10"
                     />
                     <div>
-                      <p className="font-medium">{account.name}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium">{account.name}</p>
+                        <OwnerBadges entityType="account" entityId={account.id} size={20} />
+                      </div>
                       <p className="text-sm text-muted-foreground">
                         {getAccountTypeLabel(account.accountType)}
                         {account.institution && ` • ${account.institution}`}
@@ -606,7 +610,10 @@ export function AssetManagement({
                       <RiHome4Line className="h-5 w-5 text-muted-foreground" />
                     </div>
                     <div>
-                      <p className="font-medium">{property.name}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium">{property.name}</p>
+                        <OwnerBadges entityType="property" entityId={property.id} size={20} />
+                      </div>
                       <p className="text-sm text-muted-foreground">
                         {getPropertyTypeLabel(property.propertyType)}
                         {property.address && ` • ${property.address}`}
@@ -663,7 +670,10 @@ export function AssetManagement({
                       <RiCarLine className="h-5 w-5 text-muted-foreground" />
                     </div>
                     <div>
-                      <p className="font-medium">{vehicle.name}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium">{vehicle.name}</p>
+                        <OwnerBadges entityType="vehicle" entityId={vehicle.id} size={20} />
+                      </div>
                       <p className="text-sm text-muted-foreground">
                         {getVehicleTypeLabel(vehicle.vehicleType)}
                         {vehicle.make && ` • ${vehicle.make}`}

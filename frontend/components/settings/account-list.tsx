@@ -56,6 +56,7 @@ import { updateAccount, deleteAccount, recalculateAccountTimeseries } from "@/li
 import { UpdateBalanceDialog } from "@/components/accounts/update-balance-dialog";
 import { AccountLogo } from "@/components/ui/account-logo";
 import { OwnersField, type OwnerValue } from "@/components/household/owners-field";
+import { OwnerBadges } from "@/components/household/owner-badges";
 import type { Account } from "@/lib/db/schema";
 
 type Person = { id: string; name: string; kind: string; color?: string | null; avatarUrl?: string | null };
@@ -264,6 +265,7 @@ export function AccountList({ accounts, onAccountUpdated }: AccountListProps) {
                       {account.provider === "manual" && account.ibanHash ? (
                         <Badge variant="secondary">Pocket</Badge>
                       ) : null}
+                      <OwnerBadges entityType="account" entityId={account.id} size={20} />
                     </div>
                     <p className="text-sm text-muted-foreground">
                       {getAccountTypeLabel(account.accountType)}
