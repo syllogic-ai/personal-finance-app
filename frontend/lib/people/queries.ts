@@ -4,6 +4,7 @@ import {
   accountOwners,
   propertyOwners,
   vehicleOwners,
+  users,
 } from "@/lib/db/schema";
 import { eq, and, inArray } from "drizzle-orm";
 
@@ -18,13 +19,32 @@ export async function getPeople(userId: string) {
 }
 
 export async function getSelfPersonId(userId: string): Promise<string> {
-  const [self] = await db
+  // Try fetch first
+  const [existing] = await db
     .select({ id: people.id })
     .from(people)
     .where(and(eq(people.userId, userId), eq(people.kind, "self")))
     .limit(1);
-  if (!self) throw new Error(`No self person for user ${userId}`);
-  return self.id;
+  if (existing) return existing.id;
+
+  // Auto-create. The partial unique index prevents duplicates if two requests race.
+  const [user] = await db.select({ name: users.name }).from(users).where(eq(users.id, userId)).limit(1);
+  const displayName = (user?.name && user.name.trim()) || "You";
+  try {
+    const [created] = await db.insert(people).values({
+      userId, name: displayName, kind: "self",
+    }).returning();
+    return created.id;
+  } catch {
+    // Race: another request created it concurrently. Fetch again.
+    const [retry] = await db
+      .select({ id: people.id })
+      .from(people)
+      .where(and(eq(people.userId, userId), eq(people.kind, "self")))
+      .limit(1);
+    if (!retry) throw new Error(`failed to ensure self person for ${userId}`);
+    return retry.id;
+  }
 }
 
 export async function getOwners(entityType: EntityType, entityId: string) {
