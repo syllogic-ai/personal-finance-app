@@ -191,6 +191,10 @@ Users can define agentic Routines — scheduled prompts that run against the Syl
 
 Required env vars: `ANTHROPIC_API_KEY`, `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, plus the existing `INTERNAL_AUTH_SECRET` for backend↔frontend HMAC.
 
+### Investment plans
+
+Configure a recurring monthly amount split into pinned (specific symbol) and discretionary (theme the agent picks from) slots. Each month a Celery-Beat poller fires the agent, which grounds itself in your real cash + last-30-day broker activity (via MCP) and returns per-slot verdicts plus a top-10 ranked list per discretionary theme. The "this month's suggested buys" card on the run-detail page lets you tick off trades as you place them in your broker manually — no order execution from this app. See [docs/superpowers/specs/2026-05-03-investment-plans-design.md](docs/superpowers/specs/2026-05-03-investment-plans-design.md).
+
 ## Development
 
 Quick start for contributors:
