@@ -127,6 +127,13 @@
       "when": 1776729600000,
       "tag": "0017_verification_value_rename",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1746230400000,
+      "tag": "0020_people_and_ownership",
+      "breakpoints": true
     }
   ]
 }
