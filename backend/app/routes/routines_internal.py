@@ -3,11 +3,14 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any
+from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Request, status
 from croniter import croniter
 
+from app.database import SessionLocal
 from app.db_helpers import authenticate_internal_request_from_headers
+from app.models import Routine
 from app.services import anthropic_client
 from app.schemas_routines import ParseScheduleRequest, ParseScheduleResponse
 
@@ -94,3 +97,22 @@ async def parse_schedule(request: Request, body: ParseScheduleRequest) -> ParseS
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     return ParseScheduleResponse(cron=out["cron"], timezone=out["timezone"], humanReadable=out["humanReadable"])
+
+
+@router.post("/{routine_id}/test-run")
+async def test_run(request: Request, routine_id: str):
+    user_id = _verify(request)
+    db = SessionLocal()
+    try:
+        routine = db.query(Routine).filter(
+            Routine.id == UUID(routine_id),
+            Routine.user_id == user_id,
+        ).first()
+        if routine is None:
+            raise HTTPException(status_code=404, detail="routine not found")
+    finally:
+        db.close()
+    # Lazy import to avoid celery loading at module-import time of the FastAPI app.
+    from tasks.routine_tasks import run_routine as run_routine_task
+    async_result = run_routine_task.delay(routine_id)
+    return {"taskId": async_result.id}
