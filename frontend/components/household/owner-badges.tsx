@@ -11,29 +11,41 @@ type Person = {
   avatarUrl?: string | null;
 };
 
-const cache = new Map<string, Person[]>();
+type CacheEntry<T> = { value: T; timestamp: number };
+const TTL_MS = 30_000;
+
+const peopleCache: { entry?: CacheEntry<Person[]> } = {};
+const ownersCache = new Map<string, CacheEntry<{ personId: string; share: number | null }[]>>();
+
+function isFresh<T>(e: CacheEntry<T> | undefined): e is CacheEntry<T> {
+  return !!e && Date.now() - e.timestamp < TTL_MS;
+}
+
+export function clearOwnerBadgesCache() {
+  peopleCache.entry = undefined;
+  ownersCache.clear();
+}
 
 async function loadPeople(): Promise<Person[]> {
-  if (cache.has("all")) return cache.get("all")!;
+  if (isFresh(peopleCache.entry)) return peopleCache.entry.value;
   try {
     const r = await fetch("/api/people");
     const j = await r.json();
-    cache.set("all", j.people);
+    peopleCache.entry = { value: j.people, timestamp: Date.now() };
     return j.people;
   } catch {
     return [];
   }
 }
 
-const ownersCache = new Map<string, { personId: string; share: number | null }[]>();
-
 async function loadOwners(entityType: EntityType, entityId: string) {
   const key = `${entityType}:${entityId}`;
-  if (ownersCache.has(key)) return ownersCache.get(key)!;
+  const existing = ownersCache.get(key);
+  if (isFresh(existing)) return existing.value;
   try {
     const r = await fetch(`/api/owners/${entityType}/${entityId}`);
     const j = await r.json();
-    ownersCache.set(key, j.owners);
+    ownersCache.set(key, { value: j.owners, timestamp: Date.now() });
     return j.owners;
   } catch {
     return [];

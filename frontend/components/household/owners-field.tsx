@@ -22,6 +22,16 @@ export function OwnersField(props: {
     value.length > 0 ? value.every((o) => o.share === null) : true
   );
 
+  // When the value prop loads asynchronously (e.g. fetched from the server),
+  // re-derive equalSplit from it so the toggle reflects the loaded state.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    setEqualSplit(value.length > 0 ? value.every((o) => o.share === null) : true);
+    // Intentionally depend on a stable serialization of the shares to avoid
+    // re-running on every render while still reacting when the async load arrives.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value.length, value.map((o) => o.share).join(",")]);
+
   const selectedIds = useMemo(() => new Set(value.map((o) => o.personId)), [value]);
 
   function toggle(personId: string) {

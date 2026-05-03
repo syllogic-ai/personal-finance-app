@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { PersonForm, type PersonFormValues } from "./person-form";
 import { PersonAvatar } from "./person-avatar";
+import { clearOwnerBadgesCache } from "./owner-badges";
 
 type Person = {
   id: string;
@@ -35,12 +36,14 @@ export function PeopleList(props: { initialPeople: Person[] }) {
 
   async function create(values: PersonFormValues) {
     await fetch("/api/people", { method: "POST", body: buildFormData(values) });
+    clearOwnerBadgesCache();
     await refresh();
     setAdding(false);
   }
 
   async function update(id: string, values: PersonFormValues) {
     await fetch(`/api/people/${id}`, { method: "PATCH", body: buildFormData(values) });
+    clearOwnerBadgesCache();
     await refresh();
     setEditingId(null);
   }
@@ -54,6 +57,7 @@ export function PeopleList(props: { initialPeople: Person[] }) {
       );
       return;
     }
+    clearOwnerBadgesCache();
     await refresh();
   }
 
