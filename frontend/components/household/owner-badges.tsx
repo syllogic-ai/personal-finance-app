@@ -59,22 +59,36 @@ async function loadOwners(entityType: EntityType, entityId: string) {
 /**
  * Renders a stacked-avatar row of the people who own this entity.
  * Hidden in single-person households (only one person total).
+ *
+ * Pass `people` and `ownerIds` to skip the client fetch entirely — list pages
+ * preload these server-side to avoid an N-request waterfall.
  */
 export function OwnerBadges({
   entityType,
   entityId,
   size = 24,
   max = 3,
+  people: peopleProp,
+  ownerIds: ownerIdsProp,
 }: {
   entityType: EntityType;
   entityId: string;
   size?: number;
   max?: number;
+  people?: Person[];
+  ownerIds?: string[];
 }) {
-  const [people, setPeople] = useState<Person[]>([]);
-  const [ownerIds, setOwnerIds] = useState<string[]>([]);
+  const preloaded = peopleProp !== undefined && ownerIdsProp !== undefined;
+  const [people, setPeople] = useState<Person[]>(peopleProp ?? []);
+  const [ownerIds, setOwnerIds] = useState<string[]>(ownerIdsProp ?? []);
 
   useEffect(() => {
+    if (preloaded) {
+      // Keep state in sync if the parent re-renders with new props.
+      setPeople(peopleProp!);
+      setOwnerIds(ownerIdsProp!);
+      return;
+    }
     let cancelled = false;
     Promise.all([loadPeople(), loadOwners(entityType, entityId)]).then(
       ([all, owners]) => {
@@ -86,7 +100,7 @@ export function OwnerBadges({
     return () => {
       cancelled = true;
     };
-  }, [entityType, entityId]);
+  }, [entityType, entityId, preloaded, peopleProp, ownerIdsProp]);
 
   if (people.length < 2) return null;
   const owners = people.filter((p) => ownerIds.includes(p.id));
