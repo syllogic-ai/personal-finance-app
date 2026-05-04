@@ -25,12 +25,15 @@ export async function POST(req: NextRequest) {
   const userId = await requireAuth();
   if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const form = await req.formData();
-  const parsed = createSchema.parse({
+  const parsed = createSchema.safeParse({
     name: form.get("name"),
     color: form.get("color") || undefined,
   });
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.message }, { status: 400 });
+  }
   // Insert first so we have an id for the avatar filename.
-  const person = await createPerson({ userId, ...parsed });
+  const person = await createPerson({ userId, ...parsed.data });
   const avatar = form.get("avatar");
   if (avatar instanceof File && avatar.size > 0) {
     const path = await uploadPersonAvatar(person.id, avatar);

@@ -56,7 +56,17 @@ export async function PUT(
   if (!(await userOwnsEntity(userId, entityType as EntityType, entityId))) {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
-  const body = putSchema.parse(await req.json());
+  let rawBody: unknown;
+  try {
+    rawBody = await req.json();
+  } catch {
+    return NextResponse.json({ error: "invalid JSON" }, { status: 400 });
+  }
+  const parsedBody = putSchema.safeParse(rawBody);
+  if (!parsedBody.success) {
+    return NextResponse.json({ error: parsedBody.error.message }, { status: 400 });
+  }
+  const body = parsedBody.data;
   try {
     await setOwners({
       userId,

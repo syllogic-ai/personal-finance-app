@@ -28,9 +28,18 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const userId = await requireAuth();
   if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const input = createSchema.parse(await req.json());
+  let body: unknown;
   try {
-    const row = await createPlan(userId, input);
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "invalid JSON" }, { status: 400 });
+  }
+  const parsed = createSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.message }, { status: 400 });
+  }
+  try {
+    const row = await createPlan(userId, parsed.data);
     return NextResponse.json({ plan: row }, { status: 201 });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 400 });

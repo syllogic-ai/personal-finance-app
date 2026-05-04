@@ -8,7 +8,17 @@ const bodySchema = z.object({ query: z.string().min(1).max(64) });
 export async function POST(req: NextRequest) {
   const userId = await requireAuth();
   if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const { query } = bodySchema.parse(await req.json());
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "invalid JSON" }, { status: 400 });
+  }
+  const parsedBody = bodySchema.safeParse(body);
+  if (!parsedBody.success) {
+    return NextResponse.json({ error: parsedBody.error.message }, { status: 400 });
+  }
+  const { query } = parsedBody.data;
 
   const backend = process.env.BACKEND_URL ?? "http://localhost:8000";
   const path = "/internal/symbols/search";

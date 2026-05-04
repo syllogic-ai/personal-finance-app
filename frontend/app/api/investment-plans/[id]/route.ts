@@ -31,9 +31,18 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   const userId = await requireAuth();
   if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const { id } = await ctx.params;
-  const patch = patchSchema.parse(await req.json());
+  let body: unknown;
   try {
-    const row = await updatePlan(userId, id, patch);
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "invalid JSON" }, { status: 400 });
+  }
+  const parsed = patchSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.message }, { status: 400 });
+  }
+  try {
+    const row = await updatePlan(userId, id, parsed.data);
     if (!row) return NextResponse.json({ error: "not found" }, { status: 404 });
     return NextResponse.json({ plan: row });
   } catch (e) {

@@ -19,11 +19,14 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const { id } = await ctx.params;
   const form = await req.formData();
-  const parsed = patchSchema.parse({
+  const parsed = patchSchema.safeParse({
     name: form.get("name") || undefined,
     color: form.get("color") || undefined,
     clearAvatar: form.get("clearAvatar") || undefined,
   });
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.message }, { status: 400 });
+  }
 
   // Look up current avatar path for cleanup decisions.
   const all = await getPeople(userId);
@@ -37,7 +40,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     if (existing.avatarPath && existing.avatarPath !== avatarPath) {
       await deletePersonAvatar(existing.avatarPath);
     }
-  } else if (parsed.clearAvatar === "1") {
+  } else if (parsed.data.clearAvatar === "1") {
     avatarPath = null;
     if (existing.avatarPath) await deletePersonAvatar(existing.avatarPath);
   }
@@ -45,8 +48,8 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   const updated = await updatePerson({
     userId,
     id,
-    name: parsed.name,
-    color: parsed.color,
+    name: parsed.data.name,
+    color: parsed.data.color,
     avatarPath,
   });
   return NextResponse.json({
