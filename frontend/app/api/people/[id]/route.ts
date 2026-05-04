@@ -33,16 +33,18 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   const existing = all.find((p) => p.id === id);
   if (!existing) return NextResponse.json({ error: "not found" }, { status: 404 });
 
-  let avatarPath: string | null | undefined = undefined;
+  let newAvatarPath: string | null | undefined = undefined;
+  let oldAvatarPathToDelete: string | null = null;
+
   const avatar = form.get("avatar");
   if (avatar instanceof File && avatar.size > 0) {
-    avatarPath = await uploadPersonAvatar(id, avatar);
-    if (existing.avatarPath && existing.avatarPath !== avatarPath) {
-      await deletePersonAvatar(existing.avatarPath);
+    newAvatarPath = await uploadPersonAvatar(id, avatar);
+    if (existing.avatarPath && existing.avatarPath !== newAvatarPath) {
+      oldAvatarPathToDelete = existing.avatarPath;
     }
   } else if (parsed.data.clearAvatar === "1") {
-    avatarPath = null;
-    if (existing.avatarPath) await deletePersonAvatar(existing.avatarPath);
+    newAvatarPath = null;
+    if (existing.avatarPath) oldAvatarPathToDelete = existing.avatarPath;
   }
 
   const updated = await updatePerson({
@@ -50,8 +52,14 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     id,
     name: parsed.data.name,
     color: parsed.data.color,
-    avatarPath,
+    avatarPath: newAvatarPath,
   });
+
+  // Only after DB update succeeds, delete the orphaned blob.
+  if (oldAvatarPathToDelete) {
+    await deletePersonAvatar(oldAvatarPathToDelete);
+  }
+
   return NextResponse.json({
     person: { ...updated, avatarUrl: avatarUrl(updated.avatarPath) },
   });
