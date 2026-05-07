@@ -30,6 +30,37 @@ def test_parse_positions_extracts_holdings_and_cash():
     assert {c.currency: c.balance for c in parsed.cash} == {"USD": Decimal("1500.00"), "EUR": Decimal("320.50")}
 
 
+def test_parse_positions_aggregates_per_lot_rows():
+    """IBKR Flex Queries configured at lot granularity emit one OpenPosition
+    per lot. The parser must aggregate them — quantities sum, avg_cost is
+    quantity-weighted, lots without costBasisPrice are excluded from the
+    weighted average."""
+    adapter = IBKRFlexAdapter(token="t", query_id_positions="qp", query_id_trades="qt")
+    parsed = adapter.parse_positions_xml(_read("ibkr_flex_positions_lots.xml"))
+    by_sym = {p.symbol: p for p in parsed.positions}
+
+    # Three PPC lots: 100@18 + 50@19 + 50@20 = 3750 over 200 shares → 18.75
+    assert by_sym["PPC"].quantity == Decimal("200")
+    assert by_sym["PPC"].avg_cost == Decimal("18.75")
+    assert by_sym["PPC"].instrument_type == "equity"
+
+    # Single-lot positions still parse correctly
+    assert by_sym["AAPL"].quantity == Decimal("10")
+    assert by_sym["AAPL"].avg_cost == Decimal("180.00")
+
+    # Two VWCE lots; the second lacks costBasisPrice. Weighted avg = 100.00
+    # over the 20 shares that have a price; the 22-share lot still
+    # contributes to total quantity.
+    assert by_sym["VWCE"].quantity == Decimal("42")
+    assert by_sym["VWCE"].avg_cost == Decimal("100.00")
+    assert by_sym["VWCE"].instrument_type == "etf"
+
+    # No duplicate (symbol, instrument_type) pairs in the output — this is
+    # exactly what the holdings_account_symbol_type_uq constraint enforces.
+    keys = [(p.symbol, p.instrument_type) for p in parsed.positions]
+    assert len(keys) == len(set(keys))
+
+
 def test_parse_trades_extracts_trades():
     adapter = IBKRFlexAdapter(token="t", query_id_positions="qp", query_id_trades="qt")
     trades = adapter.parse_trades_xml(_read("ibkr_flex_trades.xml"))
