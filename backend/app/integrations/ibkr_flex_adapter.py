@@ -148,20 +148,54 @@ class IBKRFlexAdapter:
 
     def parse_positions_xml(self, xml: str) -> ParsedStatement:
         root = ET.fromstring(xml)
-        positions: list[ParsedPosition] = []
+        # IBKR Flex emits one <OpenPosition> per lot when the Flex Query is
+        # configured at lot granularity. Aggregate to one position per
+        # (symbol, instrument_type) so downstream upserts don't trip the
+        # holdings_account_symbol_type_uq unique constraint. quantity is
+        # summed; avg_cost is a quantity-weighted average over lots that
+        # report a costBasisPrice; mark_price takes the first non-null.
+        aggregates: dict[tuple[str, str], dict] = {}
         for op in root.iter("OpenPosition"):
             asset = (op.get("assetCategory") or "").upper()
             instrument_type = _ASSET_CATEGORY_MAP.get(asset)
             if instrument_type is None:
                 continue
+            symbol = op.get("symbol", "").strip()
+            if not symbol:
+                continue
+            qty = Decimal(op.get("position", "0"))
+            avg_cost = _dec(op.get("costBasisPrice"))
+            mark = _dec(op.get("markPrice"))
+            key = (symbol, instrument_type)
+            acc = aggregates.get(key)
+            if acc is None:
+                aggregates[key] = {
+                    "name": op.get("description", "").strip(),
+                    "currency": op.get("currency", "USD").strip().upper(),
+                    "quantity": qty,
+                    "cost_total": (qty * avg_cost) if avg_cost is not None else Decimal(0),
+                    "cost_qty": qty if avg_cost is not None else Decimal(0),
+                    "mark_price": mark,
+                }
+            else:
+                acc["quantity"] += qty
+                if avg_cost is not None:
+                    acc["cost_total"] += qty * avg_cost
+                    acc["cost_qty"] += qty
+                if acc["mark_price"] is None and mark is not None:
+                    acc["mark_price"] = mark
+
+        positions: list[ParsedPosition] = []
+        for (symbol, instrument_type), acc in aggregates.items():
+            avg = (acc["cost_total"] / acc["cost_qty"]) if acc["cost_qty"] != 0 else None
             positions.append(ParsedPosition(
-                symbol=op.get("symbol", "").strip(),
-                name=op.get("description", "").strip(),
-                quantity=Decimal(op.get("position", "0")),
-                currency=op.get("currency", "USD").strip().upper(),
+                symbol=symbol,
+                name=acc["name"],
+                quantity=acc["quantity"],
+                currency=acc["currency"],
                 instrument_type=instrument_type,
-                avg_cost=_dec(op.get("costBasisPrice")),
-                mark_price=_dec(op.get("markPrice")),
+                avg_cost=avg,
+                mark_price=acc["mark_price"],
             ))
         cash: list[ParsedCash] = []
         for c in root.iter("CashReportCurrency"):
